@@ -1,35 +1,10 @@
-"""
-Configuracao de logging com loguru para ifdata-bcb.
-
-Fornece dual logging:
-- Console (stderr): Mensagens de warning/error para usuario
-- Arquivo: Logs tecnicos completos para debugging
-
-Logs sao salvos em: AppData/Local/py-bacen/Logs/ifdata_YYYY-MM-DD.log
-"""
-
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from loguru import Logger
+from typing import Any
 
 _configured: bool = False
 _logger_instance = None
-
-
-def _get_log_path() -> Path:
-    """
-    Retorna caminho para diretorio de logs.
-
-    Returns:
-        Path do diretorio de logs.
-    """
-    from ifdata_bcb.infra.config import get_logs_path
-
-    return get_logs_path()
 
 
 def configure_logging(
@@ -40,12 +15,8 @@ def configure_logging(
     """
     Configura loguru com dual output (console + arquivo).
 
-    Esta funcao e idempotente - chamadas subsequentes sao ignoradas.
-
-    Args:
-        level: Nivel minimo para console (WARNING por padrao).
-        enable_file: Se True, habilita logging em arquivo.
-        file_level: Nivel minimo para arquivo (DEBUG por padrao).
+    Idempotente - chamadas subsequentes sao ignoradas.
+    Console: WARNING+ por padrao. Arquivo: DEBUG+ em py-bacen/Logs/.
     """
     global _configured, _logger_instance
 
@@ -54,11 +25,8 @@ def configure_logging(
 
     from loguru import logger
 
-    # Remove handler padrao
     logger.remove()
 
-    # Console handler (apenas warnings e erros por padrao)
-    # Formato simplificado para nao poluir o terminal
     logger.add(
         sys.stderr,
         level=level,
@@ -66,9 +34,10 @@ def configure_logging(
         colorize=True,
     )
 
-    # File handler (logs completos para debugging)
     if enable_file:
-        log_path = _get_log_path()
+        from ifdata_bcb.infra.config import get_logs_path
+
+        log_path = get_logs_path()
         today = datetime.now().strftime("%Y-%m-%d")
         log_file = log_path / f"ifdata_{today}.log"
 
@@ -86,44 +55,19 @@ def configure_logging(
 
 
 def get_logger(name: str = "ifdata_bcb") -> Any:
-    """
-    Retorna logger configurado com contexto de nome.
-
-    Configura o logger na primeira chamada (lazy initialization).
-    Logs de WARNING+ vao para console.
-    Todos os logs (DEBUG+) vao para arquivo em AppData/Local/py-bacen/Logs/.
-
-    Args:
-        name: Nome do modulo para contexto (geralmente __name__).
-
-    Returns:
-        Logger loguru com binding de nome.
-    """
     configure_logging()
     return _logger_instance.bind(name=name)
 
 
 def set_log_level(level: str) -> None:
-    """
-    Altera o nivel de logging do console.
-
-    Note: O nivel do arquivo permanece DEBUG para capturar tudo.
-
-    Args:
-        level: Nivel (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-    """
-    global _configured
+    global _configured, _logger_instance
+    if _logger_instance:
+        _logger_instance.remove()
     _configured = False
     configure_logging(level=level)
 
 
 def get_log_path() -> Path:
-    """
-    Retorna caminho para diretorio de logs.
+    from ifdata_bcb.infra.config import get_logs_path
 
-    Util para usuario verificar onde os logs estao sendo salvos.
-
-    Returns:
-        Path do diretorio de logs.
-    """
-    return _get_log_path()
+    return get_logs_path()

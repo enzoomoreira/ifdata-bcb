@@ -1,56 +1,94 @@
-"""
-Gerenciador de persistencia de dados em formato Parquet.
-
-Responsavel por operacoes de escrita e gerenciamento de arquivos Parquet,
-complementando o QueryEngine que foca em leitura.
-"""
-
-import re
 from pathlib import Path
-from typing import Optional
 
+import duckdb
 import pandas as pd
 
 from ifdata_bcb.infra.config import get_cache_path
 from ifdata_bcb.infra.log import get_logger
-from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.utils.period import extract_periods_from_files
+
+
+def list_parquet_files(
+    subdir: str,
+    pattern: str = "*.parquet",
+    base_path: Path | None = None,
+) -> list[str]:
+    cache_path = base_path or get_cache_path()
+    dir_path = cache_path / subdir
+    if not dir_path.exists():
+        return []
+    return [f.stem for f in dir_path.glob(pattern)]
+
+
+def parquet_exists(
+    filename: str,
+    subdir: str,
+    base_path: Path | None = None,
+) -> bool:
+    cache_path = base_path or get_cache_path()
+    filepath = cache_path / subdir / f"{filename}.parquet"
+    return filepath.exists()
+
+
+def get_parquet_path(
+    filename: str,
+    subdir: str,
+    base_path: Path | None = None,
+) -> Path:
+    cache_path = base_path or get_cache_path()
+    return cache_path / subdir / f"{filename}.parquet"
+
+
+def get_parquet_metadata(
+    filename: str,
+    subdir: str,
+    base_path: Path | None = None,
+) -> dict | None:
+    """Retorna {arquivo, subdir, registros, colunas, status} ou None se nao existir."""
+    cache_path = base_path or get_cache_path()
+    filepath = cache_path / subdir / f"{filename}.parquet"
+
+    if not filepath.exists():
+        return None
+
+    try:
+        conn = duckdb.connect()
+        schema = conn.sql(f"DESCRIBE SELECT * FROM '{filepath}' LIMIT 0").df()
+        n_cols = len(schema)
+
+        count_sql = f"SELECT COUNT(*) as total FROM '{filepath}'"
+        count_result = conn.sql(count_sql).fetchone()
+        n_rows = count_result[0] if count_result else 0
+
+        return {
+            "arquivo": filename,
+            "subdir": subdir,
+            "registros": n_rows,
+            "colunas": n_cols,
+            "status": "OK",
+        }
+    except Exception as e:
+        return {
+            "arquivo": filename,
+            "subdir": subdir,
+            "registros": 0,
+            "colunas": 0,
+            "status": f"Erro: {str(e)[:50]}",
+        }
 
 
 class DataManager:
-    """
-    Gerenciador de persistencia em Parquet.
+    """Gerenciador de persistencia em Parquet."""
 
-    Responsabilidades:
-    - Salvar DataFrames como Parquet
-    - Listar e gerenciar arquivos
-    - Consultar periodos disponiveis
-
-    Para leitura e queries SQL, use QueryEngine.
-
-    Exemplo:
-        dm = DataManager()
-
-        # Salvar DataFrame
-        dm.save(df, "ifdata_val_202412", "ifdata/valores")
-
-        # Listar arquivos
-        files = dm.list_files("ifdata/valores")
-
-        # Verificar ultimo periodo
-        last = dm.get_last_period("ifdata_val", "ifdata/valores")
-    """
-
-    def __init__(self, base_path: Optional[Path] = None):
-        """
-        Inicializa o gerenciador de dados.
-
-        Args:
-            base_path: Caminho base para diretorio de cache.
-                      Se None, usa get_cache_path().
-        """
+    def __init__(self, base_path: Path | None = None):
         self.cache_path = Path(base_path) if base_path else get_cache_path()
-        self._qe = QueryEngine(self.cache_path)
         self._logger = get_logger(__name__)
+        self._conn = duckdb.connect()
+
+    def _ensure_dir(self, subdir: str) -> Path:
+        output_dir = self.cache_path / subdir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
 
     def save(
         self,
@@ -59,220 +97,42 @@ class DataManager:
         subdir: str,
         compression: str = "snappy",
     ) -> Path:
-        """
-        Salva DataFrame em arquivo Parquet.
-
-        Args:
-            df: DataFrame para salvar.
-            filename: Nome do arquivo (sem extensao).
-            subdir: Subdiretorio dentro de raw/bcb/.
-            compression: Algoritmo de compressao ('snappy', 'gzip', 'zstd').
-
-        Returns:
-            Path do arquivo salvo.
-
-        Exemplo:
-            path = dm.save(df, "ifdata_val_202412", "ifdata/valores")
-        """
-        output_dir = self.cache_path / subdir
-        output_dir.mkdir(parents=True, exist_ok=True)
-
+        """Salva DataFrame para Parquet via PyArrow."""
+        output_dir = self._ensure_dir(subdir)
         filepath = output_dir / f"{filename}.parquet"
 
-        df.to_parquet(
-            filepath,
-            engine="pyarrow",
-            compression=compression,
-            index=False,
-        )
+        df.to_parquet(filepath, engine="pyarrow", compression=compression, index=False)
 
         self._logger.info(f"Saved: {subdir}/{filename}.parquet ({len(df):,} rows)")
         return filepath
 
-    def read(
+    def save_from_query(
         self,
+        query: str,
         filename: str,
         subdir: str,
-        columns: Optional[list[str]] = None,
-        where: Optional[str] = None,
-    ) -> pd.DataFrame:
-        """
-        Le arquivo Parquet via QueryEngine.
+        compression: str = "snappy",
+    ) -> Path:
+        """Salva resultado de query DuckDB direto para Parquet (sem Pandas)."""
+        output_dir = self._ensure_dir(subdir)
+        filepath = output_dir / f"{filename}.parquet"
 
-        Args:
-            filename: Nome do arquivo (sem extensao).
-            subdir: Subdiretorio.
-            columns: Colunas para carregar (None = todas).
-            where: Filtro SQL.
+        self._conn.sql(query).to_parquet(str(filepath), compression=compression)
 
-        Returns:
-            DataFrame com os dados.
-        """
-        return self._qe.read(filename, subdir, columns, where)
+        count = self._conn.sql(f"SELECT COUNT(*) FROM '{filepath}'").fetchone()[0]
+        self._logger.info(f"Saved: {subdir}/{filename}.parquet ({count:,} rows)")
+        return filepath
 
     def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
-        """
-        Lista arquivos em um subdiretorio.
+        return list_parquet_files(subdir, pattern, self.cache_path)
 
-        Args:
-            subdir: Subdiretorio dentro de raw/bcb/.
-            pattern: Glob pattern para filtrar.
-
-        Returns:
-            Lista de nomes de arquivos (sem extensao).
-        """
-        return self._qe.list_files(subdir, pattern)
-
-    def file_exists(self, filename: str, subdir: str) -> bool:
-        """
-        Verifica se um arquivo existe.
-
-        Args:
-            filename: Nome do arquivo (sem extensao).
-            subdir: Subdiretorio.
-
-        Returns:
-            True se existe, False caso contrario.
-        """
-        return self._qe.file_exists(filename, subdir)
-
-    def get_last_period(
-        self,
-        prefix: str,
-        subdir: str,
-    ) -> Optional[tuple[int, int]]:
-        """
-        Retorna o ultimo periodo (ano, mes) disponivel.
-
-        Busca arquivos com padrao {prefix}_YYYYMM.parquet e retorna
-        o periodo mais recente.
-
-        Args:
-            prefix: Prefixo do arquivo (ex: "ifdata_val", "cosif_ind").
-            subdir: Subdiretorio.
-
-        Returns:
-            Tupla (ano, mes) do ultimo periodo ou None se nao houver arquivos.
-
-        Exemplo:
-            last = dm.get_last_period("ifdata_val", "ifdata/valores")
-            # Retorna: (2024, 12) ou None
-        """
-        files = self.list_files(subdir, f"{prefix}_*.parquet")
-
-        if not files:
-            self._logger.debug(f"No periods for {prefix} in {subdir}")
-            return None
-
-        # Extrair periodos dos nomes de arquivo
-        # Padrao esperado: {prefix}_{YYYYMM} ou {prefix}_{YYYY-MM}
-        periods = []
-        for f in files:
-            # Tentar extrair YYYYMM
-            match = re.search(rf"{prefix}_(\d{{6}})", f)
-            if match:
-                period_str = match.group(1)
-                year = int(period_str[:4])
-                month = int(period_str[4:6])
-                periods.append((year, month))
-                continue
-
-            # Tentar extrair YYYY-MM
-            match = re.search(rf"{prefix}_(\d{{4}})-(\d{{2}})", f)
-            if match:
-                year = int(match.group(1))
-                month = int(match.group(2))
-                periods.append((year, month))
-
-        if not periods:
-            self._logger.debug(f"No valid periods parsed for {prefix} in {subdir}")
-            return None
-
-        result = max(periods)
-        self._logger.debug(f"Last period: {prefix} = {result[0]}-{result[1]:02d}")
-        return result
+    def get_metadata(self, filename: str, subdir: str) -> dict | None:
+        return get_parquet_metadata(filename, subdir, self.cache_path)
 
     def get_available_periods(
         self,
         prefix: str,
         subdir: str,
     ) -> list[tuple[int, int]]:
-        """
-        Retorna todos os periodos disponiveis.
-
-        Args:
-            prefix: Prefixo do arquivo.
-            subdir: Subdiretorio.
-
-        Returns:
-            Lista de tuplas (ano, mes) ordenadas.
-        """
         files = self.list_files(subdir, f"{prefix}_*.parquet")
-
-        periods = []
-        for f in files:
-            # Tentar YYYYMM
-            match = re.search(rf"{prefix}_(\d{{6}})", f)
-            if match:
-                period_str = match.group(1)
-                year = int(period_str[:4])
-                month = int(period_str[4:6])
-                periods.append((year, month))
-                continue
-
-            # Tentar YYYY-MM
-            match = re.search(rf"{prefix}_(\d{{4}})-(\d{{2}})", f)
-            if match:
-                year = int(match.group(1))
-                month = int(match.group(2))
-                periods.append((year, month))
-
-        return sorted(set(periods))
-
-    def delete(self, filename: str, subdir: str) -> bool:
-        """
-        Remove um arquivo.
-
-        Args:
-            filename: Nome do arquivo (sem extensao).
-            subdir: Subdiretorio.
-
-        Returns:
-            True se removeu, False se nao existia.
-        """
-        filepath = self.cache_path / subdir / f"{filename}.parquet"
-
-        if filepath.exists():
-            filepath.unlink()
-            self._logger.info(f"Deleted: {subdir}/{filename}.parquet")
-            return True
-
-        self._logger.debug(f"Not found: {subdir}/{filename}.parquet")
-        return False
-
-    def get_file_path(self, filename: str, subdir: str) -> Path:
-        """
-        Retorna o caminho completo do arquivo.
-
-        Args:
-            filename: Nome do arquivo (sem extensao).
-            subdir: Subdiretorio.
-
-        Returns:
-            Path completo do arquivo.
-        """
-        return self.cache_path / subdir / f"{filename}.parquet"
-
-    def ensure_subdir(self, subdir: str) -> Path:
-        """
-        Garante que o subdiretorio existe.
-
-        Args:
-            subdir: Subdiretorio.
-
-        Returns:
-            Path do subdiretorio.
-        """
-        path = self.cache_path / subdir
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return extract_periods_from_files(files, prefix)

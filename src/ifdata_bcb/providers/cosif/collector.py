@@ -1,39 +1,20 @@
-"""
-Collector para dados COSIF do BCB.
-
-Faz download e processamento de dados COSIF (Individual e Prudencial).
-"""
-
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional
 
-import duckdb
 import pandas as pd
 import requests
 
+from ifdata_bcb.domain.exceptions import InvalidScopeError, PeriodUnavailableError
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
-from ifdata_bcb.services.base_collector import BaseCollector, PeriodUnavailableError
+from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 
 
 class COSIFCollector(BaseCollector):
-    """
-    Collector para dados COSIF.
-
-    Faz download de dados COSIF do BCB e processa para formato Parquet
-    otimizado, salvando um arquivo por periodo.
-
-    Escopos suportados:
-    - 'individual': Dados de instituicoes individuais
-    - 'prudencial': Dados de conglomerados prudenciais
-
-    Exemplo:
-        collector = COSIFCollector('individual')
-        collector.collect('2024-01', '2024-12')
-    """
+    """Collector para dados COSIF (mensal). Escopos: 'individual' ou 'prudencial'."""
 
     _PERIOD_TYPE = "monthly"
 
@@ -67,20 +48,9 @@ class COSIFCollector(BaseCollector):
         escopo: str,
         data_manager: Optional[DataManager] = None,
     ):
-        """
-        Inicializa o collector COSIF.
-
-        Args:
-            escopo: 'individual' ou 'prudencial'.
-            data_manager: DataManager customizado. Se None, cria um novo.
-
-        Raises:
-            ValueError: Se escopo nao for valido.
-        """
         escopo = escopo.lower()
         if escopo not in self._CONFIG:
-            valid = ", ".join(self._CONFIG.keys())
-            raise ValueError(f"Escopo '{escopo}' invalido. Validos: {valid}")
+            raise InvalidScopeError("escopo", escopo, list(self._CONFIG.keys()))
 
         super().__init__(data_manager)
         self.escopo = escopo
@@ -92,27 +62,16 @@ class COSIFCollector(BaseCollector):
     def _get_subdir(self) -> str:
         return self._config["subdir"]
 
-    @retry(delay=2.0)  # API BCB e lenta, usar delay maior que o padrao
+    @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path, period: int = 0) -> bool:
         """
-        Faz download de um arquivo com retry automatico via decorator.
-
-        Args:
-            url: URL para download.
-            output_path: Caminho para salvar o arquivo.
-            period: Periodo sendo baixado (para erro mais informativo).
-
-        Returns:
-            True se sucesso.
-
-        Raises:
-            PeriodUnavailableError: Se 404 (periodo nao disponivel, sem retry).
-            requests.RequestException: Se outras falhas apos todas tentativas.
+        Excecoes:
+            PeriodUnavailableError: Se 404 (sem retry).
+            requests.RequestException: Se falhas apos todas tentativas.
         """
         response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
 
-        # 404 indica periodo indisponivel - nao retentar
-        # PeriodUnavailableError nao esta em TRANSIENT_EXCEPTIONS, entao propaga imediatamente
+        # 404 = periodo indisponivel, propaga PeriodUnavailableError (sem retry)
         if response.status_code == 404:
             raise PeriodUnavailableError(period)
 
@@ -122,17 +81,9 @@ class COSIFCollector(BaseCollector):
 
     def _download_period(self, period: int) -> Optional[Path]:
         """
-        Baixa dados COSIF de um periodo especifico.
-
         Tenta diferentes sufixos ate encontrar um que funcione.
 
-        Args:
-            period: Periodo no formato YYYYMM.
-
-        Returns:
-            Path do arquivo CSV ou None se falhar.
-
-        Raises:
+        Excecoes:
             PeriodUnavailableError: Se todos os sufixos retornarem 404.
         """
         url_segment = self._config["url_segment"]
@@ -194,36 +145,8 @@ class COSIFCollector(BaseCollector):
     def _process_to_parquet(
         self, csv_path: Path, period: int
     ) -> Optional[pd.DataFrame]:
-        """
-        Processa CSV COSIF para DataFrame normalizado (schema raw).
-
-        Usa DuckDB para processamento eficiente. Mantem nomes de storage
-        (raw) - o mapeamento para nomes de apresentacao e feito no Explorer.
-
-        Schema de storage:
-        - DATA_BASE (int64): Periodo YYYYMM
-        - CNPJ_8 (string): CNPJ normalizado para 8 digitos
-        - NOME_INSTITUICAO (string): Nome da instituicao
-        - DOCUMENTO (string): Tipo de documento (7 ou 8)
-        - CONTA (string): Codigo da conta COSIF
-        - NOME_CONTA (string): Nome/descricao da conta
-        - SALDO (double): Valor em reais
-
-        Args:
-            csv_path: Caminho do arquivo CSV.
-            period: Periodo no formato YYYYMM.
-
-        Returns:
-            DataFrame processado ou None se falhar.
-        """
+        """Processa CSV COSIF para DataFrame."""
         try:
-            # Usar DuckDB para processamento eficiente
-            # COSIF: separador ; e tem 3 linhas de metadata
-            # Header real comeca com "#DATA_BASE" na linha 4
-            # Colunas originais: #DATA_BASE;DOCUMENTO;CNPJ;AGENCIA;NOME_INSTITUICAO;
-            #                    COD_CONGL;NOME_CONGL;TAXONOMIA;CONTA;NOME_CONTA;SALDO
-            # Encoding varia por escopo (ver _CONFIG)
-            # Thread-safe: conexao local por execucao (API global nao e thread-safe)
             encoding = self._config["encoding"]
             query = f"""
                 SELECT
@@ -243,27 +166,18 @@ class COSIFCollector(BaseCollector):
                 )
             """
 
-            conn = duckdb.connect()
-            try:
-                df = conn.sql(query).df()
-            finally:
-                conn.close()
+            cursor = self._get_cursor()
+            df = cursor.sql(query).df()
 
             if df.empty:
                 return None
 
-            # Normalizar CNPJ para 8 digitos (transformacao necessaria)
             df["CNPJ_8"] = df["CNPJ"].apply(standardize_cnpj_base8)
-
-            # Converter DATA_BASE para int (YYYYMM)
-            df["DATA_BASE"] = pd.to_numeric(
-                df["DATA_BASE"], errors="coerce"
-            ).astype("Int64")
-
-            # Remover CNPJ original (manter apenas CNPJ_8)
+            df["DATA_BASE"] = pd.to_numeric(df["DATA_BASE"], errors="coerce").astype(
+                "Int64"
+            )
             df = df.drop(columns=["CNPJ"])
 
-            # Ordenar colunas de storage
             cols = [
                 "DATA_BASE",
                 "CNPJ_8",
@@ -273,9 +187,7 @@ class COSIFCollector(BaseCollector):
                 "NOME_CONTA",
                 "SALDO",
             ]
-            df = df[[c for c in cols if c in df.columns]]
-
-            return df
+            return df[[c for c in cols if c in df.columns]]
 
         except Exception as e:
             self.logger.error(f"Erro processando {csv_path}: {e}")

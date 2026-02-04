@@ -1,12 +1,9 @@
-"""
-Provider IFDATA - Coleta e exploracao de dados IFDATA do BCB.
-"""
-
 from ifdata_bcb.providers.ifdata.collector import (
     IFDATACadastroCollector,
     IFDATAValoresCollector,
 )
-from ifdata_bcb.providers.ifdata.explorer import CadastroExplorer, IFDATAExplorer
+from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
 
 __all__ = [
     "IFDATAValoresCollector",

@@ -1,130 +1,91 @@
 # Project Changelog
 
-## [2026-02-03 21:21]
-### Changed
-- **BREAKING**: Separacao de responsabilidades entre Collectors e Explorers
-  - Collectors agora salvam dados com nomes de storage (schema raw)
-  - Explorers aplicam mapeamento de colunas para apresentacao
-- **Schema Parquet alterado** - Cache existente incompativel, necessario re-coletar
+## [2026-02-04 03:18]
 
-#### Nomes de Storage (Parquet) -> Apresentacao (API):
-- **COSIF**: `DATA_BASE->DATA`, `NOME_INSTITUICAO->INSTITUICAO`, `CONTA->COD_CONTA`, `NOME_CONTA->CONTA`, `SALDO->VALOR`
-- **IFDATA Valores**: `AnoMes->DATA`, `CodInst->COD_INST`, `TipoInstituicao->TIPO_INST`, `Conta->COD_CONTA`, `NomeColuna->CONTA`, `Saldo->VALOR`, `NomeRelatorio->RELATORIO`, `Grupo->GRUPO`
-- **Cadastro**: `Data->DATA`, `NomeInstituicao->INSTITUICAO`, `SegmentoTb->SEGMENTO`, etc.
+Correcoes pos-review e suporte a multi-source no BaseExplorer.
 
 ### Added
-- `_COLUMN_MAP` no BaseExplorer para definir mapeamentos storage->apresentacao
-- `_storage_col()` para traduzir nomes de apresentacao para storage em queries
-- `_apply_column_mapping()` para aplicar renomeacoes automaticamente
-- `_reverse_column_map` property para traducao reversa
-
-### Technical
-- Collectors fazem menos transformacoes (mais rapido)
-- Cache mais estavel (schema nao muda com API)
-- Flexibilidade para mudar nomes de apresentacao sem re-coletar dados
-
-### Migration Guide
-**Obrigatorio limpar cache e re-coletar** (schema Parquet mudou):
-```powershell
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\py-bacen\Cache\*"
-```
-
-## [2026-02-03 21:30]
-### Added
-- Funcao `normalize_accents()` em `text_utils.py` para busca insensivel a acentos
-- Metodo `_reorder_cosif_columns()` no COSIFExplorer para ordenacao padronizada de colunas
+- `BaseExplorer._get_sources()`: Metodo para explorers com multiplas fontes de dados (mesmo schema)
+  - Default retorna fonte unica derivada de `_get_subdir()`/`_get_file_prefix()`
+  - Override para multi-source (ex: COSIF com escopos individual/prudencial)
+- `BaseExplorer._list_periods_for_source()`: Metodo auxiliar para listar periodos de uma fonte especifica
+- `BaseExplorer.list_periods(source)`: Parametro opcional `source` para filtrar por fonte
+- `BaseExplorer.has_data(source)`: Parametro opcional `source`
+- `BaseExplorer.describe(source)`: Parametro opcional `source`, retorna info agregada + detalhes por fonte
+- `COSIFExplorer._get_escopo_config()`: Metodo auxiliar para obter config de um escopo
 
 ### Changed
-- **BREAKING**: Colunas renomeadas para nomes mais curtos:
-  - `NOME_INSTITUICAO` -> `INSTITUICAO`
-  - `NOME_CONTA` -> `CONTA`
-  - `NOME_RELATORIO` -> `RELATORIO`
-- **BREAKING**: Parametros renomeados para singular (aceita str ou lista):
-  - `instituicoes` -> `instituicao`
-  - `contas` -> `conta`
-- **BREAKING**: `get_institution_info()` renomeado para `info()` no CadastroExplorer
-- Busca `bcb.search()` agora e insensivel a acentos (`itau` encontra "ITAU UNIBANCO")
-- Ordem de colunas padronizada: `DATA, CNPJ_8, INSTITUICAO, ESCOPO, ...` (ESCOPO logo apos INSTITUICAO)
-- Parametro `start` agora e opcional em `bcb.cadastro.info()` (retorna periodo mais recente se omitido)
-- Valores string "null" nos dados agora sao convertidos para `None`/`NaN`
+- `COSIFExplorer` agora implementa `_get_sources()` retornando os escopos como fontes
+- `COSIFExplorer._get_subdir()` e `_get_file_prefix()` simplificados (sem parametro escopo)
+- `IFDATAExplorer._read_single_scope()`: Captura `BacenAnalysisError` em vez de `Exception` generico
+  - Erros de dominio (DataUnavailableError, InvalidIdentifierError) retornam None
+  - Bugs reais (TypeError, KeyError) propagam normalmente
 
 ### Fixed
-- Strings "null" em colunas como GRUPO e ATIVIDADE agora sao `None` em vez de string literal
+- `bcb.cosif.list_periods()` agora retorna periodos de AMBOS escopos (antes: apenas individual)
+- `bcb.cosif.has_data()` agora verifica ambos escopos
+- `bcb.cosif.describe()` agora mostra info de todas as fontes
 
-### Migration Guide
-Apos atualizar para esta versao:
-1. Renomear parametros: `instituicoes` -> `instituicao`, `contas` -> `conta`
-2. Renomear colunas no codigo: `NOME_INSTITUICAO` -> `INSTITUICAO`, `NOME_CONTA` -> `CONTA`, `NOME_RELATORIO` -> `RELATORIO`
-3. Renomear metodo: `get_institution_info()` -> `info()`
-4. **Re-coletar dados**: Os arquivos Parquet existentes terao schema antigo. Limpe o cache e re-colete:
-   ```powershell
-   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\py-bacen\Cache\*"
-   ```
+### Architecture
+- Criterio formalizado: mesmo schema + multiplas fontes = multi-source explorer
+- Schemas diferentes = explorers separados (ex: IFDATA valores vs cadastro)
 
-## [2026-02-03 19:33]
+---
+
+## [2026-02-04 02:32]
+
+Refatoracao massiva do codebase (~2270 linhas novas, ~5060 linhas removidas = -2790 linhas liquidas).
+
 ### Added
-- Novas excecoes `MissingRequiredParameterError` e `InvalidDateRangeError` para validacao de parametros
-- Coluna `ESCOPO` nos resultados de `cosif.read()` e `ifdata.read()`
-- Coluna `NOME_INSTITUICAO` nos resultados de `ifdata.read()` e `ifdata.list_institutions()`
-- Metodo `get_names_for_cnpjs()` no EntityResolver para lookup eficiente de nomes
-- Metodo helper `_build_string_condition()` no BaseExplorer para filtros SQL case-insensitive
+- `core/` - Novo modulo central compartilhado:
+  - `BaseExplorer`: Classe abstrata com metodos utilitarios para normalizacao de datas/contas/instituicoes, mapeamento de colunas (storage -> apresentacao), conversao automatica de DATA para datetime, e WHERE builders centralizados (`_build_string_condition`, `_build_int_condition`, `_build_date_condition`, `_build_cnpj_condition`, `_join_conditions`)
+  - `EntityLookup`: Unifica busca e resolucao de entidades via SQL puro (exata, contains, fuzzy). Inclui `find_cnpj()`, `search()`, `resolve_ifdata_scope()`, `get_entity_identifiers()`
+  - `api.py`: Funcao `search()` de alto nivel com lazy loading
+- `domain/types.py` - Type aliases para parametros: `DateInput`, `AccountInput`, `InstitutionInput`
+- `domain/models.py` - Dataclass `ScopeResolution` para resolucao de escopo IFDATA
+- `providers/base_collector.py` - Classe base para collectors com:
+  - Coleta paralela via `ThreadPoolExecutor` (4 workers)
+  - Staggered delay para evitar rate limiting
+  - Conexao DuckDB thread-safe via `_get_cursor()` (cursors thread-local)
+  - Metodos de display (`_start`, `_end`, `_fetch_start`, `_fetch_result`, `_info`, `_warning`)
+  - Normalizacao automatica de campos de texto dos CSVs
+  - Retorno de status por periodo (`CollectStatus`: SUCCESS, UNAVAILABLE, FAILED)
+- `infra/storage.py` - Novo metodo `save_from_query()` para salvar query DuckDB direto em Parquet (sem conversao para Pandas)
+- `providers/collector_models.py` - Enum `CollectStatus`
+- `providers/ifdata/cadastro_explorer.py` - Explorer dedicado para dados cadastrais com metodos `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()`
+- `utils/date.py` - Funcoes de data: `normalize_date_to_int()`, `generate_month_range()`, `generate_quarter_range()`, `yyyymm_to_datetime()`
+- `utils/fuzzy.py` - Classe `FuzzyMatcher` encapsulando thefuzz com thresholds configuraveis
+- `utils/text.py` - `normalize_text()` (whitespace), `normalize_accents()` (unicode NFKD)
+- `utils/period.py` - `parse_period_from_filename()`, `extract_periods_from_files()`, `get_latest_period()`
+- `domain/exceptions.py` - Novas excecoes: `InvalidDateFormatError`, `PeriodUnavailableError`
 
 ### Changed
-- **BREAKING**: `instituicoes` e `start` agora sao OBRIGATORIOS em `read()`, `read_by_account_code()`, `get_institution_info()`, `get_conglomerate_members()`
-- **BREAKING**: `escopo=None` agora busca em TODOS os escopos disponiveis (antes era obrigatorio especificar)
-- **BREAKING**: Coluna `NOME` renomeada para `NOME_INSTITUICAO` nos resultados de `search()` e `list_all()`
-- **BREAKING**: Coluna `CNPJ_ORIGINAL` renomeada para `CNPJ_8` nos resultados de `ifdata.read()`
-- **BREAKING**: `list_institutions()` e `list_reports()` agora usam `start`/`end` ao inves de `datas`
-- Filtros de contas agora sao case-insensitive (nao precisa mais digitar exatamente igual)
-- Filtros de segmento e UF no Cadastro agora usam helper centralizado
-- Ordem dos parametros em `read()` padronizada: `instituicoes`, `start`, `end`, `contas`, ...
-- Validacao de range de datas: `start > end` levanta `InvalidDateRangeError`
-- Colunas do IFDATA reordenadas: DATA, CNPJ_8, NOME_INSTITUICAO, ESCOPO primeiro
+- `BaseExplorer`: Removidos metodos abstratos `read()` e `collect()` - cada explorer define sua propria assinatura (fix pyright override errors)
+- `COSIFExplorer` e `IFDATAExplorer` agora herdam de `core/BaseExplorer` (antes: `domain/explorers.BaseExplorer`)
+- Explorers usam `EntityLookup` em vez de `EntityResolver` + `EntitySearcher` separados
+- `QueryEngine` simplificado: removido metodo `read()` (mantido apenas `read_glob()` e `sql()`)
+- Exceptions com mensagens diretas sem docstrings verbosas
+- `DataManager.save()` agora usa `mode="delta"` em `write_deltalake` por padrao
+- Coleta paralela ativada em todos os collectors (antes: sequencial)
+- Mapeamento de colunas movido para cada Explorer (`_COLUMN_MAP`) em vez de hardcoded
+- `ifdata.collect()` e `cadastro.collect()` agora aceitam `verbose` (padronizado com COSIF)
+- `cadastro.read()` agora exige `instituicao` e `start` (antes: tudo opcional)
+- `cadastro.info()` agora exige `start` (antes: opcional)
+- `list_accounts()` padronizado em IFDATA e COSIF: novos parametros `termo` (busca textual) e `escopo` (filtro por escopo)
 
 ### Removed
-- Parametro `tipo_inst` removido de `ifdata.read()` (use `escopo` para definir tipo)
-- Parametro `contas` removido de `cadastro.read()` (nao fazia sentido para cadastro)
-- Logica de "mais recente" removida de `get_conglomerate_members()` (agora `start` e obrigatorio)
-
-## [2026-02-01 18:13]
-### Changed
-- **BREAKING**: API de datas simplificada - `start` sozinho filtra data unica, `start`+`end` gera range
-- Documentacao atualizada (README, docstrings, notebook) para nova API de datas
-- `CacheStats` agora e thread-safe com `threading.Lock` em todas as operacoes
-
-### Removed
-- Parametro `datas` removido de todos os metodos `read()` e `read_by_account_code()`
-
-## [2026-02-01 18:00]
-### Added
-- Novo sistema de cache centralizado com metricas (`infra/cache.py`)
-- Utilitario para normalizacao de texto (`utils/text_utils.py`)
-- Suporte a multiplas instituicoes nas queries (`instituicoes` aceita str ou lista)
-- Parametros `start` e `end` para gerar range de datas automaticamente
-- Metodo `list_reports()` no IFDATAExplorer para listar relatorios disponiveis
-- Parametro `relatorio` no `ifdata.read()` para filtrar por relatorio especifico
-- Parametro `escopo` no IFDATAExplorer ('individual', 'prudencial', 'financeiro')
-- Coluna `CNPJ_ORIGINAL` no resultado quando `escopo` usado com multiplas instituicoes
-- `ScopeResolution` dataclass para resolucao de escopo IFDATA
-- `PeriodUnavailableError` para indicar periodos nao publicados no BCB
-- `CollectStatus` enum para status de coleta (SUCCESS, UNAVAILABLE, FAILED)
-- Metodo `resolve_ifdata_scope()` no EntityResolver
-- Normalizacao automatica de campos de texto nos CSVs do BCB (remove newlines/espacos)
-- Suporte a `COD_CONGL_FIN` (conglomerado financeiro) no EntityResolver
-
-### Changed
-- API unificada: parametro `identificador` renomeado para `instituicoes` em todos os explorers
-- **BREAKING**: Parametro `datas` removido do `read()`. Use `start` para data unica ou `start`+`end` para range
-- COSIF gera range mensal, IFDATA/Cadastro geram range trimestral automaticamente
-- `CacheStats` agora e thread-safe (adiciona `threading.Lock`)
-- Timeout de requisicoes aumentado de 120s para 240s
-- Logs de retry/falhas reduzidos para DEBUG (evita poluir terminal do usuario)
-- Banner de conclusao agora mostra periodos indisponiveis separadamente
-- Cor do banner de conclusao: verde (OK), amarelo (parcial), vermelho (falha total)
-- Coleta retorna tupla com 4 valores: `(registros, periodos_ok, falhas, indisponiveis)`
-- `get_institution_info()` usa parametro `instituicao` ao inves de `identificador`
-- Cache do EntityResolver usa decorator `@cached` centralizado ao inves de `@lru_cache`
-
-### Fixed
-- Tratamento especifico para 404 (periodo indisponivel) vs erros de rede
-- Diferenciacao entre "periodo sem dados" e "erro de download" nos coletores
+- `read_by_account_code()` removido de `IFDATAExplorer` e `COSIFExplorer` (usar `read()` com filtro `conta`)
+- `services/` - Modulo inteiro removido:
+  - `base_collector.py` (substituido por `providers/base_collector.py`)
+  - `entity_resolver.py` (incorporado em `core/entity_lookup.py`)
+  - `entity_searcher.py` (incorporado em `core/entity_lookup.py`)
+- `providers/cadastro/` - Modulo removido (movido para `providers/ifdata/cadastro_explorer.py`)
+- `domain/explorers.py` - Removido (substituido por `core/base_explorer.py`)
+- `utils/date_utils.py`, `utils/fuzzy_matcher.py`, `utils/text_utils.py` - Removidos (substituidos por modulos mais enxutos)
+- Funcao `bcb.sql()` removida da API publica
+- `QueryEngine.read()` - Metodo removido (usar `read_glob()`)
+- Constantes de resilience removidas dos exports (`DEFAULT_RETRY_*`, `TRANSIENT_EXCEPTIONS`)
+- `CacheStats` removido dos exports de `infra/`
+- Docstrings verbosas removidas de todas as classes e funcoes
+- Re-exports de compatibilidade removidos de todos os `__init__.py`
+- Exceptions removidas dos exports publicos: `InvalidDateRangeError`, `InvalidIdentifierError`, `InvalidScopeError`, `MissingRequiredParameterError` (ainda existem internamente)

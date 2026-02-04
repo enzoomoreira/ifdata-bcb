@@ -1,11 +1,7 @@
 """
-Sistema de display para output visual ao usuario.
+Display visual para o usuario usando Rich.
 
-Usa Rich para formatacao e cores no terminal.
-Separa feedback visual (console) de logging tecnico (arquivo).
-Para logging tecnico, use get_logger() de infra.log.
-
-Sem emojis - usa marcadores de texto para compatibilidade com terminais Windows.
+Para logging tecnico (arquivo), use get_logger() de infra.log.
 """
 
 import sys
@@ -31,42 +27,19 @@ _display_instance: Optional["Display"] = None
 _display_lock = threading.Lock()
 
 
-def get_display(verbose: bool = True) -> "Display":
-    """
-    Retorna instancia unica de Display (Singleton thread-safe).
-
-    Usa double-checked locking para performance:
-    - Primeiro check sem lock (rapido, 99% dos casos)
-    - Segundo check com lock (apenas na criacao)
-
-    Args:
-        verbose: Se True, exibe mensagens. Atualizado em cada chamada.
-
-    Returns:
-        Instancia singleton de Display.
-    """
+def get_display() -> "Display":
+    """Singleton thread-safe."""
     global _display_instance
 
-    # Primeiro check sem lock (fast path)
     if _display_instance is None:
         with _display_lock:
-            # Segundo check com lock (evita race condition)
             if _display_instance is None:
-                _display_instance = Display(verbose=verbose)
+                _display_instance = Display()
 
-    # Atualiza verbose (operacao atomica em Python, safe sem lock)
-    _display_instance.set_verbose(verbose)
     return _display_instance
 
 
 class _ProgressBar(Iterator[T]):
-    """
-    Wrapper em volta do Rich Progress compativel com for-loops.
-
-    Substitui tqdm com interface similar mas usando Rich.
-    Detecta automaticamente ambiente Jupyter para ajustar comportamento.
-    """
-
     def __init__(
         self,
         iterable: Iterable[T],
@@ -74,6 +47,7 @@ class _ProgressBar(Iterator[T]):
         total: Optional[int] = None,
         desc: Optional[str] = None,
         leave: bool = False,
+        verbose: bool = True,
     ):
         self._display = display
         self._iterable = iterable
@@ -81,12 +55,8 @@ class _ProgressBar(Iterator[T]):
         self._desc = desc or "Processando"
         self._leave = leave
 
-        # Em Jupyter: nao usar transient (causa duplicacao) e refresh mais lento
         is_jupyter = display._is_jupyter
 
-        # Criar progress bar do Rich
-        # Padding extra no final evita glitch visual no Windows onde caracteres
-        # da linha anterior ficam "grudados" quando o texto fica mais curto
         self._progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -96,9 +66,8 @@ class _ProgressBar(Iterator[T]):
             TimeElapsedColumn(),
             TextColumn("/"),
             TimeRemainingColumn(elapsed_when_finished=True),
-            TextColumn("   "),
             console=display._console,
-            disable=not display.verbose,
+            disable=not verbose,
             transient=not leave and not is_jupyter,
             refresh_per_second=4 if is_jupyter else 10,
         )
@@ -127,7 +96,6 @@ class _ProgressBar(Iterator[T]):
             raise
 
     def close(self) -> None:
-        """Fecha a barra e decrementa contador."""
         if self._progress is not None:
             self._progress.stop()
             # Decrementa contador de barras ativas (thread-safe)
@@ -143,54 +111,16 @@ class _ProgressBar(Iterator[T]):
 
 
 class Display:
-    """
-    Gerencia output visual para o usuario usando Rich.
+    """Gerencia output visual para o usuario usando Rich."""
 
-    Responsabilidades:
-    - Banners e separadores
-    - Mensagens de progresso e status
-    - Barras de progresso
-    - Formatacao consistente
-    - Cores para destaque (warning/error/banners)
-
-    Thread-safety:
-    - Contador de barras protegido por lock
-
-    Para logging tecnico (arquivo), use get_logger() de infra.log.
-
-    Args:
-        verbose: Se True, exibe mensagens. Se False, silencia tudo.
-        stream: Stream de saida (default: sys.stdout).
-        colors: Se True, usa cores quando suportado.
-
-    Exemplo:
-        display = Display(verbose=True)
-        display.banner("COSIF - Coleta", indicator_count=10)
-        display.fetch_start("202401")
-        display.fetch_result(5234)
-        display.end_banner(total=5234)
-
-        # Com barra de progresso
-        for item in display.progress(items, total=100, desc="Processando"):
-            process(item)
-    """
-
-    def __init__(
-        self,
-        verbose: bool = True,
-        stream: Optional[TextIO] = None,
-        colors: bool = True,
-    ):
-        self.verbose = verbose
+    def __init__(self, stream: Optional[TextIO] = None, colors: bool = True):
         self.stream = stream or sys.stdout
 
-        # Detecta Jupyter primeiro (antes de criar Console final)
         detect_console = Console()
         self._is_jupyter = detect_console.is_jupyter
 
-        # Em Jupyter, Rich usa IPython.display.display() para cada print, criando outputs
-        # separados (bug conhecida: github.com/Textualize/rich/issues/3483).
-        # Solucao: force_jupyter=False faz Rich usar ANSI codes (suportados por notebooks modernos)
+        # force_jupyter=False faz Rich usar ANSI codes (suportados por notebooks modernos)
+        # evita bug de outputs separados em Jupyter (github.com/Textualize/rich/issues/3483)
         self._console = Console(
             file=self.stream,
             no_color=not colors,
@@ -201,71 +131,22 @@ class Display:
         self._active_bars = 0
         self._bars_lock = threading.Lock()
 
-    def set_verbose(self, verbose: bool) -> None:
-        """
-        Altera estado verbose em runtime.
-
-        Args:
-            verbose: Se True, exibe mensagens. Se False, silencia.
-        """
-        self.verbose = verbose
-
-    def _print(self, message: str = "", style: Optional[str] = None) -> None:
-        """
-        Print interno com controle de verbose.
-
-        Args:
-            message: Mensagem a imprimir.
-            style: Estilo Rich (ex: "green", "bold red").
-        """
-        if not self.verbose:
-            return
-
-        self._console.print(message, style=style)
-
-    # =========================================================================
-    # Progress Bar
-    # =========================================================================
-
     def progress(
         self,
         iterable: Iterable[T],
         total: Optional[int] = None,
         desc: Optional[str] = None,
         leave: bool = False,
+        verbose: bool = True,
     ) -> _ProgressBar[T]:
-        """
-        Retorna iterador com barra de progresso.
-
-        Args:
-            iterable: Iteravel a percorrer.
-            total: Numero total de itens (obrigatorio se iterable nao tem __len__).
-            desc: Descricao exibida a esquerda da barra.
-            leave: Se True, mantem barra apos conclusao.
-
-        Returns:
-            Iterador que exibe progresso e pode ser usado em for-loops.
-
-        Exemplo:
-            for item in display.progress(items, total=100, desc="Baixando"):
-                download(item)
-
-            # Ou com context manager para garantir close():
-            with display.progress(futures, total=10) as pbar:
-                for future in pbar:
-                    result = future.result()
-        """
         return _ProgressBar(
             iterable=iterable,
             display=self,
             total=total,
             desc=desc,
             leave=leave,
+            verbose=verbose,
         )
-
-    # =========================================================================
-    # Banners
-    # =========================================================================
 
     def banner(
         self,
@@ -273,21 +154,12 @@ class Display:
         subtitle: Optional[str] = None,
         first_run: Optional[bool] = None,
         indicator_count: Optional[int] = None,
+        verbose: bool = True,
     ) -> None:
-        """
-        Exibe banner de inicio de coleta.
-
-        Args:
-            title: Titulo principal (ex: "COSIF - Coleta Individual").
-            subtitle: Subtitulo opcional.
-            first_run: Se True, mostra "PRIMEIRA EXECUCAO". Se False, "ATUALIZACAO".
-                       Se None, nao mostra status de execucao.
-            indicator_count: Numero de periodos/indicadores a coletar.
-        """
-        if not self.verbose:
+        """first_run: True="PRIMEIRA EXECUCAO", False="ATUALIZACAO", None=nao mostra."""
+        if not verbose:
             return
 
-        # Construir conteudo do banner
         content_lines = []
 
         if first_run is not None:
@@ -319,22 +191,10 @@ class Display:
         periodos: Optional[int] = None,
         falhas: Optional[int] = None,
         indisponiveis: Optional[int] = None,
+        verbose: bool = True,
     ) -> None:
-        """
-        Exibe banner de conclusao com estatisticas.
-
-        Cor do banner:
-        - Verde: tudo OK (periodos > 0 e sem falhas)
-        - Amarelo: parcial (alguns indisponiveis ou falhas, mas alguns OK)
-        - Vermelho: tudo falhou (nenhum periodo coletado)
-
-        Args:
-            total: Total de registros coletados.
-            periodos: Numero de periodos coletados com sucesso.
-            falhas: Numero de periodos que falharam.
-            indisponiveis: Numero de periodos sem dados disponiveis no BCB.
-        """
-        if not self.verbose:
+        """Cor: verde=OK, amarelo=parcial, vermelho=tudo falhou."""
+        if not verbose:
             return
 
         lines = ["[bold]Coleta concluida![/bold]"]
@@ -371,23 +231,12 @@ class Display:
         content = "\n".join(lines)
         self._console.print(Panel(content, border_style=border_style))
 
-    def separator(self) -> None:
-        """Exibe linha separadora."""
-        self._print("-" * 70, style="dim")
+    def separator(self, verbose: bool = True) -> None:
+        if verbose:
+            self._console.print("-" * 70, style="dim")
 
-    # =========================================================================
-    # Status de Fetch
-    # =========================================================================
-
-    def fetch_start(self, name: str, since: Optional[str] = None) -> None:
-        """
-        Exibe inicio de fetch de periodo/indicador.
-
-        Args:
-            name: Nome do periodo (ex: "202401").
-            since: Data de inicio (se incremental).
-        """
-        if not self.verbose:
+    def fetch_start(self, name: str, since: Optional[str] = None, verbose: bool = True) -> None:
+        if not verbose:
             return
 
         if since:
@@ -395,14 +244,8 @@ class Display:
         else:
             self._console.print(f"  [cyan]>[/cyan] Buscando {name}...")
 
-    def fetch_result(self, count: int) -> None:
-        """
-        Exibe resultado de fetch.
-
-        Args:
-            count: Numero de registros obtidos.
-        """
-        if not self.verbose:
+    def fetch_result(self, count: int, verbose: bool = True) -> None:
+        if not verbose:
             return
 
         if count:
@@ -411,70 +254,20 @@ class Display:
             self._console.print("    [yellow]Sem dados disponiveis[/yellow]")
         self._console.print()
 
-    # =========================================================================
-    # Arquivos
-    # =========================================================================
-
-    def saved(self, path: str) -> None:
-        """
-        Exibe arquivo salvo.
-
-        Args:
-            path: Caminho relativo do arquivo.
-        """
-        self._print(f"[green]Salvo:[/green] {path}")
-
-    def appended(self, path: str) -> None:
-        """
-        Exibe arquivo atualizado (append).
-
-        Args:
-            path: Caminho relativo do arquivo.
-        """
-        self._print(f"[green]Append:[/green] {path}")
-
-    # =========================================================================
-    # Warnings e Errors
-    # =========================================================================
-
-    def print_warning(self, message: str) -> None:
-        """
-        Exibe warning para usuario (em amarelo).
-
-        Args:
-            message: Mensagem de aviso.
-        """
-        if not self.verbose:
-            return
-        self._console.print(f"  [yellow][!][/yellow] {message}")
+    def print_warning(self, message: str, verbose: bool = True) -> None:
+        if verbose:
+            self._console.print(f"  [yellow][!][/yellow] {message}")
 
     def print_error(self, message: str) -> None:
-        """
-        Exibe erro para usuario (em vermelho).
-
-        Args:
-            message: Mensagem de erro.
-        """
-        # Erros sempre sao exibidos, mesmo com verbose=False
         self._console.print(f"[red][X][/red] {message}")
 
-    def print_success(self, message: str) -> None:
-        """
-        Exibe mensagem de sucesso (em verde).
+    def print_success(self, message: str, verbose: bool = True) -> None:
+        if verbose:
+            self._console.print(f"[green][OK][/green] {message}")
 
-        Args:
-            message: Mensagem de sucesso.
-        """
-        self._print(f"[green][OK][/green] {message}")
-
-    def print_info(self, message: str) -> None:
-        """
-        Exibe mensagem informativa.
-
-        Args:
-            message: Mensagem informativa.
-        """
-        self._print(f"[blue][i][/blue] {message}")
+    def print_info(self, message: str, verbose: bool = True) -> None:
+        if verbose:
+            self._console.print(f"[blue][i][/blue] {message}")
 
     def __repr__(self) -> str:
-        return f"Display(verbose={self.verbose})"
+        return "Display()"

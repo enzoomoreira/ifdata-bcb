@@ -403,7 +403,7 @@ def get_suggestions(
 ### Exemplo de Uso
 
 ```python
-from ifdata_bcb.utils.fuzzy_matcher import FuzzyMatcher
+from ifdata_bcb.utils.fuzzy import FuzzyMatcher
 
 matcher = FuzzyMatcher(threshold_auto=85, threshold_suggest=70)
 

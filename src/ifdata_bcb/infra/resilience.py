@@ -1,10 +1,3 @@
-"""
-Utilitarios de resiliencia: retry, backoff, tratamento de erros.
-
-Fornece decorators para lidar com falhas transientes em APIs externas.
-Usa tenacity para implementacao robusta de retry com exponential backoff.
-"""
-
 import json
 import random
 import time
@@ -21,19 +14,17 @@ from tenacity import (
     wait_random_exponential,
 )
 
-# Constantes de resiliencia
 DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_DELAY = 1.0
 DEFAULT_BACKOFF_FACTOR = 2.0
 DEFAULT_REQUEST_TIMEOUT = 240
-DEFAULT_PARALLEL_STAGGER = 0.5  # Delay entre starts de workers paralelos
+DEFAULT_PARALLEL_STAGGER = 0.5
 
 # Logger lazy - so carrega quando usado
 _logger = None
 
 
 def _get_logger():
-    """Logger lazy - so carrega quando usado."""
     global _logger
     if _logger is None:
         from ifdata_bcb.infra.log import get_logger
@@ -43,13 +34,7 @@ def _get_logger():
 
 
 def _before_sleep_log(retry_state: RetryCallState):
-    """
-    Callback para logar antes de dormir entre tentativas.
-
-    Usa DEBUG para nao poluir terminal do usuario. Detalhes completos
-    ficam apenas no arquivo de log. O collector mostra mensagem limpa
-    via Display quando a falha final ocorre.
-    """
+    # Loga em DEBUG para nao poluir terminal
     if retry_state.outcome is None:
         return
 
@@ -61,13 +46,7 @@ def _before_sleep_log(retry_state: RetryCallState):
 
 
 def _log_final_failure(retry_state: RetryCallState):
-    """
-    Callback quando todas tentativas falharam.
-
-    Usa DEBUG para nao poluir terminal do usuario. O caller (collector)
-    e responsavel por mostrar mensagem amigavel via Display.
-    Re-levanta a excecao original para o caller tratar.
-    """
+    # Re-levanta excecao original para o caller tratar
     exception = retry_state.outcome.exception()
     _get_logger().debug(
         f"Funcao {retry_state.fn.__name__} falhou apos "
@@ -99,26 +78,7 @@ def retry(
     exceptions: Tuple[Type[Exception], ...] = TRANSIENT_EXCEPTIONS,
     jitter: bool = True,
 ):
-    """
-    Decorator para retry com exponential backoff e jitter.
-
-    Usa tenacity internamente para implementacao robusta.
-
-    Args:
-        max_attempts: Numero maximo de tentativas.
-        delay: Delay inicial em segundos.
-        backoff_factor: Multiplicador do delay apos cada falha.
-        exceptions: Tupla de excecoes para capturar (rede, parsing, etc).
-        jitter: Se True, adiciona variacao aleatoria ao delay (evita thundering herd).
-
-    Returns:
-        Funcao decorada.
-
-    Example:
-        @retry(max_attempts=3, delay=1.0)
-        def fetch_data():
-            return requests.get(url, timeout=30)
-    """
+    """Decorator para retry com exponential backoff. Jitter evita thundering herd."""
     # Calcula delay maximo baseado nos parametros
     # Com 3 tentativas e backoff 2.0: delays podem ser 1, 2, 4 -> max ~4s
     max_delay = delay * (backoff_factor ** (max_attempts - 1))
@@ -141,27 +101,9 @@ def retry(
 
 def staggered_delay(index: int, base_delay: float = DEFAULT_PARALLEL_STAGGER) -> None:
     """
-    Adiciona delay escalonado para workers paralelos.
+    Delay escalonado para workers paralelos (evita thundering herd).
 
-    Evita que todos workers iniciem simultaneamente, reduzindo
-    pressao sobre APIs publicas com rate limiting.
-
-    O delay inclui jitter aleatorio para evitar sincronizacao.
-
-    Args:
-        index: Indice do worker (0, 1, 2, ...).
-        base_delay: Delay base em segundos entre cada worker.
-
-    Example:
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(process_with_stagger, i, item): item
-                for i, item in enumerate(items)
-            }
-
-        def process_with_stagger(index, item):
-            staggered_delay(index)  # Worker 0: 0s, Worker 1: ~0.5s, etc.
-            return process(item)
+    Worker 0 nao espera. Worker N espera N * base_delay + jitter.
     """
     if index == 0:
         return  # Primeiro worker nao espera

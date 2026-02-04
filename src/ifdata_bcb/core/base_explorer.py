@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -5,22 +6,16 @@ import pandas as pd
 
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import (
+    InvalidDateFormatError,
     InvalidDateRangeError,
-    InvalidScopeError,
+    InvalidIdentifierError,
     MissingRequiredParameterError,
 )
 from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
-from ifdata_bcb.domain.validation import (
-    AccountList,
-    InstitutionList,
-    NormalizedDates,
-    ValidatedCnpj8,
-)
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import list_parquet_files
 from ifdata_bcb.utils.date import yyyymm_to_datetime
-from ifdata_bcb.utils.text import normalize_accents
 
 
 class BaseExplorer(ABC):
@@ -54,23 +49,6 @@ class BaseExplorer(ABC):
     # Subclasses devem sobrescrever com seu mapeamento especifico
     _COLUMN_MAP: dict[str, str] = {}
 
-    # Colunas cadastrais validas para enriquecimento via parametro cadastro=
-    # Derivado de CadastroExplorer._COLUMN_MAP (excluindo DATA, CNPJ_8, INSTITUICAO)
-    _VALID_CADASTRO_COLUMNS = {
-        "SEGMENTO",
-        "COD_CONGL_PRUD",
-        "COD_CONGL_FIN",
-        "SITUACAO",
-        "ATIVIDADE",
-        "TCB",
-        "TD",
-        "TC",
-        "UF",
-        "MUNICIPIO",
-        "SR",
-        "DATA_INICIO_ATIVIDADE",
-    }
-
     def __init__(
         self,
         query_engine: Optional[QueryEngine] = None,
@@ -97,7 +75,7 @@ class BaseExplorer(ABC):
         return self._reverse_column_map.get(presentation_col, presentation_col)
 
     def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
-        if not self._COLUMN_MAP:
+        if df.empty or not self._COLUMN_MAP:
             return df
         rename_map = {k: v for k, v in self._COLUMN_MAP.items() if k in df.columns}
         return df.rename(columns=rename_map) if rename_map else df
@@ -125,17 +103,24 @@ class BaseExplorer(ABC):
             }
         }
 
-    @staticmethod
-    def _align_to_quarter_end(yyyymm: int) -> int:
-        """Alinha YYYYMM para o fim do trimestre correspondente (03, 06, 09, 12)."""
-        year, month = divmod(yyyymm, 100)
-        quarter_month = ((month - 1) // 3 + 1) * 3
-        return year * 100 + quarter_month
-
     def _normalize_dates(self, datas: DateInput) -> list[int]:
         """Aceita int, str, ou lista. Formatos: 202412, '202412', '2024-12'."""
-        result = NormalizedDates(values=datas).values
-        self._logger.debug(f"Dates: {datas} -> {result}")
+        original = datas
+        if not isinstance(datas, list):
+            datas = [datas]
+
+        result = []
+        for d in datas:
+            if isinstance(d, int):
+                result.append(d)
+            elif isinstance(d, str):
+                # Remove separadores e converte para int
+                clean = d.replace("-", "").replace("/", "")[:6]
+                result.append(int(clean))
+            else:
+                raise InvalidDateFormatError(str(d))
+
+        self._logger.debug(f"Dates: {original} -> {result}")
         return result
 
     def _normalize_accounts(
@@ -143,14 +128,22 @@ class BaseExplorer(ABC):
     ) -> Optional[list[str]]:
         if contas is None:
             return None
-        return AccountList(values=contas).values
+
+        if isinstance(contas, str):
+            return [contas]
+
+        return list(contas)
 
     def _normalize_institutions(
         self, instituicoes: Optional[InstitutionInput]
     ) -> Optional[list[str]]:
         if instituicoes is None:
             return None
-        return InstitutionList(values=instituicoes).values
+
+        if isinstance(instituicoes, str):
+            return [self._resolve_entity(instituicoes)]
+
+        return [self._resolve_entity(i) for i in instituicoes]
 
     def _resolve_date_range(
         self,
@@ -173,8 +166,6 @@ class BaseExplorer(ABC):
 
         # Data unica (apenas start)
         if end is None:
-            if trimestral:
-                return [self._align_to_quarter_end(start_normalized)]
             return [start_normalized]
 
         # Normalizar end e validar range
@@ -199,9 +190,14 @@ class BaseExplorer(ABC):
         Excecoes:
             InvalidIdentifierError: Se nao for CNPJ de 8 digitos.
         """
-        validated = ValidatedCnpj8(value=identificador).value
-        self._logger.debug(f"Entity validated: {validated}")
-        return validated
+        identificador = identificador.strip()
+
+        if not re.fullmatch(r"\d{8}", identificador):
+            self._logger.warning(f"Invalid identifier: {identificador}")
+            raise InvalidIdentifierError(identificador)
+
+        self._logger.debug(f"Entity validated: {identificador}")
+        return identificador
 
     def _validate_required_params(
         self,
@@ -213,47 +209,25 @@ class BaseExplorer(ABC):
         if start is None:
             raise MissingRequiredParameterError("start")
 
-    def _validate_cadastro_columns(self, cadastro: Optional[list[str]]) -> None:
-        """Valida nomes de colunas cadastrais antes de executar qualquer query."""
-        if cadastro is None:
-            return
-        invalid = set(cadastro) - self._VALID_CADASTRO_COLUMNS
-        if invalid:
-            raise InvalidScopeError(
-                "cadastro",
-                str(sorted(invalid)),
-                sorted(self._VALID_CADASTRO_COLUMNS),
-            )
-
     def _build_string_condition(
         self,
         column: str,
         values: list[str],
         case_insensitive: bool = False,
-        accent_insensitive: bool = False,
     ) -> str:
         """Constroi condicao para valores string com escape de aspas."""
         escaped = [v.strip().replace("'", "''") for v in values]
-        col_expr = column
-
-        if accent_insensitive:
-            col_expr = f"strip_accents({col_expr})"
-            escaped = [normalize_accents(v) for v in escaped]
 
         if case_insensitive:
-            col_expr = f"UPPER({col_expr})"
+            col_expr = f"UPPER({column})"
             escaped = [v.upper() for v in escaped]
+        else:
+            col_expr = column
 
         if len(escaped) == 1:
             return f"{col_expr} = '{escaped[0]}'"
         values_str = ", ".join(f"'{v}'" for v in escaped)
         return f"{col_expr} IN ({values_str})"
-
-    def _translate_columns(self, columns: Optional[list[str]]) -> Optional[list[str]]:
-        """Traduz nomes de apresentacao para storage. Aceita ambos."""
-        if columns is None:
-            return None
-        return [self._storage_col(c) for c in columns]
 
     def _build_int_condition(self, column: str, values: list[int]) -> str:
         """Constroi condicao para valores inteiros (datas, tipos, etc)."""
@@ -292,26 +266,20 @@ class BaseExplorer(ABC):
         return " AND ".join(valid) if valid else None
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica mapeamento de colunas, converte DATA para datetime e ordena."""
-        # Mapeamento de colunas funciona mesmo em DataFrames vazios
-        df = self._apply_column_mapping(df)
-
+        """Aplica mapeamento de colunas e converte DATA para datetime."""
         if df.empty:
             return df
 
-        df = df.copy()
-        df = df.drop_duplicates()
+        df = df.copy()  # Evitar SettingWithCopyWarning
 
+        # 1. Aplicar mapeamento de colunas (storage -> apresentacao)
+        df = self._apply_column_mapping(df)
+
+        # 2. Converter DATA para datetime (usa nome de apresentacao)
         if "DATA" in df.columns:
             df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
-            df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
 
         return df
-
-    def _get_latest_period(self, source: Optional[str] = None) -> Optional[int]:
-        """Retorna o periodo mais recente disponivel, ou None."""
-        periods = self.list_periods(source)
-        return periods[-1] if periods else None
 
     def _list_periods_for_source(self, subdir: str, prefix: str) -> list[int]:
         """Lista periodos de uma fonte especifica."""
@@ -341,9 +309,7 @@ class BaseExplorer(ABC):
 
         all_periods: set[int] = set()
         for cfg in sources.values():
-            all_periods.update(
-                self._list_periods_for_source(cfg["subdir"], cfg["prefix"])
-            )
+            all_periods.update(self._list_periods_for_source(cfg["subdir"], cfg["prefix"]))
         return sorted(all_periods)
 
     def has_data(self, source: Optional[str] = None) -> bool:
@@ -395,74 +361,3 @@ class BaseExplorer(ABC):
             }
 
         return result
-
-    def _enrich_with_cadastro(
-        self,
-        df: pd.DataFrame,
-        cadastro_columns: list[str],
-    ) -> pd.DataFrame:
-        """Enriquece DataFrame financeiro com colunas cadastrais.
-
-        Usa merge temporal backward-looking: cada linha financeira recebe
-        os atributos cadastrais do trimestre mais recente <= sua data.
-        """
-        if df.empty:
-            return df
-
-        # Lazy-load CadastroExplorer (import local para evitar circular)
-        if not hasattr(self, "_cadastro_explorer"):
-            from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-
-            self._cadastro_explorer = CadastroExplorer(
-                query_engine=self._qe, entity_lookup=self._resolver
-            )
-
-        cnpjs = df["CNPJ_8"].unique().tolist()
-        min_date = df["DATA"].min()
-        max_date = df["DATA"].max()
-
-        # Buscar cadastro com 1 trimestre de margem anterior
-        start_str = (min_date - pd.DateOffset(months=3)).strftime("%Y-%m")
-        end_str = max_date.strftime("%Y-%m")
-
-        df_cad = self._cadastro_explorer.read(
-            instituicao=cnpjs,
-            start=start_str,
-            end=end_str,
-        )
-
-        if df_cad.empty:
-            for col in cadastro_columns:
-                df[col] = pd.NA
-            return df
-
-        cad_cols = ["CNPJ_8", "DATA"] + cadastro_columns
-        df_cad = df_cad[[c for c in cad_cols if c in df_cad.columns]]
-
-        # Caso data unica: merge simples por CNPJ_8
-        if df["DATA"].nunique() == 1:
-            df_cad_latest = df_cad.sort_values("DATA").drop_duplicates(
-                subset=["CNPJ_8"], keep="last"
-            )
-            merge_cols = [c for c in cadastro_columns if c in df_cad_latest.columns]
-            return df.merge(
-                df_cad_latest[["CNPJ_8"] + merge_cols],
-                on="CNPJ_8",
-                how="left",
-            )
-
-        # Time-series: merge_asof para alinhamento temporal
-        # merge_asof exige sort pela coluna on= (DATA) como chave primaria
-        df_sorted = df.sort_values("DATA")
-        df_cad_sorted = df_cad.sort_values("DATA")
-
-        merge_cols = [c for c in cadastro_columns if c in df_cad_sorted.columns]
-        result = pd.merge_asof(
-            df_sorted,
-            df_cad_sorted[["CNPJ_8", "DATA"] + merge_cols],
-            on="DATA",
-            by="CNPJ_8",
-            direction="backward",
-        )
-
-        return result.sort_values("DATA").reset_index(drop=True)

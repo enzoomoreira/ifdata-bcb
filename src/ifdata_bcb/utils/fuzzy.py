@@ -14,15 +14,13 @@ class FuzzyMatcher:
         self,
         query: str,
         choices: dict[str, str],
+        limit: int = 5,
         score_cutoff: int = 0,
     ) -> list[tuple[str, int]]:
-        matches = process.extractBests(
+        matches = process.extract(
             query,
             choices.keys(),
             scorer=fuzz.token_set_ratio,
-            score_cutoff=score_cutoff,
-            limit=None,
+            limit=limit,
         )
-        filtered = [(chave, score) for chave, score in matches]
-        filtered.sort(key=lambda x: (-x[1], x[0]))
-        return filtered
+        return [(chave, score) for chave, score in matches if score >= score_cutoff]
