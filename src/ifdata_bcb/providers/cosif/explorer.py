@@ -19,7 +19,6 @@ _EMPTY_COLUMNS = [
     "CNPJ_8",
     "INSTITUICAO",
     "ESCOPO",
-    "DOCUMENTO",
     "CONTA",
     "VALOR",
 ]
@@ -39,15 +38,14 @@ class COSIFExplorer(BaseExplorer):
         "SALDO": "VALOR",
     }
 
-    # Colunas a remover do resultado final
-    _DROP_COLUMNS = ["CONTA"]  # Codigo da conta (storage name)
+    # Colunas a remover do resultado final (internas/redundantes)
+    _DROP_COLUMNS = ["CONTA", "DOCUMENTO"]
 
     _COLUMN_ORDER = [
         "DATA",
         "CNPJ_8",
         "INSTITUICAO",
         "ESCOPO",
-        "DOCUMENTO",
         "CONTA",
         "VALOR",
     ]

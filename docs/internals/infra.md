@@ -2,57 +2,55 @@
 
 A camada de infraestrutura fornece servicos tecnicos para a biblioteca.
 
+## Localizacao
+
+```
+src/ifdata_bcb/infra/
+|-- __init__.py           # Exports publicos
+|-- config.py            # Paths e configuracoes
+|-- query.py             # QueryEngine (DuckDB)
+|-- storage.py           # DataManager (Parquet)
+|-- log.py               # Logging (Loguru)
+|-- cache.py             # Cache LRU com registro global
++-- resilience.py        # Retry e backoff
+```
+
+---
+
 ## config.py
-
-### Responsabilidades
-
-Centraliza configuracao de paths e diretorios.
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/config.py
-```
 
 ### Constantes
 
 ```python
 APP_NAME = "py-bacen"
-
-SUBDIRS = {
-    "cosif_individual": "cosif/individual",
-    "cosif_prudencial": "cosif/prudencial",
-    "ifdata_valores": "ifdata/valores",
-    "ifdata_cadastro": "ifdata/cadastro",
-}
 ```
 
 ### get_cache_path()
 
-Retorna o caminho para cache de dados.
+Retorna o caminho para cache de dados:
 
 ```python
 def get_cache_path() -> Path:
     """
     Prioridade:
     1. Variavel de ambiente BACEN_DATA_DIR
-    2. Diretorio de cache do sistema (XDG/AppData)
+    2. Diretorio de cache do sistema (platformdirs)
     """
 ```
 
 **Paths por sistema**:
 
-| Sistema | Caminho |
-|---------|---------|
+| Sistema | Caminho Padrao |
+|---------|----------------|
 | Windows | `%LOCALAPPDATA%\py-bacen\Cache\` |
-| Linux | `~/.cache/py-bacen/` |
-| macOS | `~/Library/Caches/py-bacen/` |
+| Linux   | `~/.cache/py-bacen/` |
+| macOS   | `~/Library/Caches/py-bacen/` |
 
-**Customizacao via variavel de ambiente**:
+**Customizacao**:
 
-```bash
+```powershell
 # Windows PowerShell
-$env:BACEN_DATA_DIR = "C:\dados\bcb"
+$env:BACEN_DATA_DIR = "D:\dados\bcb"
 
 # Linux/macOS
 export BACEN_DATA_DIR="/dados/bcb"
@@ -60,22 +58,26 @@ export BACEN_DATA_DIR="/dados/bcb"
 
 ### get_logs_path()
 
-Retorna o caminho para diretorio de logs.
+Retorna o caminho para diretorio de logs:
 
 ```python
 def get_logs_path() -> Path:
     """Logs sao armazenados separadamente do cache."""
 ```
 
-**Estrutura**:
+**Estrutura de diretorios**:
 
 ```
 py-bacen/
-  Cache/
-    cosif/
-    ifdata/
-  Logs/
-    ifdata_2024-01-15.log
+|-- Cache/
+|   |-- cosif/
+|   |   |-- individual/
+|   |   +-- prudencial/
+|   +-- ifdata/
+|       |-- valores/
+|       +-- cadastro/
++-- Logs/
+    +-- ifdata_2024-01-15.log
 ```
 
 ### get_subdir() / ensure_subdir()
@@ -88,17 +90,13 @@ def ensure_subdir(dataset: str) -> Path:
     """Garante que subdiretorio existe e retorna Path."""
 ```
 
-## QueryEngine (query.py)
+---
+
+## query.py (QueryEngine)
 
 ### Responsabilidades
 
 Motor de consultas DuckDB sobre arquivos Parquet.
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/query.py
-```
 
 ### Construtor
 
@@ -113,7 +111,7 @@ class QueryEngine:
 
 ### read()
 
-Le um arquivo Parquet especifico.
+Le um arquivo Parquet especifico:
 
 ```python
 def read(
@@ -139,15 +137,15 @@ df = qe.read(
 
 ### read_glob()
 
-Le multiplos arquivos via glob pattern.
+Le multiplos arquivos via glob pattern:
 
 ```python
 def read_glob(
     self,
-    pattern: str,        # Glob pattern (ex: "cosif_prud_*.parquet")
-    subdir: str,         # Subdiretorio
-    columns: list = None,  # Colunas
-    where: str = None      # Filtro SQL
+    pattern: str,        # Glob (ex: "cosif_prud_*.parquet")
+    subdir: str,
+    columns: list = None,
+    where: str = None
 ) -> pd.DataFrame:
 ```
 
@@ -161,9 +159,19 @@ df = qe.read_glob(
 )
 ```
 
+**Predicate Pushdown**:
+
+O DuckDB aplica filtros durante leitura do Parquet, evitando carregar dados desnecessarios:
+
+```sql
+-- Query interna
+SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_*.parquet'
+WHERE CNPJ_8 = '60872504' AND DATA_BASE = 202412
+```
+
 ### sql()
 
-Executa SQL arbitrario com substituicao de variaveis.
+Executa SQL arbitrario:
 
 ```python
 def sql(self, query: str) -> pd.DataFrame:
@@ -178,8 +186,9 @@ def sql(self, query: str) -> pd.DataFrame:
 
 ```python
 df = qe.sql("""
-    SELECT CNPJ_8, SUM(VALOR) as total
+    SELECT CNPJ_8, SUM(SALDO) as total
     FROM '{cache}/cosif/prudencial/*.parquet'
+    WHERE NOME_CONTA LIKE '%ATIVO%'
     GROUP BY CNPJ_8
     ORDER BY total DESC
     LIMIT 10
@@ -188,34 +197,34 @@ df = qe.sql("""
 
 ### describe()
 
-Retorna schema do arquivo.
+Retorna schema do arquivo:
 
 ```python
 def describe(self, filename: str, subdir: str) -> pd.DataFrame:
-    """Retorna colunas: column_name, column_type, null, key, default, extra"""
+    """Retorna: column_name, column_type, null, key, default, extra"""
 ```
 
 ### get_metadata()
 
-Retorna metadados basicos.
+Retorna metadados basicos:
 
 ```python
 def get_metadata(self, filename: str, subdir: str) -> Optional[dict]:
     """
     Retorna:
-        {
-            'arquivo': str,
-            'subdir': str,
-            'registros': int,
-            'colunas': int,
-            'status': str
-        }
+    {
+        'arquivo': str,
+        'subdir': str,
+        'registros': int,
+        'colunas': int,
+        'status': str
+    }
     """
 ```
 
 ### list_files()
 
-Lista arquivos em um subdiretorio.
+Lista arquivos em um subdiretorio:
 
 ```python
 def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
@@ -224,23 +233,17 @@ def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
 
 ### file_exists()
 
-Verifica se arquivo existe.
-
 ```python
 def file_exists(self, filename: str, subdir: str) -> bool:
 ```
 
-## DataManager (storage.py)
+---
+
+## storage.py (DataManager)
 
 ### Responsabilidades
 
 Gerenciador de persistencia em formato Parquet.
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/storage.py
-```
 
 ### Construtor
 
@@ -251,14 +254,14 @@ class DataManager:
 
 ### save()
 
-Salva DataFrame em arquivo Parquet.
+Salva DataFrame em arquivo Parquet:
 
 ```python
 def save(
     self,
     df: pd.DataFrame,
     filename: str,           # Nome sem extensao
-    subdir: str,             # Subdiretorio
+    subdir: str,
     compression: str = "snappy"  # snappy, gzip, zstd
 ) -> Path:
 ```
@@ -272,7 +275,7 @@ path = dm.save(df, "cosif_prud_202412", "cosif/prudencial")
 
 ### read()
 
-Le arquivo via QueryEngine.
+Le arquivo via QueryEngine:
 
 ```python
 def read(
@@ -286,28 +289,20 @@ def read(
 
 ### get_last_period()
 
-Retorna ultimo periodo disponivel.
+Retorna ultimo periodo disponivel:
 
 ```python
 def get_last_period(
     self,
     prefix: str,    # Ex: "cosif_prud"
-    subdir: str     # Ex: "cosif/prudencial"
+    subdir: str
 ) -> Optional[tuple[int, int]]:
     """Retorna (ano, mes) ou None."""
 ```
 
-**Exemplo**:
-
-```python
-dm = DataManager()
-last = dm.get_last_period("cosif_prud", "cosif/prudencial")
-# (2024, 12)
-```
-
 ### get_available_periods()
 
-Retorna todos os periodos disponiveis.
+Retorna todos os periodos disponiveis:
 
 ```python
 def get_available_periods(
@@ -320,36 +315,30 @@ def get_available_periods(
 
 ### delete()
 
-Remove um arquivo.
+Remove um arquivo:
 
 ```python
 def delete(self, filename: str, subdir: str) -> bool:
     """Retorna True se removeu, False se nao existia."""
 ```
 
-## Logging (log.py)
+---
+
+## log.py (Logging)
 
 ### Responsabilidades
 
 Sistema de logging com dual output:
-- Console (stderr): WARNING+ para usuario
-- Arquivo: DEBUG+ para debugging tecnico
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/log.py
-```
+- **Console (stderr)**: WARNING+ para usuario
+- **Arquivo**: DEBUG+ para debugging tecnico
 
 ### configure_logging()
-
-Configura loguru com dual output.
 
 ```python
 def configure_logging(
     level: str = "WARNING",      # Nivel minimo console
-    enable_file: bool = True,    # Habilitar arquivo
-    file_level: str = "DEBUG"    # Nivel minimo arquivo
+    enable_file: bool = True,
+    file_level: str = "DEBUG"
 ):
 ```
 
@@ -359,14 +348,17 @@ def configure_logging(
 # Console (stderr)
 WARNING  | Mensagem de aviso
 
-# Arquivo (AppData/Local/py-bacen/Logs/ifdata_YYYY-MM-DD.log)
-[2024-01-15 10:30:45] DEBUG    [ifdata_bcb.infra.query] Query: cosif/prudencial/...
-[2024-01-15 10:30:46] INFO     [ifdata_bcb.services.base_collector] Saved: ...
+# Arquivo (Logs/ifdata_YYYY-MM-DD.log)
+[2024-01-15 10:30:45] DEBUG    [ifdata_bcb.infra.query] Query: ...
+[2024-01-15 10:30:46] INFO     [ifdata_bcb.providers.base_collector] Saved: ...
 ```
 
-### get_logger()
+**Configuracao de arquivo**:
+- Rotacao: 10 MB por arquivo
+- Retencao: 30 dias
+- Encoding: UTF-8
 
-Retorna logger configurado.
+### get_logger()
 
 ```python
 def get_logger(name: str = "ifdata_bcb"):
@@ -390,8 +382,6 @@ logger.error("Erro")
 
 ### set_log_level()
 
-Altera nivel de logging do console.
-
 ```python
 def set_log_level(level: str):
     """Altera nivel (DEBUG, INFO, WARNING, ERROR, CRITICAL)."""
@@ -399,59 +389,36 @@ def set_log_level(level: str):
 
 ### get_log_path()
 
-Retorna caminho do diretorio de logs.
-
 ```python
 def get_log_path() -> Path:
 ```
 
-## Cache (cache.py)
+---
+
+## cache.py
 
 ### Responsabilidades
 
-Sistema de cache centralizado com metricas e gerenciamento global. Thread-safe.
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/cache.py
-```
+Sistema de cache centralizado com registro global. Thread-safe.
 
 ### @cached Decorator
-
-Decorator que wrapa `lru_cache` com funcionalidades adicionais.
 
 ```python
 from ifdata_bcb.infra.cache import cached
 
-@cached(maxsize=256, name="find_cnpj", track_stats=False)
-def find_cnpj(identificador: str) -> str:
+@cached(maxsize=256)
+def funcao_custosa(param: str) -> dict:
     # ...
 ```
 
 **Parametros**:
 - `maxsize`: Tamanho maximo do cache (padrao: 128)
-- `name`: Nome para identificacao nas metricas
-- `track_stats`: Se True, registra hits/misses
 
-### CacheStats
-
-Classe para estatisticas de cache. Thread-safe com `threading.Lock`.
-
-```python
-from ifdata_bcb.infra.cache import CacheStats
-
-# Obter estatisticas de todos os caches
-stats = CacheStats.get_stats()
-# {'find_cnpj': {'hits': 10, 'misses': 5, 'total': 15, 'hit_rate': '66.7%'}}
-
-# Limpar estatisticas
-CacheStats.clear()
-```
+**Diferencial**: Registra funcao em lista global para limpeza centralizada.
 
 ### clear_all_caches()
 
-Limpa todos os caches registrados.
+Limpa todos os caches registrados:
 
 ```python
 from ifdata_bcb.infra.cache import clear_all_caches
@@ -462,26 +429,43 @@ print(f"Limpos {count} caches")
 
 ### get_cache_info()
 
-Retorna informacoes de todos os caches.
+Retorna informacoes de todos os caches:
 
 ```python
 from ifdata_bcb.infra.cache import get_cache_info
 
 info = get_cache_info()
-# {'EntityResolver.find_cnpj': {'hits': 10, 'misses': 5, 'maxsize': 256, 'currsize': 5}}
+# {'EntityLookup.get_entity_identifiers': {'hits': 10, 'misses': 5, 'maxsize': 256, 'currsize': 5}}
 ```
 
-## Resilience (resilience.py)
+### Implementacao
+
+```python
+_registered_caches: list[Callable] = []
+_lock = threading.Lock()
+
+def cached(maxsize: int = 128):
+    def decorator(func):
+        cached_func = lru_cache(maxsize=maxsize)(func)
+        with _lock:
+            _registered_caches.append(cached_func)
+        return cached_func
+    return decorator
+
+def clear_all_caches() -> int:
+    with _lock:
+        for cache in _registered_caches:
+            cache.cache_clear()
+        return len(_registered_caches)
+```
+
+---
+
+## resilience.py
 
 ### Responsabilidades
 
 Utilitarios para lidar com falhas transientes em APIs externas.
-
-### Localizacao
-
-```
-src/ifdata_bcb/infra/resilience.py
-```
 
 ### Constantes
 
@@ -491,25 +475,7 @@ DEFAULT_RETRY_DELAY = 1.0
 DEFAULT_BACKOFF_FACTOR = 2.0
 DEFAULT_REQUEST_TIMEOUT = 240
 DEFAULT_PARALLEL_STAGGER = 0.5
-```
 
-### @retry Decorator
-
-Adiciona retry com exponential backoff.
-
-```python
-def retry(
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    backoff_factor: float = 2.0,
-    exceptions: tuple = TRANSIENT_EXCEPTIONS,
-    jitter: bool = True
-):
-```
-
-**Excecoes capturadas por padrao**:
-
-```python
 TRANSIENT_EXCEPTIONS = (
     requests.RequestException,
     requests.ConnectionError,
@@ -521,6 +487,20 @@ TRANSIENT_EXCEPTIONS = (
     json.JSONDecodeError,
     ValueError,
 )
+```
+
+### @retry Decorator
+
+Adiciona retry com exponential backoff:
+
+```python
+def retry(
+    max_attempts: int = 3,
+    delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    exceptions: tuple = TRANSIENT_EXCEPTIONS,
+    jitter: bool = True
+):
 ```
 
 **Exemplo**:
@@ -543,7 +523,7 @@ def download_data(url):
 
 ### staggered_delay()
 
-Adiciona delay escalonado para workers paralelos.
+Adiciona delay escalonado para workers paralelos:
 
 ```python
 def staggered_delay(index: int, base_delay: float = 0.5):
@@ -556,21 +536,22 @@ def staggered_delay(index: int, base_delay: float = 0.5):
     """
 ```
 
-**Exemplo**:
+**Uso em BaseCollector**:
 
 ```python
-from ifdata_bcb.infra.resilience import staggered_delay
-
 with ThreadPoolExecutor(max_workers=4) as executor:
     futures = {
-        executor.submit(process_with_stagger, i, item): item
-        for i, item in enumerate(items)
+        executor.submit(self._process_single_period, period, index): period
+        for index, period in enumerate(periods)
     }
 
-def process_with_stagger(index, item):
+def _process_single_period(self, period, index):
     staggered_delay(index)  # Delay baseado no indice
-    return process(item)
+    csv = self._download_period(period)
+    # ...
 ```
+
+---
 
 ## Uso Direto
 
@@ -589,7 +570,7 @@ df = qe.read_glob(
     pattern='cosif_prud_*.parquet',
     subdir='cosif/prudencial',
     columns=['CNPJ_8', 'VALOR'],
-    where="DATA = 202412"
+    where="DATA_BASE = 202412"
 )
 
 # SQL direto
@@ -628,4 +609,33 @@ print(f"Logs em: {get_log_path()}")
 # Usar logger
 logger = get_logger("meu_modulo")
 logger.info("Mensagem")
+```
+
+---
+
+## Exports Publicos
+
+```python
+# infra/__init__.py
+from ifdata_bcb.infra.config import get_cache_path, get_logs_path
+from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.infra.storage import DataManager
+from ifdata_bcb.infra.log import get_logger, set_log_level, configure_logging
+from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
+from ifdata_bcb.infra.resilience import retry, staggered_delay
+
+__all__ = [
+    "get_cache_path",
+    "get_logs_path",
+    "QueryEngine",
+    "DataManager",
+    "get_logger",
+    "set_log_level",
+    "configure_logging",
+    "cached",
+    "clear_all_caches",
+    "get_cache_info",
+    "retry",
+    "staggered_delay",
+]
 ```

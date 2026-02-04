@@ -266,7 +266,7 @@ class BaseExplorer(ABC):
         return " AND ".join(valid) if valid else None
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica mapeamento de colunas e converte DATA para datetime."""
+        """Aplica mapeamento de colunas, converte DATA para datetime e ordena."""
         if df.empty:
             return df
 
@@ -278,6 +278,10 @@ class BaseExplorer(ABC):
         # 2. Converter DATA para datetime (usa nome de apresentacao)
         if "DATA" in df.columns:
             df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
+
+        # 3. Ordenar por DATA (mais antigo primeiro)
+        if "DATA" in df.columns:
+            df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
 
         return df
 

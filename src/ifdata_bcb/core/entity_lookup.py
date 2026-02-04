@@ -234,16 +234,21 @@ class EntityLookup:
         termo_norm = normalize_accents(termo.strip().upper())
 
         # Carrega nomes do cadastro para fuzzy
+        # Pega nome mais recente de cada CNPJ para resultado determinístico
         cadastro_path = self._get_source_path(
             get_subdir("cadastro"), get_pattern("cadastro")
         )
         sql = f"""
-        SELECT DISTINCT
-            CNPJ_8,
-            NomeInstituicao AS NOME,
-            strip_accents(UPPER(NomeInstituicao)) AS NOME_NORM
-        FROM '{cadastro_path}'
-        WHERE NomeInstituicao IS NOT NULL
+        SELECT CNPJ_8, NOME, strip_accents(UPPER(NOME)) AS NOME_NORM
+        FROM (
+            SELECT
+                CNPJ_8,
+                NomeInstituicao AS NOME,
+                ROW_NUMBER() OVER (PARTITION BY CNPJ_8 ORDER BY Data DESC) as rn
+            FROM '{cadastro_path}'
+            WHERE NomeInstituicao IS NOT NULL
+        )
+        WHERE rn = 1
         """
 
         empty_df = pd.DataFrame(
@@ -322,10 +327,10 @@ class EntityLookup:
 
         result_df = pd.DataFrame(results)
 
-        # Ordena: ativas primeiro (A < I), depois por score desc
+        # Ordena: ativas primeiro (A < I), depois por score desc, depois alfabetico
         result_df = result_df.sort_values(
-            by=["SITUACAO", "SCORE"],
-            ascending=[True, False],
+            by=["SITUACAO", "SCORE", "INSTITUICAO"],
+            ascending=[True, False, True],
         ).reset_index(drop=True)
 
         return result_df[["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]]

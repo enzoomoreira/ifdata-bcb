@@ -1,5 +1,55 @@
 # Project Changelog
 
+## [2026-02-04 16:28]
+
+Sincronizacao completa da documentacao com a nova arquitetura do codebase.
+
+### Added
+- `docs/internals/README.md`: Indice de navegacao para documentacao interna
+- `docs/internals/core.md`: Documentacao do modulo `core/` (BaseExplorer, EntityLookup, constants)
+- `docs/internals/providers.md`: Documentacao do modulo `providers/` (BaseCollector, COSIF, IFDATA)
+- `docs/internals/utils.md`: Documentacao do modulo `utils/` (text, date, fuzzy, cnpj, period)
+
+### Changed
+- `README.md`: Reescrito com nova estrutura
+  - Tabela de fontes agora inclui periodicidade
+  - Instalacao agora usa `uv add ifdata-bcb` (antes: `uv sync`)
+  - Exemplos de uso atualizados com nova API (QueryEngine para SQL)
+  - Links de documentacao apontam para `docs2/` (typo a corrigir)
+  - Adicionada secao "API Publica" com overview de explorers e funcoes
+- `docs/getting-started.md`: Atualizado para nova arquitetura
+  - Requisito Python 3.12+ (antes: 3.10+)
+  - Removida referencia a `bcb.sql()` (usar QueryEngine diretamente)
+  - Adicionados exemplos de tratamento de erros com excecoes especificas
+  - Adicionada secao "Escopos IFDATA" com tabela de tipos
+- `docs/advanced/sql-queries.md`: Reescrito para uso com QueryEngine
+  - Removidas referencias a `bcb.sql()` (agora `qe.sql()`)
+  - Nomes de colunas atualizados (DATA_BASE, NOME_INSTITUICAO, SALDO, etc)
+  - Adicionado metodo `read_glob()` com exemplos
+  - Adicionada tabela "API vs SQL Direto" para guiar escolha
+- `docs/advanced/extending.md`: Guia completo de extensao reescrito
+  - Novo passo: Registrar fonte em `core/constants.py`
+  - Classes base documentadas (BaseCollector, BaseExplorer)
+  - Checklist completo para criar novo provider
+  - Design patterns documentados (Template Method, Decorator, Lazy Loading)
+- `docs/internals/architecture.md`: Diagrama e descricoes atualizados
+  - Novo diagrama ASCII com camadas reorganizadas
+  - Estrutura de diretorios completa
+  - Design patterns documentados com exemplos de codigo
+- `docs/internals/domain.md`: Atualizado com hierarquia de excecoes
+- `docs/internals/infra.md`: Atualizado com novos componentes (cache registry, resilience)
+- `docs/providers/cosif.md`, `docs/providers/ifdata.md`, `docs/providers/cadastro.md`: Atualizados
+
+### Removed
+- `docs/internals/services.md`: Removido (modulo `services/` foi eliminado na refatoracao anterior)
+
+### Fixed
+- `FuzzyMatcher.search()`: Resultado agora e deterministico
+  - Busca todos os matches antes de aplicar limit
+  - Ordenacao secundaria por nome (empates no score)
+
+---
+
 ## [2026-02-04 15:36]
 
 Centralizacao de constantes e melhorias na funcao `search()`.

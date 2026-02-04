@@ -202,17 +202,11 @@ def _normalize_institutions(
 ) -> Optional[list[str]]:
     """
     Normaliza instituicoes para lista de CNPJs validados.
-    Delega validacao para InstitutionList (Pydantic).
+    Chama _resolve_entity() para cada CNPJ.
     """
 ```
 
 ### Metodos de Validacao
-
-Normalizacao e validacao de inputs sao delegadas para modelos Pydantic em `domain/validation.py`:
-- `NormalizedDates`: Normaliza DateInput -> list[int]
-- `ValidatedCnpj8`: Valida CNPJ de 8 digitos
-- `InstitutionList`: Normaliza e valida lista de CNPJs
-- `AccountList`: Normaliza lista de contas
 
 #### _resolve_entity()
 
@@ -220,11 +214,13 @@ Normalizacao e validacao de inputs sao delegadas para modelos Pydantic em `domai
 def _resolve_entity(self, identificador: str) -> str:
     """
     Valida CNPJ de exatamente 8 digitos.
-    Delega para ValidatedCnpj8 (Pydantic).
 
     Raises:
         InvalidIdentifierError: Se nao for \d{8}
     """
+    if not re.fullmatch(r"\d{8}", identificador):
+        raise InvalidIdentifierError(identificador)
+    return identificador
 ```
 
 #### _validate_required_params()
@@ -274,7 +270,6 @@ def _build_string_condition(
     column: str,
     values: list[str],
     case_insensitive: bool = False,
-    accent_insensitive: bool = False,
 ) -> str:
     """
     Constroi clausula WHERE para strings.
@@ -283,16 +278,7 @@ def _build_string_condition(
     - ["valor"] -> "COLUNA = 'valor'"
     - ["a", "b"] -> "COLUNA IN ('a', 'b')"
     - case_insensitive=True -> "UPPER(COLUNA) IN ('A', 'B')"
-    - accent_insensitive=True -> "strip_accents(COLUNA) = 'valor'"
-    - ambos -> "UPPER(strip_accents(COLUNA)) IN ('A', 'B')"
     """
-```
-
-#### _translate_columns()
-
-```python
-def _translate_columns(self, columns: list[str] | None) -> list[str] | None:
-    """Traduz nomes de apresentacao para storage. Aceita ambos."""
 ```
 
 #### _build_int_condition()
@@ -510,13 +496,11 @@ def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
 Fluxo interno:
 
 1. Normaliza termo (remove acentos, upper)
-2. Carrega entidades reais do cadastro (filtra aliases com `_real_entity_condition()`)
-3. Carrega aliases pesquisaveis (incluindo nomes prudenciais/financeiros), resolvidos para CNPJ real
-4. Fuzzy match com token_set_ratio sobre todos os aliases
-5. Verifica fontes de dados para CNPJs encontrados
-6. Busca situacao mais recente
-7. Se houver matches com fontes disponiveis, filtra resultados sem `FONTES`
-8. Ordena (ativas primeiro, score desc, nome asc) e aplica limit
+2. Executa SQL UNION de 3 fontes
+3. Fuzzy match com token_set_ratio
+4. Verifica fontes de dados para CNPJs
+5. Busca situacao mais recente
+6. Monta e ordena DataFrame
 
 ### get_entity_identifiers() [CACHED]
 
@@ -562,8 +546,7 @@ def resolve_ifdata_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
     Logica:
     - individual: CNPJ direto, tipo=3
     - prudencial: CodConglomeradoPrudencial, tipo=1
-    - financeiro: Verifica CodConglomeradoFinanceiro e CNPJ direto
-                  como candidatos nos dados IFDATA, tipo=2
+    - financeiro: CodConglomeradoFinanceiro, tipo=2
 
     Raises:
         InvalidScopeError: Escopo invalido
@@ -571,16 +554,13 @@ def resolve_ifdata_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
     """
 ```
 
-### get_canonical_names_for_cnpjs()
+### get_names_for_cnpjs()
 
 ```python
-def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
+def get_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
     """
-    Retorna nomes canônicos a partir do cadastro mais recente.
-
-    O cadastro e a fonte mestra para nomes de entidades nas leituras
-    analiticas. Filtra apenas entidades reais (exclui aliases).
-    Se um CNPJ nao existir no cadastro, retorna string vazia.
+    Retorna mapeamento {cnpj: nome} para lista de CNPJs.
+    Para CNPJs nao encontrados: string vazia.
     """
 ```
 
@@ -588,38 +568,38 @@ def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
 
 ```python
 def clear_cache(self) -> None:
-    """Limpa caches LRU de get_entity_identifiers() e _cadastro_has_codinst()."""
-```
-
-### Filtragem de Entidades Reais
-
-O EntityLookup distingue entidades reais de aliases prudenciais/financeiros no cadastro:
-
-```python
-def _real_entity_condition(self) -> str:
-    """
-    Filtra linhas que representam entidades reais.
-
-    Se o cache possui CodInst (caches novos):
-      CNPJ_8 IS NOT NULL AND CodInst e numerico
-
-    Se nao (caches legados):
-      Heuristica por nome (exclui aliases como 'PRUDENCIAL', 'MASTER')
-    """
-
-def _resolved_entity_cnpj_expr(self) -> str:
-    """Resolve aliases prudenciais para o CNPJ da entidade lider."""
+    """Limpa cache LRU de get_entity_identifiers()."""
 ```
 
 ### SQL Interno
 
-O `search()` usa duas queries separadas:
+O EntityLookup usa SQL para unir fontes:
 
-1. **Entidades reais**: nomes canônicos do cadastro, filtrados por `_real_entity_condition()`,
-   com dedup por CNPJ (nome mais recente)
-2. **Aliases pesquisaveis**: todos os nomes do cadastro (incluindo prudenciais/financeiros),
-   resolvidos para o CNPJ real via `_resolved_entity_cnpj_expr()`
-3. **Pos-processamento**: quando existem matches com `FONTES`, resultados sem dados sao descartados
+```python
+def _build_entity_union_sql(self):
+    """
+    Gera SQL que une 3 fontes:
+
+    SELECT CNPJ_8, NomeInstituicao AS NOME,
+           strip_accents(UPPER(NomeInstituicao)) AS NOME_NORM,
+           'cadastro' AS FONTE
+    FROM '{cache}/ifdata/cadastro/*.parquet'
+
+    UNION ALL
+
+    SELECT CNPJ_8, NOME_INSTITUICAO AS NOME,
+           strip_accents(UPPER(NOME_INSTITUICAO)) AS NOME_NORM,
+           'cosif_ind' AS FONTE
+    FROM '{cache}/cosif/individual/*.parquet'
+
+    UNION ALL
+
+    SELECT CNPJ_8, NOME_INSTITUICAO AS NOME,
+           strip_accents(UPPER(NOME_INSTITUICAO)) AS NOME_NORM,
+           'cosif_prud' AS FONTE
+    FROM '{cache}/cosif/prudencial/*.parquet'
+    """
+```
 
 A funcao `strip_accents()` e UDF registrada no DuckDB para comparacao insensivel a acentos.
 
@@ -726,10 +706,13 @@ class EntityLookup:
 from ifdata_bcb.core.api import search
 from ifdata_bcb.core.base_explorer import BaseExplorer
 from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP
 
 __all__ = [
     "search",
     "BaseExplorer",
     "EntityLookup",
+    "DATA_SOURCES",
+    "TIPO_INST_MAP",
 ]
 ```

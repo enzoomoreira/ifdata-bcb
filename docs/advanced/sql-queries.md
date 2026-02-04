@@ -1,13 +1,13 @@
 # Consultas SQL Avancadas
 
-A biblioteca permite executar SQL diretamente nos dados coletados usando DuckDB, possibilitando analises complexas que seriam dificeis ou ineficientes com a API padrao.
+A biblioteca utiliza DuckDB para executar queries SQL diretamente nos arquivos Parquet, possibilitando analises complexas alem da API padrao.
 
 ## Visao Geral
 
-### Por que usar SQL?
+### Por que usar SQL direto?
 
 - **Agregacoes complexas**: GROUP BY, HAVING, window functions
-- **Joins**: Combinar dados de multiplas fontes
+- **Joins**: Combinar dados de multiplas fontes (COSIF + Cadastro, etc.)
 - **Performance**: DuckDB otimiza queries com predicate pushdown e column pruning
 - **Flexibilidade**: Qualquer consulta SQL compativel com DuckDB
 
@@ -15,38 +15,54 @@ A biblioteca permite executar SQL diretamente nos dados coletados usando DuckDB,
 
 O [DuckDB](https://duckdb.org/) e um banco de dados analitico embutido, otimizado para:
 - Leitura de arquivos Parquet
-- Consultas OLAP
+- Consultas OLAP (agregacoes, joins)
 - Processamento vetorizado
 
-## Funcao bcb.sql()
+## QueryEngine
 
-### Sintaxe
+O acesso a queries SQL e feito via `QueryEngine`:
 
 ```python
-bcb.sql(query: str) -> pd.DataFrame
+from ifdata_bcb.infra import QueryEngine
+
+qe = QueryEngine()
 ```
 
-### Variaveis Disponiveis
+### Metodos Principais
+
+#### sql(query: str) -> pd.DataFrame
+
+Executa SQL puro com substituicao de variaveis:
+
+```python
+df = qe.sql("""
+    SELECT CNPJ_8, NOME_INSTITUICAO, SUM(SALDO) as TOTAL
+    FROM '{cache}/cosif/prudencial/cosif_prud_202412.parquet'
+    WHERE NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+    GROUP BY CNPJ_8, NOME_INSTITUICAO
+    ORDER BY TOTAL DESC
+    LIMIT 10
+""")
+```
+
+#### read_glob(pattern, subdir, columns=None, where=None) -> pd.DataFrame
+
+Le multiplos arquivos Parquet como dataset unico:
+
+```python
+df = qe.read_glob(
+    pattern='cosif_prud_2024*.parquet',
+    subdir='cosif/prudencial',
+    columns=['CNPJ_8', 'NOME_CONTA', 'SALDO'],
+    where="CNPJ_8 = '60872504'"
+)
+```
+
+### Variaveis Disponiveis no SQL
 
 | Variavel | Descricao | Exemplo |
 |----------|-----------|---------|
 | `{cache}` | Diretorio de cache dos dados | `C:/Users/.../py-bacen/Cache` |
-| `{raw}` | Alias para `{cache}` (compatibilidade) | - |
-
-### Exemplo Basico
-
-```python
-import ifdata_bcb as bcb
-
-df = bcb.sql("""
-    SELECT CNPJ_8, INSTITUICAO, VALOR
-    FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-      AND CONTA = 'TOTAL GERAL DO ATIVO'
-    ORDER BY VALOR DESC
-    LIMIT 10
-""")
-```
 
 ## Estrutura dos Arquivos Parquet
 
@@ -80,44 +96,41 @@ py-bacen/Cache/
 DESCRIBE SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_202412.parquet';
 
 -- Colunas:
--- DATA (BIGINT): Periodo YYYYMM
+-- DATA_BASE (BIGINT): Periodo YYYYMM
 -- CNPJ_8 (VARCHAR): CNPJ de 8 digitos
--- INSTITUICAO (VARCHAR): Nome
+-- NOME_INSTITUICAO (VARCHAR): Nome
 -- DOCUMENTO (BIGINT): Tipo de documento
--- COD_CONTA (VARCHAR): Codigo da conta
--- CONTA (VARCHAR): Nome da conta
--- VALOR (DOUBLE): Valor em reais
+-- CONTA (VARCHAR): Codigo da conta
+-- NOME_CONTA (VARCHAR): Nome da conta
+-- SALDO (DOUBLE): Valor em reais
 ```
 
 #### IFDATA Valores
 
 ```sql
 -- Colunas:
--- DATA (BIGINT): Periodo YYYYMM
--- COD_INST (VARCHAR): Codigo da instituicao
--- TIPO_INST (BIGINT): Tipo (1, 2, 3)
--- COD_CONTA (VARCHAR): Codigo da conta
--- CONTA (VARCHAR): Nome da conta
--- VALOR (DOUBLE): Valor em reais
--- RELATORIO (VARCHAR): Relatorio de origem
--- GRUPO (VARCHAR): Grupo da conta
+-- AnoMes (BIGINT): Periodo YYYYMM
+-- CodInst (VARCHAR): Codigo da instituicao (CNPJ ou codigo conglomerado)
+-- TipoInstituicao (BIGINT): Tipo (1=prudencial, 2=financeiro, 3=individual)
+-- Conta (VARCHAR): Codigo da conta
+-- NomeColuna (VARCHAR): Nome da conta
+-- Saldo (DOUBLE): Valor em reais
+-- NomeRelatorio (VARCHAR): Relatorio de origem
+-- Grupo (VARCHAR): Grupo da conta
 ```
 
 #### IFDATA Cadastro
 
 ```sql
 -- Colunas:
--- DATA (BIGINT): Periodo YYYYMM
 -- CNPJ_8 (VARCHAR): CNPJ de 8 digitos
--- INSTITUICAO (VARCHAR): Nome
--- SEGMENTO (VARCHAR): Segmento
--- COD_CONGL_PRUD (VARCHAR): Conglomerado prudencial
--- COD_CONGL_FIN (VARCHAR): Conglomerado financeiro
--- CNPJ_LIDER_8 (VARCHAR): CNPJ da lider
--- SITUACAO (VARCHAR): Situacao
--- UF (VARCHAR): Estado
--- MUNICIPIO (VARCHAR): Cidade
--- ... outras colunas
+-- NomeInstituicao (VARCHAR): Nome
+-- CodConglomeradoPrudencial (VARCHAR): Conglomerado prudencial
+-- CodConglomeradoFinanceiro (VARCHAR): Conglomerado financeiro
+-- CNPJ_LIDER_8 (VARCHAR): CNPJ da lideranca
+-- Situacao (VARCHAR): A=Ativa, I=Inativa
+-- Data (VARCHAR): Data do registro
+-- Segmento, UF, Municipio, etc.
 ```
 
 ## Exemplos de Queries
@@ -125,16 +138,20 @@ DESCRIBE SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_202412.parquet';
 ### Agregacoes Basicas
 
 ```python
+from ifdata_bcb.infra import QueryEngine
+
+qe = QueryEngine()
+
 # Total de ativos por instituicao
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CNPJ_8,
-        INSTITUICAO,
-        SUM(VALOR) as TOTAL
+        NOME_INSTITUICAO,
+        SUM(SALDO) as TOTAL
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-      AND CONTA = 'TOTAL GERAL DO ATIVO'
-    GROUP BY CNPJ_8, INSTITUICAO
+    WHERE DATA_BASE = 202412
+      AND NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+    GROUP BY CNPJ_8, NOME_INSTITUICAO
     ORDER BY TOTAL DESC
     LIMIT 20
 """)
@@ -144,20 +161,19 @@ df = bcb.sql("""
 
 ```python
 # Join COSIF com Cadastro para obter segmento
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         c.CNPJ_8,
-        c.INSTITUICAO,
-        c.VALOR / 1e9 as ATIVO_BILHOES,
-        cad.SEGMENTO,
+        c.NOME_INSTITUICAO,
+        c.SALDO / 1e9 as ATIVO_BILHOES,
+        cad.Segmento,
         cad.UF
     FROM '{cache}/cosif/prudencial/*.parquet' c
     JOIN '{cache}/ifdata/cadastro/*.parquet' cad
         ON c.CNPJ_8 = cad.CNPJ_8
-        AND c.DATA = cad.DATA
-    WHERE c.DATA = 202412
-      AND c.CONTA = 'TOTAL GERAL DO ATIVO'
-    ORDER BY c.VALOR DESC
+    WHERE c.DATA_BASE = 202412
+      AND c.NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+    ORDER BY c.SALDO DESC
     LIMIT 20
 """)
 ```
@@ -166,16 +182,16 @@ df = bcb.sql("""
 
 ```python
 # Ranking de instituicoes por ativo
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CNPJ_8,
-        INSTITUICAO,
-        VALOR / 1e12 as ATIVO_TRILHOES,
-        ROW_NUMBER() OVER (ORDER BY VALOR DESC) as RANKING,
-        VALOR / SUM(VALOR) OVER () * 100 as MARKET_SHARE
+        NOME_INSTITUICAO,
+        SALDO / 1e12 as ATIVO_TRILHOES,
+        ROW_NUMBER() OVER (ORDER BY SALDO DESC) as RANKING,
+        SALDO / SUM(SALDO) OVER () * 100 as MARKET_SHARE
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-      AND CONTA = 'TOTAL GERAL DO ATIVO'
+    WHERE DATA_BASE = 202412
+      AND NOME_CONTA = 'TOTAL GERAL DO ATIVO'
       AND DOCUMENTO = 4060
     ORDER BY RANKING
     LIMIT 10
@@ -186,24 +202,24 @@ df = bcb.sql("""
 
 ```python
 # Evolucao do sistema financeiro
-df = bcb.sql("""
+df = qe.sql("""
     WITH mensal AS (
         SELECT
-            DATA,
+            DATA_BASE,
             COUNT(DISTINCT CNPJ_8) as N_INSTITUICOES,
-            SUM(CASE WHEN CONTA = 'TOTAL GERAL DO ATIVO'
-                     THEN VALOR ELSE 0 END) / 1e12 as ATIVO_TRILHOES
+            SUM(CASE WHEN NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+                     THEN SALDO ELSE 0 END) / 1e12 as ATIVO_TRILHOES
         FROM '{cache}/cosif/prudencial/*.parquet'
         WHERE DOCUMENTO = 4060
-        GROUP BY DATA
+        GROUP BY DATA_BASE
     )
     SELECT
-        DATA,
+        DATA_BASE,
         N_INSTITUICOES,
         ATIVO_TRILHOES,
-        ATIVO_TRILHOES - LAG(ATIVO_TRILHOES) OVER (ORDER BY DATA) as VARIACAO
+        ATIVO_TRILHOES - LAG(ATIVO_TRILHOES) OVER (ORDER BY DATA_BASE) as VARIACAO
     FROM mensal
-    ORDER BY DATA
+    ORDER BY DATA_BASE
 """)
 ```
 
@@ -211,18 +227,18 @@ df = bcb.sql("""
 
 ```python
 # Instituicoes acima da media
-df = bcb.sql("""
-    SELECT CNPJ_8, INSTITUICAO, VALOR / 1e9 as ATIVO_BILHOES
+df = qe.sql("""
+    SELECT CNPJ_8, NOME_INSTITUICAO, SALDO / 1e9 as ATIVO_BILHOES
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-      AND CONTA = 'TOTAL GERAL DO ATIVO'
-      AND VALOR > (
-          SELECT AVG(VALOR)
+    WHERE DATA_BASE = 202412
+      AND NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+      AND SALDO > (
+          SELECT AVG(SALDO)
           FROM '{cache}/cosif/prudencial/*.parquet'
-          WHERE DATA = 202412
-            AND CONTA = 'TOTAL GERAL DO ATIVO'
+          WHERE DATA_BASE = 202412
+            AND NOME_CONTA = 'TOTAL GERAL DO ATIVO'
       )
-    ORDER BY VALOR DESC
+    ORDER BY SALDO DESC
 """)
 ```
 
@@ -230,21 +246,21 @@ df = bcb.sql("""
 
 ```python
 # Classificar instituicoes por porte
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CNPJ_8,
-        INSTITUICAO,
-        VALOR / 1e9 as ATIVO_BILHOES,
+        NOME_INSTITUICAO,
+        SALDO / 1e9 as ATIVO_BILHOES,
         CASE
-            WHEN VALOR >= 1e12 THEN 'Grande (> 1 tri)'
-            WHEN VALOR >= 100e9 THEN 'Medio (100bi - 1tri)'
-            WHEN VALOR >= 10e9 THEN 'Pequeno (10bi - 100bi)'
+            WHEN SALDO >= 1e12 THEN 'Grande (> 1 tri)'
+            WHEN SALDO >= 100e9 THEN 'Medio (100bi - 1tri)'
+            WHEN SALDO >= 10e9 THEN 'Pequeno (10bi - 100bi)'
             ELSE 'Micro (< 10bi)'
         END as PORTE
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-      AND CONTA = 'TOTAL GERAL DO ATIVO'
-    ORDER BY VALOR DESC
+    WHERE DATA_BASE = 202412
+      AND NOME_CONTA = 'TOTAL GERAL DO ATIVO'
+    ORDER BY SALDO DESC
 """)
 ```
 
@@ -252,20 +268,19 @@ df = bcb.sql("""
 
 ```python
 # Agregacao por segmento usando cadastro
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
-        cad.SEGMENTO,
+        cad.Segmento,
         COUNT(DISTINCT c.CNPJ_8) as N_INSTITUICOES,
-        SUM(c.VALOR) / 1e12 as ATIVO_TRILHOES,
-        AVG(c.VALOR) / 1e9 as MEDIA_BILHOES
+        SUM(c.SALDO) / 1e12 as ATIVO_TRILHOES,
+        AVG(c.SALDO) / 1e9 as MEDIA_BILHOES
     FROM '{cache}/cosif/prudencial/*.parquet' c
     JOIN '{cache}/ifdata/cadastro/*.parquet' cad
         ON c.CNPJ_8 = cad.CNPJ_8
-    WHERE c.DATA = 202412
-      AND cad.DATA = 202412
-      AND c.CONTA = 'TOTAL GERAL DO ATIVO'
+    WHERE c.DATA_BASE = 202412
+      AND c.NOME_CONTA = 'TOTAL GERAL DO ATIVO'
       AND c.DOCUMENTO = 4060
-    GROUP BY cad.SEGMENTO
+    GROUP BY cad.Segmento
     HAVING COUNT(DISTINCT c.CNPJ_8) >= 5
     ORDER BY ATIVO_TRILHOES DESC
 """)
@@ -275,18 +290,18 @@ df = bcb.sql("""
 
 ```python
 # Evolucao trimestral de uma instituicao
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
-        DATA,
+        DATA_BASE,
         CNPJ_8,
-        INSTITUICAO,
-        CONTA,
-        VALOR / 1e9 as VALOR_BILHOES
+        NOME_INSTITUICAO,
+        NOME_CONTA,
+        SALDO / 1e9 as VALOR_BILHOES
     FROM '{cache}/cosif/prudencial/*.parquet'
     WHERE CNPJ_8 = '60872504'
-      AND CONTA IN ('TOTAL GERAL DO ATIVO', 'PATRIMONIO LIQUIDO')
-      AND DATA >= 202401
-    ORDER BY DATA, CONTA
+      AND NOME_CONTA IN ('TOTAL GERAL DO ATIVO', 'PATRIMONIO LIQUIDO')
+      AND DATA_BASE >= 202401
+    ORDER BY DATA_BASE, NOME_CONTA
 """)
 ```
 
@@ -298,11 +313,11 @@ O DuckDB automaticamente empurra filtros para a leitura do Parquet:
 
 ```python
 # Filtros no WHERE sao aplicados durante a leitura, nao apos
-df = bcb.sql("""
+df = qe.sql("""
     SELECT *
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412           -- Pushdown: le apenas arquivos de 202412
-      AND CNPJ_8 = '60872504'     -- Pushdown: filtra durante leitura
+    WHERE DATA_BASE = 202412       -- Pushdown: filtra durante leitura
+      AND CNPJ_8 = '60872504'      -- Pushdown: filtra durante leitura
 """)
 ```
 
@@ -312,17 +327,18 @@ Especificar colunas evita carregar dados desnecessarios:
 
 ```python
 # BOM: apenas colunas necessarias
-df = bcb.sql("""
-    SELECT CNPJ_8, VALOR
-    FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
-""")
+df = qe.read_glob(
+    pattern='cosif_prud_*.parquet',
+    subdir='cosif/prudencial',
+    columns=['CNPJ_8', 'SALDO'],  # So carrega estas
+    where="DATA_BASE = 202412"
+)
 
 # EVITAR: SELECT * carrega tudo
-df = bcb.sql("""
+df = qe.sql("""
     SELECT *
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
+    WHERE DATA_BASE = 202412
 """)
 ```
 
@@ -332,81 +348,113 @@ Use patterns especificos quando possivel:
 
 ```python
 # BOM: arquivo especifico
-df = bcb.sql("""
+df = qe.sql("""
     SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_202412.parquet'
 """)
 
 # BOM: ano especifico
-df = bcb.sql("""
+df = qe.sql("""
     SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_2024*.parquet'
 """)
 
 # MAIS LENTO: todos os arquivos
-df = bcb.sql("""
+df = qe.sql("""
     SELECT * FROM '{cache}/cosif/prudencial/*.parquet'
 """)
 ```
 
 ### LIMIT
 
-Sempre use LIMIT para explorar dados:
+Use LIMIT para explorar dados:
 
 ```python
 # Explorar estrutura
-df = bcb.sql("""
+df = qe.sql("""
     SELECT * FROM '{cache}/cosif/prudencial/*.parquet' LIMIT 100
 """)
 
 # Ver valores unicos
-df = bcb.sql("""
-    SELECT DISTINCT CONTA
+df = qe.sql("""
+    SELECT DISTINCT NOME_CONTA
     FROM '{cache}/cosif/prudencial/*.parquet'
-    WHERE DATA = 202412
+    WHERE DATA_BASE = 202412
     LIMIT 100
 """)
 ```
 
-## QueryEngine Direto
+## Utilitarios Adicionais
 
-Para uso mais avancado, acesse o QueryEngine diretamente:
+### Listar Arquivos Disponiveis
+
+```python
+from ifdata_bcb.infra import list_parquet_files
+
+# Lista arquivos em um subdiretorio
+arquivos = list_parquet_files('cosif/prudencial')
+# ['cosif_prud_202401', 'cosif_prud_202402', ...]
+```
+
+### Verificar Metadados
+
+```python
+from ifdata_bcb.infra import get_parquet_metadata
+
+meta = get_parquet_metadata('cosif_prud_202412', 'cosif/prudencial')
+# {
+#     'arquivo': 'cosif_prud_202412.parquet',
+#     'subdir': 'cosif/prudencial',
+#     'registros': 150000,
+#     'colunas': ['DATA_BASE', 'CNPJ_8', ...],
+#     'status': 'ok'
+# }
+```
+
+### DataManager
+
+Para operacoes de escrita (uso avancado):
+
+```python
+from ifdata_bcb.infra import DataManager
+
+dm = DataManager()
+
+# Salvar DataFrame como Parquet
+path = dm.save(df, 'meu_arquivo', 'minha_pasta')
+
+# Periodos disponiveis
+periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
+# [(2024, 1), (2024, 2), ...]
+```
+
+## Tratamento de Erros
 
 ```python
 from ifdata_bcb.infra import QueryEngine
 
 qe = QueryEngine()
 
-# Listar arquivos
-arquivos = qe.list_files('cosif/prudencial')
-
-# Verificar schema
-schema = qe.describe('cosif_prud_202412', 'cosif/prudencial')
-
-# Ler com filtros
-df = qe.read_glob(
-    pattern='cosif_prud_2024*.parquet',
-    subdir='cosif/prudencial',
-    columns=['CNPJ_8', 'CONTA', 'VALOR'],
-    where="CNPJ_8 = '60872504'"
-)
-
-# SQL direto
-df = qe.sql("SELECT COUNT(*) FROM '{cache}/cosif/prudencial/*.parquet'")
-```
-
-## Tratamento de Erros
-
-```python
 # Erro de sintaxe SQL
 try:
-    df = bcb.sql("SELECT * FORM tabela")  # Erro: FORM ao inves de FROM
+    df = qe.sql("SELECT * FORM tabela")  # Erro: FORM ao inves de FROM
 except Exception as e:
     print(f"Erro SQL: {e}")
 
 # Arquivo nao encontrado (retorna DataFrame vazio)
-df = bcb.sql("SELECT * FROM '{cache}/nao_existe/*.parquet'")
+df = qe.sql("SELECT * FROM '{cache}/nao_existe/*.parquet'")
 if df.empty:
     print("Nenhum dado encontrado")
 ```
+
+## API vs SQL Direto
+
+| Cenario | Recomendado |
+|---------|-------------|
+| Consultas simples por instituicao | API (`bcb.cosif.read()`) |
+| Filtros por conta/data/escopo | API (`bcb.cosif.read()`) |
+| Agregacoes complexas | SQL direto (`qe.sql()`) |
+| Joins entre fontes | SQL direto (`qe.sql()`) |
+| Window functions | SQL direto (`qe.sql()`) |
+| Analises exploratórias | SQL direto (`qe.sql()`) |
 
 ## Referencias
 
