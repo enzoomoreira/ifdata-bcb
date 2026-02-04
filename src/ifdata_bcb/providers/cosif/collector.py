@@ -6,6 +6,7 @@ from typing import Optional
 import pandas as pd
 import requests
 
+from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.domain.exceptions import InvalidScopeError, PeriodUnavailableError
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
@@ -25,8 +26,8 @@ class COSIFCollector(BaseCollector):
             "url_segment": "Bancos",
             "file_pattern": "BANCOS",
             "suffixes": ["BANCOS.csv.zip", "BANCOS.zip", "BANCOS.csv"],
-            "prefix": "cosif_ind",
-            "subdir": "cosif/individual",
+            "prefix": DATA_SOURCES["cosif_individual"]["prefix"],
+            "subdir": get_subdir("cosif_individual"),
             "encoding": "cp1252",
         },
         "prudencial": {
@@ -37,8 +38,8 @@ class COSIFCollector(BaseCollector):
                 "BLOPRUDENCIAL.zip",
                 "BLOPRUDENCIAL.csv",
             ],
-            "prefix": "cosif_prud",
-            "subdir": "cosif/prudencial",
+            "prefix": DATA_SOURCES["cosif_prudencial"]["prefix"],
+            "subdir": get_subdir("cosif_prudencial"),
             "encoding": "latin-1",
         },
     }

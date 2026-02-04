@@ -3,6 +3,7 @@ from typing import Optional
 import pandas as pd
 
 from ifdata_bcb.core.base_explorer import BaseExplorer
+from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import MissingRequiredParameterError
 from ifdata_bcb.domain.types import InstitutionInput
@@ -39,10 +40,10 @@ class CadastroExplorer(BaseExplorer):
         self._collector: Optional[IFDATACadastroCollector] = None
 
     def _get_subdir(self) -> str:
-        return "ifdata/cadastro"
+        return get_subdir("cadastro")
 
     def _get_file_prefix(self) -> str:
-        return "ifdata_cad"
+        return DATA_SOURCES["cadastro"]["prefix"]
 
     def _get_pattern(self) -> str:
         return f"{self._get_file_prefix()}_*.parquet"

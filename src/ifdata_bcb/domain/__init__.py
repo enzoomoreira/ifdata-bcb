@@ -1,8 +1,6 @@
 from ifdata_bcb.domain.exceptions import (
-    AmbiguousIdentifierError,
     BacenAnalysisError,
     DataUnavailableError,
-    EntityNotFoundError,
     InvalidDateFormatError,
     InvalidDateRangeError,
     InvalidIdentifierError,
@@ -21,10 +19,8 @@ from ifdata_bcb.domain.models import (
 
 __all__ = [
     # Exceptions
-    "AmbiguousIdentifierError",
     "BacenAnalysisError",
     "DataUnavailableError",
-    "EntityNotFoundError",
     "InvalidDateFormatError",
     "InvalidDateRangeError",
     "InvalidIdentifierError",

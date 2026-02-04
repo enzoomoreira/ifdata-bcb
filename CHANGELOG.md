@@ -1,5 +1,35 @@
 # Project Changelog
 
+## [2026-02-04 15:36]
+
+Centralizacao de constantes e melhorias na funcao `search()`.
+
+### Added
+- `core/constants.py`: Novo modulo centralizando constantes de fontes de dados
+  - `DATA_SOURCES`: Dict com subdir, pattern e prefix de cada fonte (cadastro, ifdata_valores, cosif_individual, cosif_prudencial)
+  - `TIPO_INST_MAP`: Mapeamento escopo -> codigo (individual=3, prudencial=1, financeiro=2)
+  - `get_subdir()`, `get_pattern()`: Helpers para acessar configs
+- `EntityLookup._get_data_sources_for_cnpjs()`: Verifica quais fontes (cosif, ifdata) tem dados para cada CNPJ
+- `EntityLookup._get_latest_situacao()`: Retorna situacao mais recente de cada CNPJ (A=Ativa, I=Inativa)
+- Coluna `SITUACAO` no resultado de `search()`: Indica se instituicao esta ativa ou inativa
+
+### Changed
+- `search()` agora ordena resultados por: ativas primeiro (A < I), depois por score
+- `search()` agora busca apenas no cadastro (antes: union de 3 fontes)
+- `search()` coluna `FONTES` agora indica onde ha dados disponiveis ('cosif', 'ifdata')
+- Explorers (COSIF, IFDATA, Cadastro) agora usam constantes de `core/constants.py`
+- Queries SQL usam `strip_accents()` do DuckDB para normalizar nomes
+
+### Removed
+- `EntityLookup.find_cnpj()`: Metodo removido (busca automatica de CNPJ por nome)
+- `EntityNotFoundError`, `AmbiguousIdentifierError`: Exceptions removidas da API publica
+- Colunas internas removidas dos resultados:
+  - COSIF: `COD_CONTA` (codigo da conta)
+  - IFDATA: `TIPO_INST`, `COD_CONTA`
+- Barra de progresso: Tempo restante estimado removido (mantido apenas tempo decorrido)
+
+---
+
 ## [2026-02-04 03:18]
 
 Correcoes pos-review e suporte a multi-source no BaseExplorer.

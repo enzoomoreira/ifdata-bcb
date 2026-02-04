@@ -3,6 +3,7 @@ from typing import Literal, Optional
 import pandas as pd
 
 from ifdata_bcb.core.base_explorer import BaseExplorer
+from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
@@ -19,7 +20,6 @@ _EMPTY_COLUMNS = [
     "INSTITUICAO",
     "ESCOPO",
     "DOCUMENTO",
-    "COD_CONTA",
     "CONTA",
     "VALOR",
 ]
@@ -35,10 +35,12 @@ class COSIFExplorer(BaseExplorer):
     _COLUMN_MAP = {
         "DATA_BASE": "DATA",
         "NOME_INSTITUICAO": "INSTITUICAO",
-        "CONTA": "COD_CONTA",
         "NOME_CONTA": "CONTA",
         "SALDO": "VALOR",
     }
+
+    # Colunas a remover do resultado final
+    _DROP_COLUMNS = ["CONTA"]  # Codigo da conta (storage name)
 
     _COLUMN_ORDER = [
         "DATA",
@@ -46,14 +48,19 @@ class COSIFExplorer(BaseExplorer):
         "INSTITUICAO",
         "ESCOPO",
         "DOCUMENTO",
-        "COD_CONTA",
         "CONTA",
         "VALOR",
     ]
 
     _ESCOPOS: dict[str, dict[str, str]] = {
-        "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
-        "prudencial": {"subdir": "cosif/prudencial", "prefix": "cosif_prud"},
+        "individual": {
+            "subdir": get_subdir("cosif_individual"),
+            "prefix": DATA_SOURCES["cosif_individual"]["prefix"],
+        },
+        "prudencial": {
+            "subdir": get_subdir("cosif_prudencial"),
+            "prefix": DATA_SOURCES["cosif_prudencial"]["prefix"],
+        },
     }
 
     def __init__(
@@ -90,6 +97,19 @@ class COSIFExplorer(BaseExplorer):
         existing = [c for c in self._COLUMN_ORDER if c in df.columns]
         remaining = [c for c in df.columns if c not in existing]
         return df[existing + remaining]
+
+    def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove colunas internas, aplica mapeamento e reordena."""
+        if df.empty:
+            return df
+        # Remove colunas internas antes do mapeamento
+        drop_cols = [c for c in self._DROP_COLUMNS if c in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+        # Aplica processamento padrao (rename, conversao de DATA)
+        df = super()._finalize_read(df)
+        # Reordena colunas apos rename
+        return self._reorder_columns(df)
 
     def _read_single_scope(
         self,
@@ -235,7 +255,6 @@ class COSIFExplorer(BaseExplorer):
             return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
         df = pd.concat(results, ignore_index=True)
-        df = self._reorder_columns(df)
         self._logger.debug(f"COSIF result: {len(df)} rows")
         return self._finalize_read(df)
 

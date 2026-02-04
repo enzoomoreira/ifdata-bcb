@@ -34,10 +34,8 @@ Uso:
 
 # Exceptions (BacenAnalysisError = base para capturar todas)
 from ifdata_bcb.domain.exceptions import (
-    AmbiguousIdentifierError,
     BacenAnalysisError,
     DataUnavailableError,
-    EntityNotFoundError,
 )
 
 # Funcoes de alto nivel
@@ -85,8 +83,6 @@ __all__ = [
     # Funcoes de alto nivel
     "search",
     # Exceptions (BacenAnalysisError = base)
-    "AmbiguousIdentifierError",
     "BacenAnalysisError",
     "DataUnavailableError",
-    "EntityNotFoundError",
 ]

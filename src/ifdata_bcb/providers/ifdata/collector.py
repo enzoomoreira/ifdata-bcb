@@ -6,6 +6,7 @@ from typing import Optional
 import pandas as pd
 import requests
 
+from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP, get_subdir
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
@@ -22,10 +23,10 @@ class IFDATAValoresCollector(BaseCollector):
         super().__init__(data_manager)
 
     def _get_file_prefix(self) -> str:
-        return "ifdata_val"
+        return DATA_SOURCES["ifdata_valores"]["prefix"]
 
     def _get_subdir(self) -> str:
-        return "ifdata/valores"
+        return get_subdir("ifdata_valores")
 
     @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path) -> bool:
@@ -37,7 +38,7 @@ class IFDATAValoresCollector(BaseCollector):
     def _download_period(self, period: int) -> Optional[Path]:
         """Baixa 3 tipos de instituicao em paralelo."""
         temp_dir = Path(tempfile.mkdtemp(prefix=f"ifdata_val_{period}_"))
-        tipos_inst = [1, 2, 3]
+        tipos_inst = list(TIPO_INST_MAP.values())
         downloaded = []
 
         def download_tipo(tipo: int) -> Optional[Path]:
@@ -124,10 +125,10 @@ class IFDATACadastroCollector(BaseCollector):
         super().__init__(data_manager)
 
     def _get_file_prefix(self) -> str:
-        return "ifdata_cad"
+        return DATA_SOURCES["cadastro"]["prefix"]
 
     def _get_subdir(self) -> str:
-        return "ifdata/cadastro"
+        return get_subdir("cadastro")
 
     @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path) -> bool:

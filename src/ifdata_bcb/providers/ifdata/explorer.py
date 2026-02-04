@@ -3,6 +3,7 @@ from typing import Literal, Optional
 import pandas as pd
 
 from ifdata_bcb.core.base_explorer import BaseExplorer
+from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import BacenAnalysisError
 from ifdata_bcb.domain.models import ScopeResolution
@@ -20,8 +21,6 @@ _EMPTY_COLUMNS = [
     "INSTITUICAO",
     "ESCOPO",
     "COD_INST",
-    "TIPO_INST",
-    "COD_CONTA",
     "CONTA",
     "VALOR",
     "RELATORIO",
@@ -39,13 +38,14 @@ class IFDATAExplorer(BaseExplorer):
     _COLUMN_MAP = {
         "AnoMes": "DATA",
         "CodInst": "COD_INST",
-        "TipoInstituicao": "TIPO_INST",
-        "Conta": "COD_CONTA",
         "NomeColuna": "CONTA",
         "Saldo": "VALOR",
         "NomeRelatorio": "RELATORIO",
         "Grupo": "GRUPO",
     }
+
+    # Colunas a remover do resultado final
+    _DROP_COLUMNS = ["TipoInstituicao", "Conta"]
 
     _COLUMN_ORDER = [
         "DATA",
@@ -53,8 +53,6 @@ class IFDATAExplorer(BaseExplorer):
         "INSTITUICAO",
         "ESCOPO",
         "COD_INST",
-        "TIPO_INST",
-        "COD_CONTA",
         "CONTA",
         "VALOR",
         "RELATORIO",
@@ -70,10 +68,10 @@ class IFDATAExplorer(BaseExplorer):
         self._collector: Optional[IFDATAValoresCollector] = None
 
     def _get_subdir(self) -> str:
-        return "ifdata/valores"
+        return get_subdir("ifdata_valores")
 
     def _get_file_prefix(self) -> str:
-        return "ifdata_val"
+        return DATA_SOURCES["ifdata_valores"]["prefix"]
 
     def _get_collector(self) -> IFDATAValoresCollector:
         if self._collector is None:
@@ -89,6 +87,19 @@ class IFDATAExplorer(BaseExplorer):
         existing = [c for c in self._COLUMN_ORDER if c in df.columns]
         remaining = [c for c in df.columns if c not in existing]
         return df[existing + remaining]
+
+    def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove colunas internas, aplica mapeamento e reordena."""
+        if df.empty:
+            return df
+        # Remove colunas internas antes do mapeamento
+        drop_cols = [c for c in self._DROP_COLUMNS if c in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+        # Aplica processamento padrao (rename, conversao de DATA)
+        df = super()._finalize_read(df)
+        # Reordena colunas apos rename
+        return self._reorder_columns(df)
 
     def _add_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """Adiciona coluna INSTITUICAO a partir de CNPJ_8."""
@@ -161,10 +172,10 @@ class IFDATAExplorer(BaseExplorer):
         tipo_inst = resolutions[0].tipo_inst
         codes = list(set(r.cod_inst for r in resolutions))
 
-        # Construir WHERE
+        # Construir WHERE (nomes de storage)
         conditions = [
-            self._build_string_condition(self._storage_col("COD_INST"), codes),
-            self._build_int_condition(self._storage_col("TIPO_INST"), [tipo_inst]),
+            self._build_string_condition("CodInst", codes),
+            self._build_int_condition("TipoInstituicao", [tipo_inst]),
             self._build_date_condition(start, end, trimestral=True),
         ]
 
@@ -242,7 +253,6 @@ class IFDATAExplorer(BaseExplorer):
 
         df = pd.concat(results, ignore_index=True)
         df = self._add_institution_names(df)
-        df = self._reorder_columns(df)
         self._logger.debug(f"IFDATA result: {len(df)} rows")
         return self._finalize_read(df)
 
@@ -268,7 +278,7 @@ class IFDATAExplorer(BaseExplorer):
             conditions.append(f"UPPER(NomeColuna) LIKE '%{termo_clean}%'")
 
         if escopo:
-            tipo_inst = {"individual": 3, "prudencial": 1, "financeiro": 2}[escopo]
+            tipo_inst = TIPO_INST_MAP[escopo]
             conditions.append(f"TipoInstituicao = {tipo_inst}")
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -306,13 +316,13 @@ class IFDATAExplorer(BaseExplorer):
         df = self._qe.sql(query)
 
         if not df.empty:
-            mask = df["TIPO_INST"] == 3
+            mask = df["TIPO_INST"] == TIPO_INST_MAP["individual"]
             cnpjs = df.loc[mask, "COD_INST"].tolist()
             if cnpjs:
                 nomes = self._resolver.get_names_for_cnpjs(cnpjs)
 
                 def get_nome(row):
-                    if row["TIPO_INST"] == 3:
+                    if row["TIPO_INST"] == TIPO_INST_MAP["individual"]:
                         return nomes.get(row["COD_INST"], "")
                     return ""
 

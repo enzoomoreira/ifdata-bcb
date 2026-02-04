@@ -64,8 +64,6 @@ class _ProgressBar(Iterator[T]):
             MofNCompleteColumn(),
             TaskProgressColumn(),
             TimeElapsedColumn(),
-            TextColumn("/"),
-            TimeRemainingColumn(elapsed_when_finished=True),
             console=display._console,
             disable=not verbose,
             transient=not leave and not is_jupyter,
