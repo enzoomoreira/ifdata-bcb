@@ -414,9 +414,14 @@ class IFDATAExplorer(BaseExplorer):
         columns: Optional[list[str]] = None,
         escopo: Optional[EscopoIFDATA] = None,
         relatorio: Optional[str] = None,
+        cadastro: Optional[list[str]] = None,
     ) -> pd.DataFrame:
         """
         Le dados IFDATA Valores com filtros.
+
+        Args:
+            cadastro: Colunas cadastrais para enriquecer o resultado
+                (ex: ["TCB", "SEGMENTO"]). Se None, nao enriquece.
 
         Raises:
             MissingRequiredParameterError: Se instituicao ou start nao fornecidos.
@@ -445,7 +450,12 @@ class IFDATAExplorer(BaseExplorer):
         df = pd.concat(results, ignore_index=True)
         df = self._add_institution_names(df)
         self._logger.debug(f"IFDATA result: {len(df)} rows")
-        return self._finalize_read(df)
+        df = self._finalize_read(df)
+
+        if cadastro is not None:
+            df = self._enrich_with_cadastro(df, cadastro)
+
+        return df
 
     def list_accounts(
         self,

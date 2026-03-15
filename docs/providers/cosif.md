@@ -106,7 +106,8 @@ bcb.cosif.read(
     end: str | None = None,                 # Data final para range
     conta: str | list[str] | None = None,   # Nome(s) da(s) conta(s) (case-insensitive)
     escopo: str | None = None,              # 'individual', 'prudencial', ou None (TODOS)
-    columns: list[str] | None = None        # Colunas especificas
+    columns: list[str] | None = None,       # Colunas especificas
+    cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
 ```
 
@@ -244,6 +245,26 @@ info = bcb.cosif.describe()
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial) |
 | `CONTA` | str | Nome/descricao da conta |
 | `VALOR` | float | Valor em reais |
+
+### Enriquecimento Cadastral
+
+O parametro `cadastro` permite adicionar colunas do cadastro diretamente no resultado, sem precisar fazer merge manual:
+
+```python
+# Adicionar segmento e UF a cada linha
+df = bcb.cosif.read(
+    instituicao=['60872504', '60746948'],
+    start='2024-01',
+    end='2024-12',
+    escopo='prudencial',
+    cadastro=['SEGMENTO', 'UF', 'TCB']
+)
+# Resultado inclui colunas SEGMENTO, UF e TCB
+```
+
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`.
+
+Para dados mensais (COSIF), o alinhamento temporal e automatico: cada mes recebe os atributos cadastrais do trimestre mais recente.
 
 ## Exemplos Avancados
 

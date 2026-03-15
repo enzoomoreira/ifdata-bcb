@@ -53,6 +53,15 @@ df = bcb.ifdata.read(
     conta='Lucro Liquido'
 )
 
+# Enriquecer com dados cadastrais inline
+df = bcb.ifdata.read(
+    instituicao='60872504',
+    start='2024-01',
+    end='2024-12',
+    escopo='prudencial',
+    cadastro=['TCB', 'SEGMENTO']
+)
+
 # Cadastro
 info = bcb.cadastro.info('60872504', start='2024-12')
 

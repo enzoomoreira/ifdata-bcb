@@ -244,9 +244,14 @@ class COSIFExplorer(BaseExplorer):
         conta: Optional[AccountInput] = None,
         escopo: Optional[EscopoCOSIF] = None,
         columns: Optional[list[str]] = None,
+        cadastro: Optional[list[str]] = None,
     ) -> pd.DataFrame:
         """
         Le dados COSIF com filtros.
+
+        Args:
+            cadastro: Colunas cadastrais para enriquecer o resultado
+                (ex: ["TCB", "SEGMENTO"]). Se None, nao enriquece.
 
         Raises:
             MissingRequiredParameterError: Se instituicao ou start nao fornecidos.
@@ -273,7 +278,12 @@ class COSIFExplorer(BaseExplorer):
         df = pd.concat(results, ignore_index=True)
         self._logger.debug(f"COSIF result: {len(df)} rows")
         df = self._finalize_read(df)
-        return self._apply_canonical_institution_names(df)
+        df = self._apply_canonical_institution_names(df)
+
+        if cadastro is not None:
+            df = self._enrich_with_cadastro(df, cadastro)
+
+        return df
 
     def list_accounts(
         self,

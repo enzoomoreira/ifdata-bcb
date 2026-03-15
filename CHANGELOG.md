@@ -1,5 +1,15 @@
 # Project Changelog
 
+## [2026-03-15 02:12]
+
+### Added
+- Parametro `cadastro` em `cosif.read()` e `ifdata.read()` para enriquecer dados financeiros com atributos cadastrais inline (ex: `cadastro=["TCB", "SEGMENTO", "UF"]`)
+  - Elimina o pattern manual de ler cadastro separado e fazer merge por CNPJ
+  - Alinhamento temporal automatico: dados mensais COSIF recebem cadastro do trimestre mais recente via `merge_asof` backward-looking
+  - Dados trimestrais IFDATA fazem merge exato por DATA + CNPJ_8
+  - Colunas cadastrais invalidas levantam `InvalidScopeError` (consistente com hierarquia de excecoes da lib)
+- `openpyxl` como dev dependency para exportacao Excel em scripts
+
 ## [2026-03-13 19:48]
 
 Refatoracao significativa focada em validacao com Pydantic, configuracao centralizada, e melhoria da resolucao de entidades no IFDATA.

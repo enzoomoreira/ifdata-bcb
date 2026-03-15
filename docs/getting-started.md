@@ -313,6 +313,27 @@ bcb.cadastro.list_segmentos()
 bcb.cadastro.list_ufs()
 ```
 
+### Enriquecimento Cadastral Inline
+
+Em vez de consultar cadastro separadamente e fazer merge manual, use o parametro `cadastro` em `cosif.read()` ou `ifdata.read()`:
+
+```python
+# Sem cadastro inline (3 passos)
+df = bcb.ifdata.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df_cad = bcb.cadastro.read(instituicao='60872504', start='2024-12')
+df = df.merge(df_cad[['CNPJ_8', 'TCB', 'SEGMENTO']], on='CNPJ_8', how='left')
+
+# Com cadastro inline (1 passo)
+df = bcb.ifdata.read(
+    instituicao='60872504',
+    start='2024-12',
+    escopo='prudencial',
+    cadastro=['TCB', 'SEGMENTO']
+)
+```
+
+O alinhamento temporal e automatico: para dados mensais (COSIF), cada mes recebe os atributos do trimestre mais recente.
+
 ### Consultas SQL com DuckDB
 
 Para analises mais complexas, use o `QueryEngine` diretamente:

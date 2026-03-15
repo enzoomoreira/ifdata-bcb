@@ -78,7 +78,8 @@ bcb.ifdata.read(
     conta: str | list[str] | None = None,   # Nome(s) da(s) conta(s) (case-insensitive)
     columns: list[str] | None = None,       # Colunas especificas
     escopo: str | None = None,              # 'individual', 'prudencial', 'financeiro', ou None
-    relatorio: str | None = None            # Nome do relatorio para filtrar
+    relatorio: str | None = None,           # Nome do relatorio para filtrar
+    cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
 ```
 
@@ -284,6 +285,24 @@ Indica a origem dos dados:
 ### Sobre GRUPO
 
 Agrupamento logico das contas para navegacao hierarquica.
+
+### Enriquecimento Cadastral
+
+O parametro `cadastro` permite adicionar colunas do cadastro diretamente no resultado, sem precisar fazer merge manual:
+
+```python
+# Adicionar tipo de banco e segmento
+df = bcb.ifdata.read(
+    instituicao=['60872504', '60746948'],
+    start='2024-03',
+    end='2024-12',
+    escopo='prudencial',
+    cadastro=['TCB', 'TC', 'SEGMENTO']
+)
+# Resultado inclui colunas TCB, TC e SEGMENTO
+```
+
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`.
 
 ## Exemplos Avancados
 
