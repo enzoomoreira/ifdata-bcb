@@ -40,28 +40,40 @@ def _make_cadastro_df() -> pd.DataFrame:
     """Cria DataFrame amostral de cadastro com entidades reais e alias."""
     return pd.DataFrame(
         {
-            "Data": pd.array([202303, 202303, 202303, 202306, 202306], dtype="Int64"),
+            "Data": pd.array(
+                [202303, 202303, 202303, 202306, 202306, 202306], dtype="Int64"
+            ),
             "CodInst": [
                 BANCO_A_CNPJ,
                 BANCO_B_CNPJ,
                 "PRUD_ALIAS",
                 BANCO_A_CNPJ,
                 BANCO_B_CNPJ,
+                "11111111",
             ],
-            "CNPJ_8": [BANCO_A_CNPJ, BANCO_B_CNPJ, None, BANCO_A_CNPJ, BANCO_B_CNPJ],
+            "CNPJ_8": [
+                BANCO_A_CNPJ,
+                BANCO_B_CNPJ,
+                None,
+                BANCO_A_CNPJ,
+                BANCO_B_CNPJ,
+                "11111111",
+            ],
             "NomeInstituicao": [
                 "BANCO ALFA S.A.",
                 "BANCO BETA S.A.",
                 "CONGL PRUDENCIAL ALFA",
                 "BANCO ALFA S.A.",
                 "BANCO BETA S.A.",
+                "BANCO INATIVO S.A.",
             ],
-            "SegmentoTb": ["S1", "S2", None, "S1", "S2"],
+            "SegmentoTb": ["S1", "S2", None, "S1", "S2", "S3"],
             "CodConglomeradoPrudencial": [
                 COD_CONGL_PRUD,
                 None,
                 COD_CONGL_PRUD,
                 COD_CONGL_PRUD,
+                None,
                 None,
             ],
             "CodConglomeradoFinanceiro": [
@@ -70,6 +82,7 @@ def _make_cadastro_df() -> pd.DataFrame:
                 COD_CONGL_FIN,
                 COD_CONGL_FIN,
                 None,
+                None,
             ],
             "CNPJ_LIDER_8": [
                 LIDER_CNPJ,
@@ -77,27 +90,30 @@ def _make_cadastro_df() -> pd.DataFrame:
                 LIDER_CNPJ,
                 LIDER_CNPJ,
                 None,
+                None,
             ],
-            "Situacao": ["A", "A", None, "A", "A"],
-            "Atividade": ["001", "002", None, "001", "002"],
-            "Tcb": ["0001", "0002", None, "0001", "0002"],
-            "Td": ["01", "02", None, "01", "02"],
-            "Tc": ["1", "2", None, "1", "2"],
-            "Uf": ["SP", "RJ", None, "SP", "RJ"],
+            "Situacao": ["A", "A", None, "A", "A", "I"],
+            "Atividade": ["001", "002", None, "001", "002", "003"],
+            "Tcb": ["0001", "0002", None, "0001", "0002", "0003"],
+            "Td": ["01", "02", None, "01", "02", "03"],
+            "Tc": ["1", "2", None, "1", "2", "3"],
+            "Uf": ["SP", "RJ", None, "SP", "RJ", "MG"],
             "Municipio": [
                 "Sao Paulo",
                 "Rio de Janeiro",
                 None,
                 "Sao Paulo",
                 "Rio de Janeiro",
+                "Belo Horizonte",
             ],
-            "Sr": ["01", "02", None, "01", "02"],
+            "Sr": ["01", "02", None, "01", "02", "03"],
             "DataInicioAtividade": [
                 "19900101",
                 "19950601",
                 None,
                 "19900101",
                 "19950601",
+                "20100101",
             ],
         }
     )

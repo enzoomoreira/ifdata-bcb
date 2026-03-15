@@ -1,5 +1,29 @@
 # Project Changelog
 
+## [2026-03-15 16:51]
+
+### Added
+- Validacao de cutoff dates por fonte: periodos anteriores ao primeiro disponivel no BCB sao filtrados automaticamente, evitando centenas de requests 404 com retry desnecessarios
+  - Registry `FIRST_AVAILABLE_PERIOD` com datas empiricas: COSIF Individual >=199501, COSIF Prudencial >=201407, IFDATA Valores >=200303, Cadastro >=200503
+  - `_filter_by_availability()` no BaseCollector integrado ao `_generate_periods()`
+- Colunas `COD_CONTA` e `DOCUMENTO` agora expostas no COSIF (antes eram dropadas internamente)
+- Coluna `COD_CONTA` exposta no IFDATA Valores
+- Filtro por codigo de conta (numerico) alem de nome em `cosif.read(conta=)` e `ifdata.read(conta=)`
+- Parametro `documento` em `cosif.read()` para filtrar por tipo de documento (balancete/semestral)
+- Parametro `situacao` em `cadastro.read()` para filtrar por situacao da instituicao (A/I)
+- Parametro `relatorio` em `ifdata.list_accounts()` para filtrar contas por relatorio
+- Colunas `RELATORIO` e `GRUPO` retornadas por `ifdata.list_accounts()`
+- Suite de testes para providers: `test_resilience.py` (retry/backoff), `test_cosif_collector.py` (parse CSV COSIF), `test_ifdata_collector.py` (parse CSV IFDATA)
+- Testes de contrato BCB (`tests/contract/`) com 8 testes de health check dos endpoints reais, marcados `@pytest.mark.contract` e excluidos do CI
+
+### Changed
+- `AccountList` validator agora aceita inputs nao-iteraveis (converte para string)
+- Fuzzy matching: threshold de sugestao ajustado de 70 para 78 para reduzir falsos positivos
+- `ifdata.list_accounts()` retorna resultados ordenados por RELATORIO, GRUPO, CONTA
+
+### Fixed
+- Coleta de periodos anteriores a disponibilidade da fonte no BCB gerava centenas de requests 404 com retries exponenciais, tornando coletas com range amplo extremamente lentas
+
 ## [2026-03-15 13:51]
 
 ### Added

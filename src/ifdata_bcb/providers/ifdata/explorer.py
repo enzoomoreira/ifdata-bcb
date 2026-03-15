@@ -28,12 +28,13 @@ _EMPTY_COLUMNS = [
     "INSTITUICAO",
     "ESCOPO",
     "COD_INST",
+    "COD_CONTA",
     "CONTA",
     "VALOR",
     "RELATORIO",
     "GRUPO",
 ]
-_EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
+_EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
 _EMPTY_INSTITUTION_COLUMNS = [
     "CNPJ_8",
     "INSTITUICAO",
@@ -65,13 +66,14 @@ class IFDATAExplorer(BaseExplorer):
         "AnoMes": "DATA",
         "CodInst": "COD_INST",
         "NomeColuna": "CONTA",
+        "Conta": "COD_CONTA",
         "Saldo": "VALOR",
         "NomeRelatorio": "RELATORIO",
         "Grupo": "GRUPO",
     }
 
     # Colunas a remover do resultado final
-    _DROP_COLUMNS = ["TipoInstituicao", "Conta"]
+    _DROP_COLUMNS = ["TipoInstituicao"]
 
     _COLUMN_ORDER = [
         "DATA",
@@ -79,6 +81,7 @@ class IFDATAExplorer(BaseExplorer):
         "INSTITUICAO",
         "ESCOPO",
         "COD_INST",
+        "COD_CONTA",
         "CONTA",
         "VALOR",
         "RELATORIO",
@@ -356,11 +359,10 @@ class IFDATAExplorer(BaseExplorer):
             contas = self._normalize_accounts(conta)
             if contas:
                 conditions.append(
-                    self._build_string_condition(
+                    self._build_account_condition(
                         self._storage_col("CONTA"),
+                        self._storage_col("COD_CONTA"),
                         contas,
-                        case_insensitive=True,
-                        accent_insensitive=True,
                     )
                 )
 
@@ -462,6 +464,7 @@ class IFDATAExplorer(BaseExplorer):
         self,
         termo: str | None = None,
         escopo: EscopoIFDATA | None = None,
+        relatorio: str | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """
@@ -488,13 +491,22 @@ class IFDATAExplorer(BaseExplorer):
             tipo_inst = TIPO_INST_MAP[self._validate_escopo(escopo)]
             conditions.append(f"TipoInstituicao = {tipo_inst}")
 
+        if relatorio:
+            relatorio_clean = normalize_accents(
+                relatorio.strip().replace("'", "''")
+            ).upper()
+            conditions.append(
+                f"strip_accents(UPPER(NomeRelatorio)) LIKE '%{relatorio_clean}%'"
+            )
+
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         query = f"""
-            SELECT DISTINCT Conta as COD_CONTA, NomeColuna as CONTA
+            SELECT DISTINCT Conta as COD_CONTA, NomeColuna as CONTA,
+                            NomeRelatorio as RELATORIO, Grupo as GRUPO
             FROM '{path}'
             {where}
-            ORDER BY CONTA, COD_CONTA
+            ORDER BY RELATORIO, GRUPO, CONTA, COD_CONTA
             LIMIT {limit}
         """
         return self._qe.sql(query)

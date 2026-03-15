@@ -52,6 +52,19 @@ DATA_SOURCES: dict[str, dict[str, str]] = {
 }
 ```
 
+### FIRST_AVAILABLE_PERIOD
+
+Primeiro periodo disponivel por fonte (YYYYMM). Periodos anteriores retornam 404 no BCB:
+
+```python
+FIRST_AVAILABLE_PERIOD: dict[str, int] = {
+    "cosif_individual": 199501,
+    "cosif_prudencial": 201407,
+    "ifdata_valores": 200303,
+    "cadastro": 200503,
+}
+```
+
 ### Funcoes Auxiliares
 
 ```python
@@ -62,6 +75,14 @@ def get_pattern(source: str) -> str:
 def get_subdir(source: str) -> str:
     """Retorna subdiretorio da fonte."""
     # get_subdir("cosif_individual") -> "cosif/individual"
+
+def get_source_key(prefix: str) -> str | None:
+    """Reverse lookup: prefix -> source key."""
+    # get_source_key("cosif_ind") -> "cosif_individual"
+
+def get_first_available(prefix: str) -> int | None:
+    """Retorna primeiro periodo disponivel para um prefix."""
+    # get_first_available("cosif_prud") -> 201407
 ```
 
 ---
@@ -89,14 +110,15 @@ class COSIFExplorer(BaseExplorer):
         "DATA_BASE": "DATA",
         "NOME_INSTITUICAO": "INSTITUICAO",
         "NOME_CONTA": "CONTA",
+        "CONTA": "COD_CONTA",
         "SALDO": "VALOR",
     }
 
-    # Colunas a remover do resultado
-    _DROP_COLUMNS = ["CONTA", "DOCUMENTO"]
+    # Colunas a remover do resultado (vazio para COSIF, que expoe todas)
+    _DROP_COLUMNS: list[str] = []
 
     # Ordem das colunas no resultado
-    _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "ESCOPO", ...]
+    _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "ESCOPO", "COD_CONTA", "CONTA", ...]
 ```
 
 ### Construtor
@@ -470,7 +492,7 @@ def __init__(
     self,
     query_engine: QueryEngine | None = None,
     fuzzy_threshold_auto: int = 85,
-    fuzzy_threshold_suggest: int = 70,
+    fuzzy_threshold_suggest: int = 78,
 ):
     self._qe = query_engine or QueryEngine()
     self._fuzzy = FuzzyMatcher(
@@ -480,7 +502,7 @@ def __init__(
 ```
 
 - `threshold_auto`: Score >= 85 aceita automaticamente
-- `threshold_suggest`: Score >= 70 aparece em sugestoes
+- `threshold_suggest`: Score >= 78 aparece em sugestoes
 
 ### search()
 

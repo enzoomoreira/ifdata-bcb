@@ -96,6 +96,7 @@ collect(start, end)
     |
     +-- _generate_periods(start, end)
     |   +-- generate_month_range() ou generate_quarter_range()
+    |   +-- _filter_by_availability()  # Remove periodos antes do cutoff
     |   --> [202401, 202402, ..., 202412]
     |
     +-- _get_missing_periods() (se force=False)
@@ -218,10 +219,11 @@ class COSIFExplorer(BaseExplorer):
         "DATA_BASE": "DATA",
         "NOME_INSTITUICAO": "INSTITUICAO",
         "NOME_CONTA": "CONTA",
+        "CONTA": "COD_CONTA",
         "SALDO": "VALOR",
     }
 
-    _DROP_COLUMNS = ["CONTA", "DOCUMENTO"]
+    _DROP_COLUMNS: list[str] = []
 
     _ESCOPOS = {
         "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
@@ -242,6 +244,7 @@ class COSIFExplorer(BaseExplorer):
         conta: AccountInput | None = None,
         escopo: Literal["individual", "prudencial"] | None = None,
         columns: list[str] | None = None,
+        documento: str | list[str] | None = None,
         cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
@@ -274,6 +277,7 @@ class COSIFExplorer(BaseExplorer):
 | ESCOPO | "individual" ou "prudencial" |
 | COD_CONTA | Codigo da conta COSIF |
 | CONTA | Nome da conta |
+| DOCUMENTO | Tipo de documento |
 | VALOR | Saldo em reais |
 
 ---
@@ -344,6 +348,7 @@ class IFDATAExplorer(BaseExplorer):
         "AnoMes": "DATA",
         "CodInst": "COD_INST",
         "NomeColuna": "CONTA",
+        "Conta": "COD_CONTA",
         "Saldo": "VALOR",
         "NomeRelatorio": "RELATORIO",
         "Grupo": "GRUPO",
@@ -427,6 +432,7 @@ Lista chaves operacionais de reporte por entidade e escopo:
 | INSTITUICAO | Nome da instituicao (canônico do cadastro) |
 | ESCOPO | "individual", "prudencial", "financeiro" |
 | COD_INST | Codigo no IFDATA |
+| COD_CONTA | Codigo numerico da conta |
 | CONTA | Nome da conta |
 | VALOR | Saldo em reais |
 | RELATORIO | Ativo, Passivo, DRE, Resumo |
@@ -467,6 +473,7 @@ class CadastroExplorer(BaseExplorer):
         end: str | None = None,
         segmento: str | None = None,
         uf: str | None = None,
+        situacao: str | None = None,
         columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """

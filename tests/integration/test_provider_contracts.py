@@ -31,7 +31,7 @@ def test_ifdata_list_methods_return_empty_when_cache_is_missing(
     reporters = explorer.list_reporters()
 
     assert accounts.empty
-    assert list(accounts.columns) == ["COD_CONTA", "CONTA"]
+    assert list(accounts.columns) == ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
     assert institutions.empty
     assert list(institutions.columns) == [
         "CNPJ_8",

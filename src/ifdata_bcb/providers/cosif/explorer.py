@@ -20,7 +20,9 @@ _EMPTY_COLUMNS = [
     "CNPJ_8",
     "INSTITUICAO",
     "ESCOPO",
+    "COD_CONTA",
     "CONTA",
+    "DOCUMENTO",
     "VALOR",
 ]
 _EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
@@ -40,18 +42,20 @@ class COSIFExplorer(BaseExplorer):
         "DATA_BASE": "DATA",
         "NOME_INSTITUICAO": "INSTITUICAO",
         "NOME_CONTA": "CONTA",
+        "CONTA": "COD_CONTA",
         "SALDO": "VALOR",
     }
 
-    # Colunas a remover do resultado final (internas/redundantes)
-    _DROP_COLUMNS = ["CONTA", "DOCUMENTO"]
+    _DROP_COLUMNS: list[str] = []
 
     _COLUMN_ORDER = [
         "DATA",
         "CNPJ_8",
         "INSTITUICAO",
         "ESCOPO",
+        "COD_CONTA",
         "CONTA",
+        "DOCUMENTO",
         "VALOR",
     ]
 
@@ -100,14 +104,7 @@ class COSIFExplorer(BaseExplorer):
         return df[existing + remaining]
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Remove colunas internas, aplica mapeamento e reordena."""
-        # Remove colunas internas antes do mapeamento
-        drop_cols = [c for c in self._DROP_COLUMNS if c in df.columns]
-        if drop_cols:
-            df = df.drop(columns=drop_cols)
-        # Aplica processamento padrao (rename, conversao de DATA)
         df = super()._finalize_read(df)
-        # Reordena colunas apos rename
         return self._reorder_columns(df)
 
     def _apply_canonical_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -134,8 +131,8 @@ class COSIFExplorer(BaseExplorer):
         end: str | None,
         conta: AccountInput | None,
         columns: list[str] | None,
+        documento: str | list[str] | None = None,
     ) -> pd.DataFrame:
-        """Le dados de um escopo especifico."""
         contas = self._normalize_accounts(conta) if conta else None
 
         conditions = [
@@ -145,13 +142,17 @@ class COSIFExplorer(BaseExplorer):
 
         if contas:
             conditions.append(
-                self._build_string_condition(
+                self._build_account_condition(
                     self._storage_col("CONTA"),
+                    self._storage_col("COD_CONTA"),
                     contas,
-                    case_insensitive=True,
-                    accent_insensitive=True,
                 )
             )
+
+        if documento:
+            docs = [documento] if isinstance(documento, str) else documento
+            docs_int = [int(d) for d in docs]
+            conditions.append(self._build_int_condition("DOCUMENTO", docs_int))
 
         return self._qe.read_glob(
             pattern=self._get_pattern(escopo),
@@ -244,6 +245,7 @@ class COSIFExplorer(BaseExplorer):
         conta: AccountInput | None = None,
         escopo: EscopoCOSIF | None = None,
         columns: list[str] | None = None,
+        documento: str | list[str] | None = None,
         cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
@@ -269,7 +271,9 @@ class COSIFExplorer(BaseExplorer):
 
         results = []
         for esc in escopos:
-            df = self._read_single_scope(esc, instituicao, start, end, conta, columns)
+            df = self._read_single_scope(
+                esc, instituicao, start, end, conta, columns, documento
+            )
             if not df.empty:
                 df = df.copy()
                 df["ESCOPO"] = esc

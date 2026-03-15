@@ -59,6 +59,7 @@ bcb.cadastro.read(
     end: str | None = None,                 # Data final para range
     segmento: str | None = None,            # Segmento para filtrar (accent-insensitive)
     uf: str | None = None,                  # UF para filtrar
+    situacao: str | None = None,            # Situacao para filtrar ('A'=Ativo, 'I'=Inativo)
     columns: list[str] | None = None        # Colunas especificas (aceita nomes de apresentacao)
 ) -> pd.DataFrame
 ```
@@ -68,7 +69,7 @@ bcb.cadastro.read(
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
 
-**Filtros de texto** (`segmento`, `uf`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
+**Filtros de texto** (`segmento`, `uf`, `situacao`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
 
 **Exemplos**:
 
@@ -85,12 +86,16 @@ df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
 # Filtrar por UF
 df = bcb.cadastro.read(instituicao='60872504', start='2024-12', uf='SP')
 
+# Filtrar apenas instituicoes ativas
+df = bcb.cadastro.read(start='2024-12', situacao='A')
+
 # Combinar filtros
 df = bcb.cadastro.read(
     instituicao='60872504',
     start='2024-12',
     segmento='Banco Multiplo',
-    uf='SP'
+    uf='SP',
+    situacao='A'
 )
 ```
 

@@ -43,6 +43,26 @@ class TestIFDATARead:
         assert df.empty
         assert "DATA" in df.columns
 
+    def test_read_includes_cod_conta(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[1].read(
+            instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
+        )
+        assert "COD_CONTA" in df.columns
+
+    def test_read_filters_by_account_code(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[1].read(
+            instituicao=BANCO_A_CNPJ,
+            start="2023-03",
+            conta="10100",
+            escopo="individual",
+        )
+        assert not df.empty
+        assert all(df["COD_CONTA"] == "10100")
+
 
 class TestIFDATAListMethods:
     def test_list_periods(
@@ -54,3 +74,17 @@ class TestIFDATAListMethods:
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         assert explorers[1].has_data() is True
+
+    def test_list_accounts_includes_relatorio_and_grupo(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[1].list_accounts()
+        assert "RELATORIO" in df.columns
+        assert "GRUPO" in df.columns
+
+    def test_list_accounts_filters_by_relatorio(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[1].list_accounts(relatorio="Resumo")
+        assert not df.empty
+        assert all(df["RELATORIO"].str.upper().str.contains("RESUMO"))

@@ -57,4 +57,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = [".git", ".venv", "temp"]
-addopts = "-p no:cacheprovider"
+addopts = "-p no:cacheprovider -m 'not contract'"
+markers = [
+    "contract: testes que fazem requests reais ao BCB (rodar sob demanda)",
+]

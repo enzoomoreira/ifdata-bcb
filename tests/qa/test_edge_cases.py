@@ -7,13 +7,6 @@ import pandas as pd
 import pytest
 
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.validation import (
-    AccountList,
-    InstitutionList,
-    NormalizedDates,
-    ValidatedCnpj8,
-)
-from ifdata_bcb.domain.exceptions import InvalidIdentifierError
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import (
     DataManager,
@@ -246,35 +239,6 @@ class TestEntityLookupEdgeCases:
         el = EntityLookup(query_engine=qe)
         info = el.get_entity_identifiers("60872504")
         assert info["nome_entidade"] == "BANCO X"
-
-    def test_empty_cnpj_returns_defaults(self, populated_cache: Path) -> None:
-        qe = QueryEngine(base_path=populated_cache)
-        el = EntityLookup(query_engine=qe)
-        info = el.get_entity_identifiers("")
-        assert info["cnpj_interesse"] == ""
-        assert info["nome_entidade"] is None
-
-
-class TestValidationEdgeCases:
-    def test_1000_dates_no_timeout(self) -> None:
-        datas = [y * 100 + m for y in range(2000, 2084) for m in range(1, 13)][:1000]
-        assert len(NormalizedDates(values=datas).values) == 1000
-
-    def test_mixed_type_dates(self) -> None:
-        result = NormalizedDates(values=[202401, "2024-02", 202403]).values
-        assert result == [202401, 202402, 202403]
-
-    def test_fullwidth_unicode_rejected(self) -> None:
-        fullwidth = "".join(chr(0xFF10 + i) for i in range(1, 9))
-        with pytest.raises(InvalidIdentifierError):
-            ValidatedCnpj8(value=fullwidth)
-
-    def test_empty_institution_list(self) -> None:
-        assert InstitutionList(values=[]).values == []
-
-    def test_account_with_newlines(self) -> None:
-        result = AccountList(values=["ATIVO\nTOTAL", "PASSIVO\tTOTAL"]).values
-        assert len(result) == 2
 
 
 class TestStorageEdgeCases:

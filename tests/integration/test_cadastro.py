@@ -52,3 +52,10 @@ class TestCadastroRead:
         ufs = explorers[2].list_ufs()
         assert "SP" in ufs
         assert "RJ" in ufs
+
+    def test_read_filters_by_situacao(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[2].read(start="2023-06", situacao="A")
+        assert not df.empty
+        assert "I" not in df["SITUACAO"].values

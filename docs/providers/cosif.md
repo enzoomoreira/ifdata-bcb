@@ -104,9 +104,10 @@ bcb.cosif.read(
     instituicao: str | list[str],           # CNPJ(s) de 8 digitos. OBRIGATORIO
     start: str,                             # Data inicial ou unica. OBRIGATORIO
     end: str | None = None,                 # Data final para range
-    conta: str | list[str] | None = None,   # Nome(s) da(s) conta(s) (case-insensitive)
+    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
     escopo: str | None = None,              # 'individual', 'prudencial', ou None (TODOS)
     columns: list[str] | None = None,       # Colunas especificas
+    documento: str | list[str] | None = None,  # Tipo de documento (ex: balancete, semestral)
     cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
 ```
@@ -145,6 +146,22 @@ df = bcb.cosif.read(
     end='2024-12',
     conta=['TOTAL GERAL DO ATIVO', 'PATRIMONIO LIQUIDO'],
     escopo='prudencial'
+)
+
+# Filtrar por codigo de conta (numerico)
+df = bcb.cosif.read(
+    instituicao='60872504',
+    start='2024-12',
+    conta='10100',
+    escopo='prudencial'
+)
+
+# Filtrar por tipo de documento
+df = bcb.cosif.read(
+    instituicao='60872504',
+    start='2024-12',
+    escopo='prudencial',
+    documento='4060'
 )
 
 # Apenas colunas especificas
@@ -246,7 +263,9 @@ info = bcb.cosif.describe()
 | `CNPJ_8` | str | CNPJ de 8 digitos |
 | `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial) |
+| `COD_CONTA` | str | Codigo numerico da conta COSIF |
 | `CONTA` | str | Nome/descricao da conta |
+| `DOCUMENTO` | int | Tipo de documento (ex: 4060 = balancete) |
 | `VALOR` | float | Valor em reais |
 
 ### Enriquecimento Cadastral
@@ -379,7 +398,9 @@ Colunas originais (armazenadas em Parquet):
 | DATA_BASE | DATA |
 | CNPJ_8 | CNPJ_8 |
 | NOME_INSTITUICAO | INSTITUICAO |
+| CONTA | COD_CONTA |
 | NOME_CONTA | CONTA |
+| DOCUMENTO | DOCUMENTO |
 | SALDO | VALOR |
 
 ## Tratamento de Erros

@@ -79,6 +79,24 @@ class TestCOSIFRead:
         assert "SEGMENTO" in df.columns
         assert "UF" in df.columns
 
+    def test_read_includes_cod_conta_and_documento(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
+
+        assert "COD_CONTA" in df.columns
+        assert "DOCUMENTO" in df.columns
+        assert "10100" in df["COD_CONTA"].astype(str).values
+        assert "20200" in df["COD_CONTA"].astype(str).values
+        assert df["DOCUMENTO"].notna().all()
+
+    def test_read_filters_by_account_code(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03", conta="10100")
+        assert not df.empty
+        assert all(df["COD_CONTA"].astype(str) == "10100")
+
 
 class TestCOSIFListMethods:
     def test_list_periods(

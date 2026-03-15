@@ -26,7 +26,7 @@ class EntityLookup:
         self,
         query_engine: QueryEngine | None = None,
         fuzzy_threshold_auto: int = 85,
-        fuzzy_threshold_suggest: int = 70,
+        fuzzy_threshold_suggest: int = 78,
     ):
         self._qe = query_engine or QueryEngine()
         self._logger = get_logger(__name__)

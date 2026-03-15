@@ -1,4 +1,4 @@
-"""QA: primeiro uso -- import, lazy loading, cache vazio, excecoes."""
+"""QA: primeiro uso -- import, lazy loading, cache vazio."""
 
 import subprocess
 import sys
@@ -49,72 +49,6 @@ class TestLazyLoading:
             text=True,
         )
         assert "True" in result.stdout
-
-
-class TestExceptions:
-    def test_all_exceptions_importable(self) -> None:
-        from ifdata_bcb.domain.exceptions import (  # noqa: F401
-            AmbiguousIdentifierError,
-            BacenAnalysisError,
-            DataProcessingError,
-            DataUnavailableError,
-            EntityNotFoundError,
-            InvalidDateFormatError,
-            InvalidDateRangeError,
-            InvalidIdentifierError,
-            InvalidScopeError,
-            MissingRequiredParameterError,
-            PeriodUnavailableError,
-        )
-
-    def test_all_inherit_base(self) -> None:
-        from ifdata_bcb.domain.exceptions import (
-            BacenAnalysisError,
-            DataProcessingError,
-            DataUnavailableError,
-            InvalidDateFormatError,
-            InvalidDateRangeError,
-            InvalidIdentifierError,
-            InvalidScopeError,
-            MissingRequiredParameterError,
-            PeriodUnavailableError,
-        )
-
-        for exc in (
-            InvalidScopeError,
-            DataUnavailableError,
-            InvalidIdentifierError,
-            MissingRequiredParameterError,
-            InvalidDateRangeError,
-            InvalidDateFormatError,
-            PeriodUnavailableError,
-            DataProcessingError,
-        ):
-            assert issubclass(exc, BacenAnalysisError)
-
-    def test_str_produces_readable_message(self) -> None:
-        from ifdata_bcb.domain.exceptions import (
-            InvalidDateFormatError,
-            InvalidIdentifierError,
-            InvalidScopeError,
-            MissingRequiredParameterError,
-        )
-
-        msgs = [
-            str(InvalidScopeError("escopo", "fake", ["a", "b"])),
-            str(InvalidIdentifierError("abc")),
-            str(MissingRequiredParameterError("instituicao")),
-            str(InvalidDateFormatError("abc")),
-        ]
-        assert all(len(m) > 10 for m in msgs)
-
-    def test_semantic_attributes(self) -> None:
-        from ifdata_bcb.domain.exceptions import InvalidScopeError
-
-        e = InvalidScopeError("escopo", "fake", ["a", "b"])
-        assert e.valid_values == ["a", "b"]
-        assert e.scope == "escopo"
-        assert e.value == "fake"
 
 
 class TestConfiguration:

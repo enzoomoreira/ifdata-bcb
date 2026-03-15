@@ -124,8 +124,26 @@ class BaseCollector(ABC):
 
     def _generate_periods(self, start: str, end: str) -> list[int]:
         if self._PERIOD_TYPE == "quarterly":
-            return generate_quarter_range(start, end)
-        return generate_month_range(start, end)
+            periods = generate_quarter_range(start, end)
+        else:
+            periods = generate_month_range(start, end)
+        return self._filter_by_availability(periods)
+
+    def _filter_by_availability(self, periods: list[int]) -> list[int]:
+        """Remove periodos anteriores ao primeiro disponivel na fonte."""
+        from ifdata_bcb.core.constants import get_first_available
+
+        first = get_first_available(self._get_file_prefix())
+        if first is None:
+            return periods
+        filtered = [p for p in periods if p >= first]
+        n_skipped = len(periods) - len(filtered)
+        if n_skipped > 0:
+            self.logger.info(
+                f"{n_skipped} periodo(s) anterior(es) a {first} ignorados "
+                f"(fonte indisponivel antes desta data)"
+            )
+        return filtered
 
     def _get_missing_periods(self, start: str, end: str) -> list[int]:
         all_periods = self._generate_periods(start, end)

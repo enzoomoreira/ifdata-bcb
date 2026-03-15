@@ -5,7 +5,7 @@ class FuzzyMatcher:
     def __init__(
         self,
         threshold_auto: int = 85,
-        threshold_suggest: int = 70,
+        threshold_suggest: int = 78,
     ):
         self.threshold_auto = threshold_auto
         self.threshold_suggest = threshold_suggest

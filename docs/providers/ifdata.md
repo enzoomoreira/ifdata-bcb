@@ -75,7 +75,7 @@ bcb.ifdata.read(
     instituicao: str | list[str],           # CNPJ(s) de 8 digitos. OBRIGATORIO
     start: str,                             # Data inicial ou unica. OBRIGATORIO
     end: str | None = None,                 # Data final para range
-    conta: str | list[str] | None = None,   # Nome(s) da(s) conta(s) (case-insensitive)
+    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
     columns: list[str] | None = None,       # Colunas especificas
     escopo: str | None = None,              # 'individual', 'prudencial', 'financeiro', ou None
     relatorio: str | None = None,           # Nome do relatorio para filtrar
@@ -129,11 +129,12 @@ Lista contas disponiveis nos dados.
 bcb.ifdata.list_accounts(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
     escopo: str | None = None,     # 'individual', 'prudencial', 'financeiro'
+    relatorio: str | None = None,  # Filtro por relatorio (case/accent-insensitive)
     limit: int = 100               # Numero maximo de contas
 ) -> pd.DataFrame
 ```
 
-**Retorna**: DataFrame com colunas `COD_CONTA` e `CONTA`.
+**Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA`, `RELATORIO` e `GRUPO`, ordenado por RELATORIO, GRUPO, CONTA.
 
 **Exemplos**:
 
@@ -146,6 +147,9 @@ contas = bcb.ifdata.list_accounts(termo='lucro')
 
 # Listar contas do escopo individual
 contas = bcb.ifdata.list_accounts(escopo='individual', limit=50)
+
+# Filtrar contas por relatorio
+contas = bcb.ifdata.list_accounts(relatorio='Resumo')
 ```
 
 ### list_institutions()
@@ -260,6 +264,7 @@ info = bcb.ifdata.describe()
 | `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial, financeiro) |
 | `COD_INST` | str | Codigo da instituicao no BCB |
+| `COD_CONTA` | str | Codigo numerico da conta |
 | `CONTA` | str | Nome/descricao da conta |
 | `VALOR` | float | Valor em reais |
 | `RELATORIO` | str | Nome do relatorio de origem |
@@ -388,6 +393,7 @@ Mapeamento para colunas de apresentacao:
 |-----------------|----------------|
 | AnoMes | DATA |
 | CodInst | COD_INST |
+| Conta | COD_CONTA |
 | NomeColuna | CONTA |
 | Saldo | VALOR |
 | NomeRelatorio | RELATORIO |

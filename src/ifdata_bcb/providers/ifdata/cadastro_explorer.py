@@ -84,6 +84,7 @@ class CadastroExplorer(BaseExplorer):
         end: str | None = None,
         segmento: str | None = None,
         uf: str | None = None,
+        situacao: str | None = None,
         columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """Le dados cadastrais com filtros. Se start=None, usa ultimo periodo."""
@@ -113,6 +114,16 @@ class CadastroExplorer(BaseExplorer):
                 self._build_string_condition(
                     self._storage_col("UF"),
                     [uf],
+                    case_insensitive=True,
+                    accent_insensitive=True,
+                )
+            )
+
+        if situacao:
+            conditions.append(
+                self._build_string_condition(
+                    self._storage_col("SITUACAO"),
+                    [situacao],
                     case_insensitive=True,
                     accent_insensitive=True,
                 )

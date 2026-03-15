@@ -68,7 +68,9 @@ class AccountList(BaseModel):
     def normalize(cls, v: AccountInput) -> list[str]:
         if isinstance(v, str):
             return [v]
-        return list(v)
+        if not hasattr(v, "__iter__"):
+            return [str(v)]
+        return [str(item) for item in v]
 
 
 __all__ = [

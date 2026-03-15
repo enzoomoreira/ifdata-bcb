@@ -247,6 +247,26 @@ class BaseExplorer(ABC):
         values_str = ", ".join(f"'{v}'" for v in escaped)
         return f"{col_expr} IN ({values_str})"
 
+    def _build_account_condition(
+        self,
+        name_col: str,
+        code_col: str,
+        values: list[str],
+    ) -> str:
+        """Match por nome (accent/case insensitive) OU por codigo (cast to varchar)."""
+        name_cond = self._build_string_condition(
+            name_col,
+            values,
+            case_insensitive=True,
+            accent_insensitive=True,
+        )
+        code_cond = self._build_string_condition(
+            f"CAST({code_col} AS VARCHAR)",
+            values,
+            case_insensitive=True,
+        )
+        return f"({name_cond} OR {code_cond})"
+
     def _translate_columns(self, columns: list[str] | None) -> list[str] | None:
         """Traduz nomes de apresentacao para storage. Aceita ambos."""
         if columns is None:

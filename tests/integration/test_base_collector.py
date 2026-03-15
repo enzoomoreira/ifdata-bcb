@@ -39,6 +39,98 @@ class StubCollector(BaseCollector):
         return self._process_result
 
 
+# =========================================================================
+# Testes: _filter_by_availability (cutoff dates)
+# =========================================================================
+
+
+class TestFilterByAvailability:
+    """Filtragem de periodos anteriores ao primeiro disponivel na fonte."""
+
+    def test_known_prefix_filters_old_periods(self) -> None:
+        """Periodos anteriores ao cutoff sao removidos."""
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+
+        periods = [201301, 201306, 201407, 201412, 201501]
+        result = collector._filter_by_availability(periods)
+
+        assert result == [201407, 201412, 201501]
+
+    def test_known_prefix_keeps_all_when_after_cutoff(self) -> None:
+        """Se todos os periodos sao apos o cutoff, nenhum e removido."""
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+
+        periods = [202001, 202006, 202012]
+        result = collector._filter_by_availability(periods)
+
+        assert result == periods
+
+    def test_unknown_prefix_keeps_all(self) -> None:
+        """Prefix desconhecido nao filtra nada."""
+        collector = StubCollector(download_result=None)
+        # StubCollector retorna "stub" como prefix (nao esta no registry)
+
+        periods = [190001, 200001, 202001]
+        result = collector._filter_by_availability(periods)
+
+        assert result == periods
+
+    def test_empty_input(self) -> None:
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+
+        assert collector._filter_by_availability([]) == []
+
+    def test_all_periods_before_cutoff(self) -> None:
+        """Se todos sao anteriores, retorna lista vazia."""
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+
+        periods = [201301, 201306, 201312]
+        result = collector._filter_by_availability(periods)
+
+        assert result == []
+
+    def test_cutoff_period_itself_is_included(self) -> None:
+        """O proprio periodo de cutoff (>=) deve ser incluido."""
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+
+        result = collector._filter_by_availability([201407])
+        assert result == [201407]
+
+
+class TestGeneratePeriodsWithCutoff:
+    """_generate_periods integra o filtro de availability."""
+
+    def test_monthly_filters_before_cutoff(self) -> None:
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "cosif_prud"  # type: ignore[method-assign]
+        collector._PERIOD_TYPE = "monthly"
+
+        periods = collector._generate_periods("2014-01", "2014-12")
+
+        assert periods[0] == 201407
+        assert len(periods) == 6  # jul-dez
+
+    def test_quarterly_filters_before_cutoff(self) -> None:
+        collector = StubCollector(download_result=None)
+        collector._get_file_prefix = lambda: "ifdata_val"  # type: ignore[method-assign]
+        collector._PERIOD_TYPE = "quarterly"
+
+        periods = collector._generate_periods("2002-01", "2004-12")
+
+        assert periods[0] == 200303
+        assert all(p >= 200303 for p in periods)
+
+
+# =========================================================================
+# Testes: _process_single_period (status classification)
+# =========================================================================
+
+
 def test_process_single_period_marks_unavailable_when_period_is_missing() -> None:
     collector = StubCollector(download_result=PeriodUnavailableError(202412))
 
