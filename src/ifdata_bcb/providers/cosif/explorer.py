@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, cast
 
 import pandas as pd
 
@@ -68,8 +68,8 @@ class COSIFExplorer(BaseExplorer):
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         super().__init__(query_engine, entity_lookup)
 
@@ -131,9 +131,9 @@ class COSIFExplorer(BaseExplorer):
         escopo: EscopoCOSIF,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str],
-        conta: Optional[AccountInput],
-        columns: Optional[list[str]],
+        end: str | None,
+        conta: AccountInput | None,
+        columns: list[str] | None,
     ) -> pd.DataFrame:
         """Le dados de um escopo especifico."""
         contas = self._normalize_accounts(conta) if conta else None
@@ -164,7 +164,7 @@ class COSIFExplorer(BaseExplorer):
         self,
         start: str,
         end: str,
-        escopo: Optional[EscopoCOSIF] = None,
+        escopo: EscopoCOSIF | None = None,
         force: bool = False,
         verbose: bool = True,
     ) -> None:
@@ -240,11 +240,11 @@ class COSIFExplorer(BaseExplorer):
         self,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str] = None,
-        conta: Optional[AccountInput] = None,
-        escopo: Optional[EscopoCOSIF] = None,
-        columns: Optional[list[str]] = None,
-        cadastro: Optional[list[str]] = None,
+        end: str | None = None,
+        conta: AccountInput | None = None,
+        escopo: EscopoCOSIF | None = None,
+        columns: list[str] | None = None,
+        cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados COSIF com filtros.
@@ -261,8 +261,10 @@ class COSIFExplorer(BaseExplorer):
         self._validate_cadastro_columns(cadastro)
         self._logger.debug(f"COSIF read: escopo={escopo}, instituicao={instituicao}")
 
-        escopos = (
-            [self._validate_escopo(escopo)] if escopo else list(self._ESCOPOS.keys())
+        escopos: list[EscopoCOSIF] = (
+            [self._validate_escopo(escopo)]
+            if escopo
+            else cast(list[EscopoCOSIF], list(self._ESCOPOS.keys()))
         )
 
         results = []
@@ -288,8 +290,8 @@ class COSIFExplorer(BaseExplorer):
 
     def list_accounts(
         self,
-        termo: Optional[str] = None,
-        escopo: Optional[EscopoCOSIF] = None,
+        termo: str | None = None,
+        escopo: EscopoCOSIF | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """
@@ -305,7 +307,7 @@ class COSIFExplorer(BaseExplorer):
             return self._list_accounts_single(escopo, termo, limit)
 
         dfs = []
-        for esc in self._ESCOPOS:
+        for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):
             df = self._list_accounts_single(esc, termo, limit)
             if df.empty:
                 continue
@@ -316,7 +318,7 @@ class COSIFExplorer(BaseExplorer):
         return pd.concat(dfs, ignore_index=True)
 
     def _list_accounts_single(
-        self, escopo: EscopoCOSIF, termo: Optional[str], limit: int
+        self, escopo: EscopoCOSIF, termo: str | None, limit: int
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
         if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):
@@ -340,9 +342,9 @@ class COSIFExplorer(BaseExplorer):
 
     def list_institutions(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        escopo: Optional[EscopoCOSIF] = None,
+        start: str | None = None,
+        end: str | None = None,
+        escopo: EscopoCOSIF | None = None,
     ) -> pd.DataFrame:
         """Lista instituicoes disponiveis."""
         if escopo is not None:
@@ -350,7 +352,7 @@ class COSIFExplorer(BaseExplorer):
             return self._list_institutions_single(escopo, start, end)
 
         dfs = []
-        for esc in self._ESCOPOS:
+        for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):
             df = self._list_institutions_single(esc, start, end)
             if df.empty:
                 continue
@@ -363,8 +365,8 @@ class COSIFExplorer(BaseExplorer):
     def _list_institutions_single(
         self,
         escopo: EscopoCOSIF,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
         if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):

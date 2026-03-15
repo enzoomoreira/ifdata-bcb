@@ -1,6 +1,6 @@
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import TypedDict
 
 import pandas as pd
 import requests
@@ -17,6 +17,15 @@ from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 
 
+class _EscopoConfig(TypedDict):
+    url_segment: str
+    file_pattern: str
+    suffixes: list[str]
+    prefix: str
+    subdir: str
+    encoding: str
+
+
 class COSIFCollector(BaseCollector):
     """Collector para dados COSIF (mensal). Escopos: 'individual' ou 'prudencial'."""
 
@@ -24,7 +33,7 @@ class COSIFCollector(BaseCollector):
 
     # Configuracao por escopo
     # Nota: BCB usa encodings diferentes por escopo
-    _CONFIG = {
+    _CONFIG: dict[str, _EscopoConfig] = {
         "individual": {
             "url_segment": "Bancos",
             "file_pattern": "BANCOS",
@@ -50,7 +59,7 @@ class COSIFCollector(BaseCollector):
     def __init__(
         self,
         escopo: str,
-        data_manager: Optional[DataManager] = None,
+        data_manager: DataManager | None = None,
     ):
         escopo = escopo.lower()
         if escopo not in self._CONFIG:
@@ -83,7 +92,7 @@ class COSIFCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """
         Tenta diferentes sufixos ate encontrar um que funcione.
 
@@ -143,9 +152,7 @@ class COSIFCollector(BaseCollector):
 
         return None
 
-    def _process_to_parquet(
-        self, csv_path: Path, period: int
-    ) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSV COSIF para DataFrame."""
         try:
             encoding = self._config["encoding"]

@@ -1,4 +1,5 @@
 """Testes de contrato publico para explorers em cache vazio."""
+
 import pytest
 
 from ifdata_bcb.domain.exceptions import InvalidScopeError

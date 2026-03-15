@@ -118,7 +118,7 @@ bcb.cosif.read(
 - `start` + `end`: gera range mensal automatico
 
 **Raises**:
-- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
+- `TypeError`: Se `instituicao` ou `start` nao fornecidos (argumentos posicionais obrigatorios).
 - `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
@@ -225,13 +225,16 @@ Retorna informacoes sobre os dados disponiveis (herdado de BaseExplorer).
 ```python
 info = bcb.cosif.describe()
 # {
-#     'subdir': 'cosif/individual',
-#     'prefix': 'cosif_ind',
+#     'sources': ['individual', 'prudencial'],
 #     'periods': [202401, 202402, ...],
 #     'period_count': 12,
 #     'has_data': True,
 #     'first_period': 202401,
-#     'last_period': 202412
+#     'last_period': 202412,
+#     'by_source': {
+#         'individual': {'subdir': 'cosif/individual', 'prefix': 'cosif_ind', ...},
+#         'prudencial': {'subdir': 'cosif/prudencial', 'prefix': 'cosif_prud', ...},
+#     }
 # }
 ```
 
@@ -382,16 +385,16 @@ Colunas originais (armazenadas em Parquet):
 ## Tratamento de Erros
 
 ```python
-from ifdata_bcb import (
+from ifdata_bcb.domain.exceptions import (
     MissingRequiredParameterError,
     InvalidDateRangeError,
     InvalidScopeError,
 )
 
-# Erro: parametro obrigatorio ausente
+# Erro: parametro obrigatorio ausente (start e argumento posicional)
 try:
     df = bcb.cosif.read(instituicao='60872504')  # Falta start!
-except MissingRequiredParameterError as e:
+except TypeError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido

@@ -53,11 +53,11 @@ def _get_subdir(self) -> str:
     """Subdiretorio (ex: 'cosif/individual')."""
 
 @abstractmethod
-def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+def _download_period(self, period: int, work_dir: Path) -> Path | None:
     """Baixa dados de um periodo para work_dir. Retorna Path do CSV ou None."""
 
 @abstractmethod
-def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
+def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
     """Processa CSV e retorna DataFrame normalizado."""
 ```
 
@@ -72,7 +72,7 @@ def collect(
     end: str,
     force: bool = False,
     verbose: bool = True,
-    progress_desc: Optional[str] = None,
+    progress_desc: str | None = None,
 ) -> tuple[int, int, int, int]:
     """
     Coleta dados do BCB.
@@ -181,14 +181,14 @@ class COSIFCollector(BaseCollector):
         return f"cosif/{self.escopo}"
 
     @retry(max_attempts=3, delay=2.0)
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """
         URL: https://www4.bcb.gov.br/fis/cosif/balancetes/{YYYYMM}BANCOS.CSV.zip
         Ou para prudencial: {YYYYMM}CONGL.CSV.zip
         """
         # Download para work_dir, extrai ZIP, retorna Path do CSV
 
-    def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """
         - Leitura via DuckDB (ISO-8859-1, separador ';')
         - Adiciona coluna ESCOPO
@@ -238,10 +238,11 @@ class COSIFExplorer(BaseExplorer):
         self,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str] = None,
-        conta: Optional[AccountInput] = None,
-        escopo: Literal["individual", "prudencial"] = "individual",
-        columns: Optional[list[str]] = None,
+        end: str | None = None,
+        conta: AccountInput | None = None,
+        escopo: Literal["individual", "prudencial"] | None = None,
+        columns: list[str] | None = None,
+        cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados COSIF.
@@ -252,7 +253,7 @@ class COSIFExplorer(BaseExplorer):
         self,
         start: str,
         end: str,
-        escopo: Optional[Literal["individual", "prudencial"]] = None,
+        escopo: Literal["individual", "prudencial"] | None = None,
         force: bool = False,
     ):
         """
@@ -295,7 +296,7 @@ class IFDATAValoresCollector(BaseCollector):
     def _get_subdir(self):
         return "ifdata/valores"
 
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """
         URL OData: https://olinda.bcb.gov.br/olinda/servico/IFData/...
         Parametro: AnoMes={YYYYMM}
@@ -352,10 +353,12 @@ class IFDATAExplorer(BaseExplorer):
         self,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str] = None,
-        escopo: Literal["individual", "prudencial", "financeiro"] = "individual",
-        conta: Optional[AccountInput] = None,
-        relatorio: Optional[str] = None,
+        end: str | None = None,
+        conta: AccountInput | None = None,
+        columns: list[str] | None = None,
+        escopo: Literal["individual", "prudencial", "financeiro"] | None = None,
+        relatorio: str | None = None,
+        cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Args:
@@ -459,17 +462,18 @@ class CadastroExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: Optional[InstitutionInput] = None,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        segmento: Optional[str] = None,
-        situacao: Optional[str] = None,
+        instituicao: InstitutionInput | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        segmento: str | None = None,
+        uf: str | None = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Args:
             instituicao: CNPJ de 8 digitos (opcional para listar todas)
             segmento: Filtrar por segmento
-            situacao: "A" (Ativa) ou "I" (Inativa)
+            uf: Filtrar por UF
         """
 
     def info(self, instituicao: str) -> dict:
@@ -522,7 +526,7 @@ class NovoCollector(BaseCollector):
         return "novo/dados"
 
     @retry(max_attempts=3, delay=2.0)
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         url = f"https://api.exemplo.com/dados/{period}"
         response = requests.get(url, timeout=120)
         response.raise_for_status()
@@ -530,7 +534,7 @@ class NovoCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return output_path
 
-    def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         df = pd.read_csv(csv_path)
         # Normalizacoes
         return df

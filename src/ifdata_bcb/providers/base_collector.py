@@ -2,7 +2,6 @@ import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 import pandas as pd
@@ -32,7 +31,7 @@ class BaseCollector(ABC):
     _PERIOD_TYPE: str = "monthly"
     _MAX_WORKERS: int = 4
 
-    def __init__(self, data_manager: Optional[DataManager] = None):
+    def __init__(self, data_manager: DataManager | None = None):
         self.dm = data_manager or DataManager()
         self.logger = get_logger(self.__class__.__name__)
         self.display = get_display()
@@ -59,14 +58,12 @@ class BaseCollector(ABC):
         pass
 
     @abstractmethod
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """Baixa dados de um periodo para work_dir. Retorna path ou None se falhar."""
         pass
 
     @abstractmethod
-    def _process_to_parquet(
-        self, csv_path: Path, period: int
-    ) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSV e retorna DataFrame normalizado, ou None se falhar."""
         pass
 
@@ -78,9 +75,9 @@ class BaseCollector(ABC):
     def _end(
         self,
         verbose: bool = True,
-        periodos: Optional[int] = None,
-        falhas: Optional[int] = None,
-        indisponiveis: Optional[int] = None,
+        periodos: int | None = None,
+        falhas: int | None = None,
+        indisponiveis: int | None = None,
     ) -> None:
         total = self._collect_total if self._collect_total > 0 else None
         self.display.end_banner(
@@ -100,7 +97,7 @@ class BaseCollector(ABC):
             self.logger.info("Coleta concluida")
 
     def _fetch_start(
-        self, name: str, since: Optional[str] = None, verbose: bool = True
+        self, name: str, since: str | None = None, verbose: bool = True
     ) -> None:
         self.display.fetch_start(name, since, verbose=verbose)
         self.logger.debug(f"Fetch start: {name}, since={since}")
@@ -154,7 +151,7 @@ class BaseCollector(ABC):
 
     def _process_single_period(
         self, period: int, worker_index: int = 0
-    ) -> tuple[int, CollectStatus, Optional[str]]:
+    ) -> tuple[int, CollectStatus, str | None]:
         """
         Processa um periodo: download + processamento + salvamento.
 
@@ -199,7 +196,7 @@ class BaseCollector(ABC):
         end: str,
         force: bool = False,
         verbose: bool = True,
-        progress_desc: Optional[str] = None,
+        progress_desc: str | None = None,
         _show_banners: bool = True,
     ) -> tuple[int, int, int, int]:
         """

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 import pandas as pd
@@ -13,7 +12,7 @@ class QueryEngine:
 
     def __init__(
         self,
-        base_path: Optional[Path] = None,
+        base_path: Path | None = None,
         progress_bar: bool = False,
     ):
         self._cache_path = Path(base_path) if base_path else get_settings().cache_path
@@ -34,8 +33,8 @@ class QueryEngine:
         self,
         pattern: str,
         subdir: str,
-        columns: Optional[list[str]] = None,
-        where: Optional[str] = None,
+        columns: list[str] | None = None,
+        where: str | None = None,
     ) -> pd.DataFrame:
         """
         Le multiplos arquivos Parquet como dataset unico.

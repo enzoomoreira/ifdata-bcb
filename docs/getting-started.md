@@ -148,7 +148,7 @@ bcb.cosif.read(instituicao=['60872504', '60746948'], start='2024-12')
 # ERRO: nome direto gera InvalidIdentifierError
 bcb.cosif.read(instituicao='Itau', start='2024-12')  # Erro!
 
-# ERRO: sem start gera MissingRequiredParameterError
+# ERRO: sem start gera TypeError (start e argumento obrigatorio)
 bcb.cosif.read(instituicao='60872504', escopo='prudencial')  # Erro!
 ```
 
@@ -457,7 +457,8 @@ except BacenAnalysisError as e:
 | Excecao | Quando ocorre |
 |---------|---------------|
 | `InvalidIdentifierError` | CNPJ invalido ou nome ao inves de CNPJ |
-| `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (`instituicao` e `start` para COSIF/IFDATA; cadastro aceita ambos opcionais) |
+| `TypeError` | `start` ausente (argumento posicional obrigatorio em COSIF/IFDATA) |
+| `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (ex: `start` em cadastro quando nao ha dados) |
 | `InvalidScopeError` | Escopo invalido (ex: 'xyz') |
 | `InvalidDateRangeError` | start > end |
 | `DataUnavailableError` | Dados nao disponiveis para o CNPJ/escopo |

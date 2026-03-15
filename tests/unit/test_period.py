@@ -1,6 +1,5 @@
 """Testes para ifdata_bcb.utils.period."""
 
-
 from ifdata_bcb.utils.period import (
     extract_periods_from_files,
     get_latest_period,

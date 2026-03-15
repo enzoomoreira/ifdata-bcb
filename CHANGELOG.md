@@ -1,5 +1,25 @@
 # Project Changelog
 
+## [2026-03-15 13:51]
+
+### Added
+- Suite de testes QA com 64 cenarios adversariais simulando usuarios reais: inputs invalidos (CNPJ, datas, escopos), edge cases de dados (NaN, Inf, strings 10k chars, parquet corrompido), concorrencia (20 reads simultaneos), e experiencia de primeiro uso (lazy loading, cache vazio, excecoes)
+- 16 testes unitarios para validators Pydantic (`NormalizedDates`, `ValidatedCnpj8`, `InstitutionList`, `AccountList`)
+- `ruff format --check` no CI, garantindo formatacao consistente em PRs
+
+### Fixed
+- Validacao de CNPJ agora usa `[0-9]{8}` em vez de `\d{8}`, rejeitando digitos unicode fullwidth (U+FF10-U+FF19) que passavam silenciosamente pela regex anterior
+- `import ifdata_bcb` era lento (~0.65s) por carregar pandas/duckdb eagerly via `domain/__init__.py` e import direto de `search`; agora `search` e lazy via `__getattr__` e `domain/__init__.py` foi esvaziado (import cai para ~0.017s)
+- `dir(ifdata_bcb)` agora expoe atributos lazy (`cosif`, `ifdata`, `cadastro`, `search`) via `__dir__()`
+- Mensagens de erro do `EntityLookup` agora sugerem `cadastro.collect()` quando dados cadastrais estao ausentes
+
+### Changed
+- Toda a codebase migrada de `Optional[X]`/`Union[X, Y]` para sintaxe Python 3.12+ (`X | None`, `X | Y`) -- ~74 ocorrencias em codigo + documentacao
+- Type hints refinados: `TypedDict` para config COSIF, `Sequence` para covariancia em `_join_conditions`, `cast()` para iteracao de `Literal`, `assert` para narrowing de `None`
+- Suite de testes reorganizada de estrutura flat para `tests/unit/`, `tests/integration/`, `tests/qa/` (151 + 111 + 64 = 326 testes)
+- `test_integration.py` dividido em 4 arquivos focados: `test_cosif.py`, `test_ifdata.py`, `test_cadastro.py`, `test_query_engine.py`
+- Documentacao atualizada em 11 arquivos para refletir nova sintaxe de tipos, lazy loading de `search`, e regex CNPJ corrigida
+
 ## [2026-03-15 03:00]
 
 ### Fixed

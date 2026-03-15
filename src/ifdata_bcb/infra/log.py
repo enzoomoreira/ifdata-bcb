@@ -60,6 +60,7 @@ def configure_logging(
 
 def get_logger(name: str = "ifdata_bcb") -> Any:
     configure_logging()
+    assert _logger_instance is not None
     return _logger_instance.bind(name=name)
 
 

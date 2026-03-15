@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 import pandas as pd
 
@@ -87,11 +87,11 @@ class IFDATAExplorer(BaseExplorer):
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         super().__init__(query_engine, entity_lookup)
-        self._collector: Optional[IFDATAValoresCollector] = None
+        self._collector: IFDATAValoresCollector | None = None
 
     def _get_subdir(self) -> str:
         return get_subdir("ifdata_valores")
@@ -141,8 +141,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def _build_ifdata_date_where(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> str:
         date_cond = self._build_date_condition(start, end, trimestral=True)
         if not date_cond:
@@ -151,8 +151,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def _load_reporter_rows(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         if not self._qe.has_glob(self._get_pattern(), self._get_subdir()):
             return pd.DataFrame(columns=["COD_INST", "TIPO_INST", "ESCOPO"])
@@ -173,8 +173,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def _load_cadastro_entities(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         cadastro_pattern = get_pattern("cadastro")
         cadastro_subdir = get_subdir("cadastro")
@@ -214,8 +214,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def _resolve_reporter_mappings(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         reporters = self._load_reporter_rows(start, end)
         if reporters.empty:
@@ -323,11 +323,11 @@ class IFDATAExplorer(BaseExplorer):
         instituicao: InstitutionInput,
         escopo: str,
         start: str,
-        end: Optional[str],
-        conta: Optional[AccountInput],
-        relatorio: Optional[str],
-        columns: Optional[list[str]],
-    ) -> Optional[pd.DataFrame]:
+        end: str | None,
+        conta: AccountInput | None,
+        relatorio: str | None,
+        columns: list[str] | None,
+    ) -> pd.DataFrame | None:
         """Le dados de um escopo especifico. Retorna None se falhar."""
         try:
             resolutions = self._resolve_institutions_with_scope(instituicao, escopo)
@@ -409,12 +409,12 @@ class IFDATAExplorer(BaseExplorer):
         self,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str] = None,
-        conta: Optional[AccountInput] = None,
-        columns: Optional[list[str]] = None,
-        escopo: Optional[EscopoIFDATA] = None,
-        relatorio: Optional[str] = None,
-        cadastro: Optional[list[str]] = None,
+        end: str | None = None,
+        conta: AccountInput | None = None,
+        columns: list[str] | None = None,
+        escopo: EscopoIFDATA | None = None,
+        relatorio: str | None = None,
+        cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados IFDATA Valores com filtros.
@@ -460,8 +460,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def list_accounts(
         self,
-        termo: Optional[str] = None,
-        escopo: Optional[EscopoIFDATA] = None,
+        termo: str | None = None,
+        escopo: EscopoIFDATA | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """
@@ -501,8 +501,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def list_institutions(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         """Lista entidades analíticas com disponibilidade por escopo."""
         df = self._resolve_reporter_mappings(start, end)
@@ -544,16 +544,16 @@ class IFDATAExplorer(BaseExplorer):
 
     def list_reporters(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         """Lista chaves operacionais de reporte do IFDATA por entidade e escopo."""
         return self._resolve_reporter_mappings(start, end)
 
     def list_reports(
         self,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: str | None = None,
+        end: str | None = None,
     ) -> list[str]:
         """Lista relatorios disponiveis."""
         if not self._qe.has_glob(self._get_pattern(), self._get_subdir()):

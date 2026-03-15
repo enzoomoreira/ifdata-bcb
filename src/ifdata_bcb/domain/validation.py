@@ -18,9 +18,8 @@ class NormalizedDates(BaseModel):
     @field_validator("values", mode="before")
     @classmethod
     def normalize(cls, v: DateInput) -> list[int]:
-        if not isinstance(v, list):
-            v = [v]
-        return [normalize_date_to_int(d) for d in v]
+        items = v if isinstance(v, list) else [v]
+        return [normalize_date_to_int(d) for d in items]
 
 
 class ValidatedCnpj8(BaseModel):
@@ -34,7 +33,7 @@ class ValidatedCnpj8(BaseModel):
         if not isinstance(v, str):
             raise InvalidIdentifierError(str(v))
         v = v.strip()
-        if not re.fullmatch(r"\d{8}", v):
+        if not re.fullmatch(r"[0-9]{8}", v):
             raise InvalidIdentifierError(v)
         return v
 
@@ -53,7 +52,7 @@ class InstitutionList(BaseModel):
         result = []
         for item in v:
             item = item.strip()
-            if not re.fullmatch(r"\d{8}", item):
+            if not re.fullmatch(r"[0-9]{8}", item):
                 raise InvalidIdentifierError(item)
             result.append(item)
         return result

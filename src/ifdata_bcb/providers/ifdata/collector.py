@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -19,7 +18,7 @@ class IFDATAValoresCollector(BaseCollector):
     _PERIOD_TYPE = "quarterly"
     _BASE_URL = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
 
-    def __init__(self, data_manager: Optional[DataManager] = None):
+    def __init__(self, data_manager: DataManager | None = None):
         super().__init__(data_manager)
 
     def _get_file_prefix(self) -> str:
@@ -35,12 +34,12 @@ class IFDATAValoresCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """Baixa 3 tipos de instituicao em paralelo."""
         tipos_inst = list(TIPO_INST_MAP.values())
         downloaded = []
 
-        def download_tipo(tipo: int) -> Optional[Path]:
+        def download_tipo(tipo: int) -> Path | None:
             url = (
                 f"{self._BASE_URL}/IfDataValores"
                 f"(AnoMes=@AnoMes,TipoInstituicao=@TipoInstituicao,Relatorio=@Relatorio)"
@@ -62,7 +61,7 @@ class IFDATAValoresCollector(BaseCollector):
 
         return work_dir if downloaded else None
 
-    def _process_to_parquet(self, csv_dir: Path, period: int) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_dir: Path, period: int) -> pd.DataFrame | None:
         """Processa CSVs do diretorio em um unico DataFrame."""
         try:
             csv_files = list(csv_dir.glob("*.csv"))
@@ -120,7 +119,7 @@ class IFDATACadastroCollector(BaseCollector):
     _PERIOD_TYPE = "quarterly"
     _BASE_URL = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
 
-    def __init__(self, data_manager: Optional[DataManager] = None):
+    def __init__(self, data_manager: DataManager | None = None):
         super().__init__(data_manager)
 
     def _get_file_prefix(self) -> str:
@@ -136,7 +135,7 @@ class IFDATACadastroCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         url = (
             f"{self._BASE_URL}/IfDataCadastro(AnoMes=@AnoMes)"
             f"?@AnoMes={period}&$format=text/csv"
@@ -153,9 +152,7 @@ class IFDATACadastroCollector(BaseCollector):
 
         return None
 
-    def _process_to_parquet(
-        self, csv_path: Path, period: int
-    ) -> Optional[pd.DataFrame]:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSV de cadastro."""
         try:
             query = f"""

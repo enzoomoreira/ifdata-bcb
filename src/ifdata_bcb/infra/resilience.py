@@ -1,7 +1,7 @@
 import json
 import random
 import time
-from typing import Tuple, Type
+from typing import Any, Tuple, Type
 
 import requests
 import urllib3
@@ -24,7 +24,7 @@ DEFAULT_PARALLEL_STAGGER = 0.5
 _logger = None
 
 
-def _get_logger():
+def _get_logger() -> Any:
     global _logger
     if _logger is None:
         from ifdata_bcb.infra.log import get_logger
@@ -33,7 +33,7 @@ def _get_logger():
     return _logger
 
 
-def _before_sleep_log(retry_state: RetryCallState):
+def _before_sleep_log(retry_state: RetryCallState) -> None:
     # Loga em DEBUG para nao poluir terminal
     if retry_state.outcome is None:
         return
@@ -45,7 +45,7 @@ def _before_sleep_log(retry_state: RetryCallState):
     )
 
 
-def _log_final_failure(retry_state: RetryCallState):
+def _log_final_failure(retry_state: RetryCallState) -> None:
     # Re-levanta excecao original para o caller tratar
     exception = retry_state.outcome.exception()
     _get_logger().debug(

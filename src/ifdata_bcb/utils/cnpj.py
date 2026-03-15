@@ -9,4 +9,3 @@ def standardize_cnpj_base8(cnpj: str) -> str | None:
     if not cleaned:
         return None
     return cleaned.zfill(8)[:8]
-

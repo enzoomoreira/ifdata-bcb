@@ -1,6 +1,5 @@
 """Testes para ifdata_bcb.utils.cnpj."""
 
-
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 
 

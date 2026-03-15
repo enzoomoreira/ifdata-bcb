@@ -129,19 +129,26 @@ src/ifdata_bcb/
 
 ### Lazy Loading
 
-Explorers sao carregados sob demanda para startup rapido:
+Explorers e `search` sao carregados sob demanda para startup rapido (~17ms):
 
 ```python
 # Em __init__.py
 _cosif = None
+_search = None
 
 def __getattr__(name):
-    global _cosif
+    global _cosif, _search
     if name == "cosif":
         if _cosif is None:
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
             _cosif = COSIFExplorer()
         return _cosif
+    if name == "search":
+        if _search is None:
+            from ifdata_bcb.core.api import search as _search_fn
+            _search = _search_fn
+        return _search
+    # ... ifdata, cadastro analogos
 ```
 
 ### Template Method (BaseCollector)
@@ -184,8 +191,8 @@ Explorers aceitam dependencias via construtor:
 class COSIFExplorer(BaseExplorer):
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         self._qe = query_engine or QueryEngine()
         self._resolver = entity_lookup or EntityLookup(query_engine=self._qe)
@@ -270,7 +277,7 @@ COSIFExplorer.read()
     +-- _validate_required_params(instituicao, start)
     |
     +-- _normalize_institutions('60872504')
-    |   +-- InstitutionList (Pydantic) --> Valida regex \d{8}
+    |   +-- InstitutionList (Pydantic) --> Valida regex [0-9]{8}
     |
     +-- _resolve_date_range('2024-01', '2024-12')
     |   +-- generate_month_range() --> [202401, 202402, ..., 202412]

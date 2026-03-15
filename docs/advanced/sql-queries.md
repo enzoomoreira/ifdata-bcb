@@ -166,7 +166,7 @@ df = qe.sql("""
         c.CNPJ_8,
         c.NOME_INSTITUICAO,
         c.SALDO / 1e9 as ATIVO_BILHOES,
-        cad.Segmento,
+        cad.SegmentoTb as SEGMENTO,
         cad.UF
     FROM '{cache}/cosif/prudencial/*.parquet' c
     JOIN '{cache}/ifdata/cadastro/*.parquet' cad
@@ -270,7 +270,7 @@ df = qe.sql("""
 # Agregacao por segmento usando cadastro
 df = qe.sql("""
     SELECT
-        cad.Segmento,
+        cad.SegmentoTb as SEGMENTO,
         COUNT(DISTINCT c.CNPJ_8) as N_INSTITUICOES,
         SUM(c.SALDO) / 1e12 as ATIVO_TRILHOES,
         AVG(c.SALDO) / 1e9 as MEDIA_BILHOES
@@ -280,7 +280,7 @@ df = qe.sql("""
     WHERE c.DATA_BASE = 202412
       AND c.NOME_CONTA = 'TOTAL GERAL DO ATIVO'
       AND c.DOCUMENTO = 4060
-    GROUP BY cad.Segmento
+    GROUP BY cad.SegmentoTb
     HAVING COUNT(DISTINCT c.CNPJ_8) >= 5
     ORDER BY ATIVO_TRILHOES DESC
 """)

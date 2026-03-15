@@ -122,7 +122,7 @@ Motor de consultas DuckDB sobre arquivos Parquet.
 class QueryEngine:
     def __init__(
         self,
-        base_path: Optional[Path] = None,  # Padrao: get_settings().cache_path
+        base_path: Path | None = None,  # Padrao: get_settings().cache_path
         progress_bar: bool = False          # Barra de progresso DuckDB
     ):
 ```
@@ -207,7 +207,7 @@ Gerenciador de persistencia em formato Parquet.
 
 ```python
 class DataManager:
-    def __init__(self, base_path: Optional[Path] = None):
+    def __init__(self, base_path: Path | None = None):
         # Padrao: get_settings().cache_path
 ```
 

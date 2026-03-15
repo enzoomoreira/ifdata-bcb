@@ -1,8 +1,8 @@
 import threading
-from functools import lru_cache
+from functools import _lru_cache_wrapper, lru_cache
 from typing import Callable
 
-_registered_caches: list[Callable] = []
+_registered_caches: list[_lru_cache_wrapper] = []
 _lock = threading.Lock()
 
 

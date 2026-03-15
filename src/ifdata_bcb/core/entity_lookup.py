@@ -1,5 +1,3 @@
-from typing import Optional
-
 import pandas as pd
 
 from ifdata_bcb.core.constants import TIPO_INST_MAP, get_pattern, get_subdir
@@ -26,7 +24,7 @@ class EntityLookup:
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
+        query_engine: QueryEngine | None = None,
         fuzzy_threshold_auto: int = 85,
         fuzzy_threshold_suggest: int = 70,
     ):
@@ -399,7 +397,7 @@ class EntityLookup:
         ].reset_index(drop=True)
 
     @cached(maxsize=256)
-    def get_entity_identifiers(self, cnpj_8: str) -> dict[str, Optional[str]]:
+    def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
         """
         Retorna identificadores da entidade a partir do cadastro.
 
@@ -521,10 +519,16 @@ class EntityLookup:
         if escopo_lower == "prudencial":
             cod_congl = info.get("cod_congl_prud")
             if not cod_congl:
+                reason = "Entidade nao pertence a conglomerado prudencial."
+                if info.get("nome_entidade") is None:
+                    reason += (
+                        " Cadastro pode nao estar coletado"
+                        " -- execute cadastro.collect() primeiro."
+                    )
                 raise DataUnavailableError(
                     cnpj_8,
                     "prudencial",
-                    "Entidade nao pertence a conglomerado prudencial.",
+                    reason,
                 )
             return ScopeResolution(
                 cod_inst=cod_congl,
@@ -561,10 +565,16 @@ class EntityLookup:
         except Exception:
             df_fin = pd.DataFrame()
         if df_fin.empty:
+            reason = "Entidade nao possui dados no escopo financeiro."
+            if info.get("nome_entidade") is None:
+                reason += (
+                    " Cadastro pode nao estar coletado"
+                    " -- execute cadastro.collect() primeiro."
+                )
             raise DataUnavailableError(
                 cnpj_8,
                 "financeiro",
-                "Entidade nao possui dados no escopo financeiro.",
+                reason,
             )
         return ScopeResolution(
             cod_inst=str(df_fin["CodInst"].iloc[0]),

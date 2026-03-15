@@ -32,24 +32,24 @@ Uso:
     )  # escopo=None busca em todos os escopos
 """
 
-# Exceptions (BacenAnalysisError = base para capturar todas)
+from typing import Any
+
+# Exceptions importadas diretamente (nao passam por domain/__init__.py)
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
     DataUnavailableError,
 )
 
-# Funcoes de alto nivel
-from ifdata_bcb.core.api import search
-
-# Lazy loading dos explorers
+# Lazy loading de tudo que puxa pandas/duckdb
 _cosif = None
 _ifdata = None
 _cadastro = None
+_search = None
 
 
-def __getattr__(name: str):
-    """Lazy loading dos explorers."""
-    global _cosif, _ifdata, _cadastro
+def __getattr__(name: str) -> Any:
+    """Lazy loading dos explorers e da funcao search."""
+    global _cosif, _ifdata, _cadastro, _search
 
     if name == "cosif":
         if _cosif is None:
@@ -72,7 +72,18 @@ def __getattr__(name: str):
             _cadastro = CadastroExplorer()
         return _cadastro
 
+    if name == "search":
+        if _search is None:
+            from ifdata_bcb.core.api import search as _search_fn
+
+            _search = _search_fn
+        return _search
+
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
+
+
+def __dir__() -> list[str]:
+    return list(__all__) + list(globals().keys())
 
 
 __all__ = [

@@ -1,5 +1,3 @@
-from typing import Optional
-
 import pandas as pd
 
 from ifdata_bcb.core.base_explorer import BaseExplorer
@@ -35,11 +33,11 @@ class CadastroExplorer(BaseExplorer):
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         super().__init__(query_engine, entity_lookup)
-        self._collector: Optional[IFDATACadastroCollector] = None
+        self._collector: IFDATACadastroCollector | None = None
 
     def _get_subdir(self) -> str:
         return get_subdir("cadastro")
@@ -58,7 +56,7 @@ class CadastroExplorer(BaseExplorer):
     def _build_real_entity_condition(self) -> str:
         return self._resolver.real_entity_condition()
 
-    def _resolve_start(self, start: Optional[str]) -> str:
+    def _resolve_start(self, start: str | None) -> str:
         """Resolve start: se None, usa ultimo periodo disponivel."""
         if start is not None:
             return start
@@ -81,12 +79,12 @@ class CadastroExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: Optional[InstitutionInput] = None,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        segmento: Optional[str] = None,
-        uf: Optional[str] = None,
-        columns: Optional[list[str]] = None,
+        instituicao: InstitutionInput | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        segmento: str | None = None,
+        uf: str | None = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """Le dados cadastrais com filtros. Se start=None, usa ultimo periodo."""
         start = self._resolve_start(start)
@@ -128,7 +126,7 @@ class CadastroExplorer(BaseExplorer):
         )
         return self._finalize_read(df)
 
-    def info(self, instituicao: str, start: Optional[str] = None) -> Optional[dict]:
+    def info(self, instituicao: str, start: str | None = None) -> dict | None:
         """
         Retorna dict com info da instituicao no periodo especificado.
         Se start=None, usa ultimo periodo. Retorna None se nao encontrar.
@@ -183,7 +181,7 @@ class CadastroExplorer(BaseExplorer):
         return df["UF"].tolist() if not df.empty else []
 
     def get_conglomerate_members(
-        self, cod_congl: str, start: Optional[str] = None
+        self, cod_congl: str, start: str | None = None
     ) -> pd.DataFrame:
         """
         Retorna membros de um conglomerado prudencial.

@@ -90,7 +90,7 @@ bcb.ifdata.read(
 - `start` + `end`: gera range trimestral automatico
 
 **Raises**:
-- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
+- `TypeError`: Se `instituicao` ou `start` nao fornecidos (argumentos posicionais obrigatorios).
 - `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
@@ -406,15 +406,15 @@ Mapeamento para colunas de apresentacao:
 ## Tratamento de Erros
 
 ```python
-from ifdata_bcb import (
+from ifdata_bcb.domain.exceptions import (
     MissingRequiredParameterError,
     InvalidDateRangeError,
 )
 
-# Erro: parametro obrigatorio ausente
+# Erro: parametro obrigatorio ausente (start e argumento posicional)
 try:
     df = bcb.ifdata.read(instituicao='60872504')  # Falta start!
-except MissingRequiredParameterError as e:
+except TypeError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido

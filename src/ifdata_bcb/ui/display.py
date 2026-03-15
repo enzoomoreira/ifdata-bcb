@@ -6,7 +6,8 @@ Para logging tecnico (arquivo), use get_logger() de infra.log.
 
 import sys
 import threading
-from typing import Iterable, Iterator, Optional, TextIO, TypeVar
+from collections.abc import Iterable, Iterator
+from typing import TextIO, TypeVar
 
 from rich.console import Console
 from rich.panel import Panel
@@ -22,7 +23,7 @@ from rich.progress import (
 
 T = TypeVar("T")
 
-_display_instance: Optional["Display"] = None
+_display_instance: "Display | None" = None
 _display_lock = threading.Lock()
 
 
@@ -43,8 +44,8 @@ class _ProgressBar(Iterator[T]):
         self,
         iterable: Iterable[T],
         display: "Display",
-        total: Optional[int] = None,
-        desc: Optional[str] = None,
+        total: int | None = None,
+        desc: str | None = None,
         leave: bool = False,
         verbose: bool = True,
     ):
@@ -110,7 +111,7 @@ class _ProgressBar(Iterator[T]):
 class Display:
     """Gerencia output visual para o usuario usando Rich."""
 
-    def __init__(self, stream: Optional[TextIO] = None, colors: bool = True):
+    def __init__(self, stream: TextIO | None = None, colors: bool = True):
         self.stream = stream or sys.stdout
 
         detect_console = Console()
@@ -131,8 +132,8 @@ class Display:
     def progress(
         self,
         iterable: Iterable[T],
-        total: Optional[int] = None,
-        desc: Optional[str] = None,
+        total: int | None = None,
+        desc: str | None = None,
         leave: bool = False,
         verbose: bool = True,
     ) -> _ProgressBar[T]:
@@ -148,9 +149,9 @@ class Display:
     def banner(
         self,
         title: str,
-        subtitle: Optional[str] = None,
-        first_run: Optional[bool] = None,
-        indicator_count: Optional[int] = None,
+        subtitle: str | None = None,
+        first_run: bool | None = None,
+        indicator_count: int | None = None,
         verbose: bool = True,
     ) -> None:
         """first_run: True="PRIMEIRA EXECUCAO", False="ATUALIZACAO", None=nao mostra."""
@@ -184,10 +185,10 @@ class Display:
 
     def end_banner(
         self,
-        total: Optional[int] = None,
-        periodos: Optional[int] = None,
-        falhas: Optional[int] = None,
-        indisponiveis: Optional[int] = None,
+        total: int | None = None,
+        periodos: int | None = None,
+        falhas: int | None = None,
+        indisponiveis: int | None = None,
         verbose: bool = True,
     ) -> None:
         """Cor: verde=OK, amarelo=parcial, vermelho=tudo falhou."""
@@ -233,7 +234,7 @@ class Display:
             self._console.print("-" * 70, style="dim")
 
     def fetch_start(
-        self, name: str, since: Optional[str] = None, verbose: bool = True
+        self, name: str, since: str | None = None, verbose: bool = True
     ) -> None:
         if not verbose:
             return

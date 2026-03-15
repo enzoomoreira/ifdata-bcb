@@ -104,8 +104,8 @@ class COSIFExplorer(BaseExplorer):
 ```python
 def __init__(
     self,
-    query_engine: Optional[QueryEngine] = None,
-    entity_lookup: Optional[EntityLookup] = None,
+    query_engine: QueryEngine | None = None,
+    entity_lookup: EntityLookup | None = None,
 ):
     self._qe = query_engine or QueryEngine()
     self._resolver = entity_lookup or EntityLookup(query_engine=self._qe)
@@ -180,8 +180,8 @@ def _normalize_dates(self, datas: DateInput) -> list[int]:
 
 ```python
 def _normalize_accounts(
-    self, contas: Optional[AccountInput]
-) -> Optional[list[str]]:
+    self, contas: AccountInput | None
+) -> list[str] | None:
     """
     Normaliza contas para lista de strings.
 
@@ -198,8 +198,8 @@ def _normalize_accounts(
 
 ```python
 def _normalize_institutions(
-    self, instituicoes: Optional[InstitutionInput]
-) -> Optional[list[str]]:
+    self, instituicoes: InstitutionInput | None
+) -> list[str] | None:
     """
     Normaliza instituicoes para lista de CNPJs validados.
     Delega validacao para InstitutionList (Pydantic).
@@ -223,7 +223,7 @@ def _resolve_entity(self, identificador: str) -> str:
     Delega para ValidatedCnpj8 (Pydantic).
 
     Raises:
-        InvalidIdentifierError: Se nao for \d{8}
+        InvalidIdentifierError: Se nao for [0-9]{8}
     """
 ```
 
@@ -232,8 +232,8 @@ def _resolve_entity(self, identificador: str) -> str:
 ```python
 def _validate_required_params(
     self,
-    instituicao: Optional[InstitutionInput],
-    start: Optional[str],
+    instituicao: InstitutionInput | None,
+    start: str | None,
 ) -> None:
     """
     Valida parametros obrigatorios.
@@ -248,10 +248,10 @@ def _validate_required_params(
 ```python
 def _resolve_date_range(
     self,
-    start: Optional[str],
-    end: Optional[str],
+    start: str | None,
+    end: str | None,
     trimestral: bool = False,
-) -> Optional[list[int]]:
+) -> list[int] | None:
     """
     Resolve range de datas.
 
@@ -313,10 +313,10 @@ def _build_int_condition(self, column: str, values: list[int]) -> str:
 ```python
 def _build_date_condition(
     self,
-    start: Optional[str],
-    end: Optional[str],
+    start: str | None,
+    end: str | None,
     trimestral: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """
     Constroi clausula WHERE para range de datas.
     Usa _storage_col("DATA") para obter nome correto.
@@ -328,9 +328,9 @@ def _build_date_condition(
 ```python
 def _build_cnpj_condition(
     self,
-    instituicoes: Optional[InstitutionInput],
+    instituicoes: InstitutionInput | None,
     column: str = "CNPJ_8",
-) -> Optional[str]:
+) -> str | None:
     """
     Constroi clausula WHERE para CNPJs.
     Normaliza e valida instituicoes internamente.
@@ -340,7 +340,7 @@ def _build_cnpj_condition(
 #### _join_conditions()
 
 ```python
-def _join_conditions(self, conditions: list[Optional[str]]) -> Optional[str]:
+def _join_conditions(self, conditions: list[str | None]) -> str | None:
     """
     Junta condicoes com AND, ignorando None.
 
@@ -399,7 +399,7 @@ def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
 #### list_periods()
 
 ```python
-def list_periods(self, source: Optional[str] = None) -> list[int]:
+def list_periods(self, source: str | None = None) -> list[int]:
     """
     Lista periodos disponiveis (ordenados).
 
@@ -414,14 +414,14 @@ def list_periods(self, source: Optional[str] = None) -> list[int]:
 #### has_data()
 
 ```python
-def has_data(self, source: Optional[str] = None) -> bool:
+def has_data(self, source: str | None = None) -> bool:
     """Verifica se ha dados disponiveis."""
 ```
 
 #### describe()
 
 ```python
-def describe(self, source: Optional[str] = None) -> dict:
+def describe(self, source: str | None = None) -> dict:
     """
     Retorna metadados do explorer.
 
@@ -468,7 +468,7 @@ O `EntityLookup` centraliza toda logica de busca e resolucao de entidades:
 ```python
 def __init__(
     self,
-    query_engine: Optional[QueryEngine] = None,
+    query_engine: QueryEngine | None = None,
     fuzzy_threshold_auto: int = 85,
     fuzzy_threshold_suggest: int = 70,
 ):
@@ -522,7 +522,7 @@ Fluxo interno:
 
 ```python
 @cached(maxsize=256)
-def get_entity_identifiers(self, cnpj_8: str) -> dict[str, Optional[str]]:
+def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
     """
     Retorna identificadores de uma entidade.
 
@@ -632,7 +632,7 @@ A funcao `strip_accents()` e UDF registrada no DuckDB para comparacao insensivel
 Funcao de alto nivel para busca de instituicoes:
 
 ```python
-_lookup: Optional[EntityLookup] = None
+_lookup: EntityLookup | None = None
 
 def search(termo: str, limit: int = 10) -> pd.DataFrame:
     """
@@ -680,7 +680,7 @@ class BaseExplorer:
 
 ```python
 class COSIFExplorer(BaseExplorer):
-    def read(self, instituicao, start, end=None, conta=None, escopo="individual"):
+    def read(self, instituicao, start, end=None, conta=None, escopo=None):
         # Validacao (herdada)
         self._validate_required_params(instituicao, start)
 

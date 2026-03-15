@@ -52,7 +52,6 @@ O Collector e responsavel por baixar e processar dados.
 # src/ifdata_bcb/providers/novo/collector.py
 
 from pathlib import Path
-from typing import Optional
 import tempfile
 import pandas as pd
 import requests
@@ -77,7 +76,7 @@ class NovoCollector(BaseCollector):
     # Numero de workers paralelos (ajustar conforme API)
     _MAX_WORKERS = 4
 
-    def __init__(self, data_manager: Optional[DataManager] = None):
+    def __init__(self, data_manager: DataManager | None = None):
         super().__init__(data_manager)
 
     def _get_file_prefix(self) -> str:
@@ -98,7 +97,7 @@ class NovoCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """
         Baixa dados de um periodo para work_dir.
 
@@ -123,7 +122,7 @@ class NovoCollector(BaseCollector):
 
     def _process_to_parquet(
         self, csv_path: Path, period: int
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """
         Processa CSV para DataFrame normalizado.
 
@@ -171,7 +170,6 @@ O Explorer fornece a interface de consulta.
 ```python
 # src/ifdata_bcb/providers/novo/explorer.py
 
-from typing import Optional
 import pandas as pd
 
 from ifdata_bcb.core.base_explorer import BaseExplorer
@@ -203,11 +201,11 @@ class NovoExplorer(BaseExplorer):
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         super().__init__(query_engine, entity_lookup)
-        self._collector: Optional[NovoCollector] = None
+        self._collector: NovoCollector | None = None
 
     def _get_subdir(self) -> str:
         return get_subdir("novo_dados")
@@ -241,9 +239,9 @@ class NovoExplorer(BaseExplorer):
         self,
         instituicao: InstitutionInput,
         start: str,
-        end: Optional[str] = None,
-        conta: Optional[AccountInput] = None,
-        columns: Optional[list[str]] = None,
+        end: str | None = None,
+        conta: AccountInput | None = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados com filtros opcionais.
@@ -288,7 +286,7 @@ class NovoExplorer(BaseExplorer):
         return self._finalize_read(df)
 
     def list_contas(
-        self, termo: Optional[str] = None, limit: int = 100
+        self, termo: str | None = None, limit: int = 100
     ) -> pd.DataFrame:
         """Lista contas disponiveis."""
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
@@ -363,7 +361,7 @@ def _get_file_prefix(self) -> str:
 def _get_subdir(self) -> str:
     """Subdiretorio de armazenamento (ex: 'cosif/individual')."""
 
-def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+def _download_period(self, period: int, work_dir: Path) -> Path | None:
     """
     Baixa dados de um periodo para work_dir.
 
@@ -378,7 +376,7 @@ def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         PeriodUnavailableError: Se o periodo nao esta disponivel (404)
     """
 
-def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
+def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
     """
     Processa CSV bruto em DataFrame normalizado.
 
@@ -444,19 +442,19 @@ _COLUMN_MAP: dict[str, str] = {}  # Mapeamento storage -> apresentacao
 ```python
 # Normalizacao de entrada
 def _normalize_dates(self, datas: DateInput) -> list[int]
-def _normalize_accounts(self, contas: Optional[AccountInput]) -> Optional[list[str]]
-def _normalize_institutions(self, instituicoes: Optional[InstitutionInput]) -> Optional[list[str]]
+def _normalize_accounts(self, contas: AccountInput | None) -> list[str] | None
+def _normalize_institutions(self, instituicoes: InstitutionInput | None) -> list[str] | None
 def _resolve_entity(self, identificador: str) -> str  # Valida CNPJ
 
 # Resolucao de ranges
-def _resolve_date_range(self, start, end, trimestral=False) -> Optional[list[int]]
+def _resolve_date_range(self, start, end, trimestral=False) -> list[int] | None
 
 # Construcao de queries SQL
 def _build_string_condition(self, column, values, case_insensitive=False, accent_insensitive=False) -> str
 def _build_int_condition(self, column, values) -> str
-def _build_date_condition(self, start, end, trimestral=False) -> Optional[str]
-def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> Optional[str]
-def _join_conditions(self, conditions: list) -> Optional[str]
+def _build_date_condition(self, start, end, trimestral=False) -> str | None
+def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> str | None
+def _join_conditions(self, conditions: list) -> str | None
 
 # Mapeamento de colunas
 def _storage_col(self, presentation_col: str) -> str  # Traduz nome
@@ -464,9 +462,9 @@ def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame
 def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame  # Aplica mapeamento + converte DATA
 
 # Descoberta
-def list_periods(self, source: Optional[str] = None) -> list[int]
-def has_data(self, source: Optional[str] = None) -> bool
-def describe(self, source: Optional[str] = None) -> dict
+def list_periods(self, source: str | None = None) -> list[int]
+def has_data(self, source: str | None = None) -> bool
+def describe(self, source: str | None = None) -> dict
 
 # Validacao
 def _validate_required_params(self, instituicao, start) -> None
@@ -571,13 +569,13 @@ except PeriodUnavailableError:
 **Localizacao:** `src/ifdata_bcb/domain/types.py`
 
 ```python
-DateInput = Union[int, str, list[int], list[str]]
+DateInput = int | str | list[int] | list[str]
 # Aceita: 202412, '202412', '2024-12', [202412, 202501], etc.
 
-AccountInput = Union[str, list[str]]
+AccountInput = str | list[str]
 # Aceita: 'TOTAL ATIVO', ['ATIVO', 'PASSIVO']
 
-InstitutionInput = Union[str, list[str]]
+InstitutionInput = str | list[str]
 # Aceita: '60872504', ['60872504', '60746948']
 ```
 

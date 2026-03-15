@@ -1,6 +1,5 @@
 """Testes para ifdata_bcb.utils.text."""
 
-
 from ifdata_bcb.utils.text import normalize_accents, normalize_text
 
 

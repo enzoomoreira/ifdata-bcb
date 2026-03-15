@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from collections.abc import Sequence
 
 import pandas as pd
 
@@ -73,8 +73,8 @@ class BaseExplorer(ABC):
 
     def __init__(
         self,
-        query_engine: Optional[QueryEngine] = None,
-        entity_lookup: Optional[EntityLookup] = None,
+        query_engine: QueryEngine | None = None,
+        entity_lookup: EntityLookup | None = None,
     ):
         self._qe = query_engine or QueryEngine()
         self._resolver = entity_lookup or EntityLookup(query_engine=self._qe)
@@ -138,26 +138,24 @@ class BaseExplorer(ABC):
         self._logger.debug(f"Dates: {datas} -> {result}")
         return result
 
-    def _normalize_accounts(
-        self, contas: Optional[AccountInput]
-    ) -> Optional[list[str]]:
+    def _normalize_accounts(self, contas: AccountInput | None) -> list[str] | None:
         if contas is None:
             return None
         return AccountList(values=contas).values
 
     def _normalize_institutions(
-        self, instituicoes: Optional[InstitutionInput]
-    ) -> Optional[list[str]]:
+        self, instituicoes: InstitutionInput | None
+    ) -> list[str] | None:
         if instituicoes is None:
             return None
         return InstitutionList(values=instituicoes).values
 
     def _resolve_date_range(
         self,
-        start: Optional[str],
-        end: Optional[str],
+        start: str | None,
+        end: str | None,
         trimestral: bool = False,
-    ) -> Optional[list[int]]:
+    ) -> list[int] | None:
         """
         start sozinho: data unica. start + end: range. None: todos periodos.
 
@@ -205,15 +203,15 @@ class BaseExplorer(ABC):
 
     def _validate_required_params(
         self,
-        instituicao: Optional[InstitutionInput],
-        start: Optional[str],
+        instituicao: InstitutionInput | None,
+        start: str | None,
     ) -> None:
         if instituicao is None:
             raise MissingRequiredParameterError("instituicao")
         if start is None:
             raise MissingRequiredParameterError("start")
 
-    def _validate_cadastro_columns(self, cadastro: Optional[list[str]]) -> None:
+    def _validate_cadastro_columns(self, cadastro: list[str] | None) -> None:
         """Valida nomes de colunas cadastrais antes de executar qualquer query."""
         if cadastro is None:
             return
@@ -249,7 +247,7 @@ class BaseExplorer(ABC):
         values_str = ", ".join(f"'{v}'" for v in escaped)
         return f"{col_expr} IN ({values_str})"
 
-    def _translate_columns(self, columns: Optional[list[str]]) -> Optional[list[str]]:
+    def _translate_columns(self, columns: list[str] | None) -> list[str] | None:
         """Traduz nomes de apresentacao para storage. Aceita ambos."""
         if columns is None:
             return None
@@ -264,10 +262,10 @@ class BaseExplorer(ABC):
 
     def _build_date_condition(
         self,
-        start: Optional[str],
-        end: Optional[str],
+        start: str | None,
+        end: str | None,
         trimestral: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Constroi condicao WHERE para range de datas. Usa nome de storage."""
         datas = self._resolve_date_range(start, end, trimestral=trimestral)
         if not datas:
@@ -277,16 +275,16 @@ class BaseExplorer(ABC):
 
     def _build_cnpj_condition(
         self,
-        instituicoes: Optional[InstitutionInput],
+        instituicoes: InstitutionInput | None,
         column: str = "CNPJ_8",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Constroi condicao WHERE para CNPJs."""
         cnpjs = self._normalize_institutions(instituicoes)
         if not cnpjs:
             return None
         return self._build_string_condition(column, cnpjs)
 
-    def _join_conditions(self, conditions: list[Optional[str]]) -> Optional[str]:
+    def _join_conditions(self, conditions: Sequence[str | None]) -> str | None:
         """Junta condicoes com AND, ignorando None."""
         valid = [c for c in conditions if c]
         return " AND ".join(valid) if valid else None
@@ -308,7 +306,7 @@ class BaseExplorer(ABC):
 
         return df
 
-    def _get_latest_period(self, source: Optional[str] = None) -> Optional[int]:
+    def _get_latest_period(self, source: str | None = None) -> int | None:
         """Retorna o periodo mais recente disponivel, ou None."""
         periods = self.list_periods(source)
         return periods[-1] if periods else None
@@ -326,7 +324,7 @@ class BaseExplorer(ABC):
                     continue
         return periods
 
-    def list_periods(self, source: Optional[str] = None) -> list[int]:
+    def list_periods(self, source: str | None = None) -> list[int]:
         """
         Lista periodos disponiveis.
 
@@ -346,11 +344,11 @@ class BaseExplorer(ABC):
             )
         return sorted(all_periods)
 
-    def has_data(self, source: Optional[str] = None) -> bool:
+    def has_data(self, source: str | None = None) -> bool:
         """Verifica se ha dados disponiveis."""
         return len(self.list_periods(source)) > 0
 
-    def describe(self, source: Optional[str] = None) -> dict:
+    def describe(self, source: str | None = None) -> dict:
         """
         Retorna info do explorer.
 
@@ -375,19 +373,20 @@ class BaseExplorer(ABC):
 
         # Multi-source: retorna info agregada + detalhes por fonte
         all_periods = self.list_periods()
-        result = {
+        by_source: dict[str, dict] = {}
+        result: dict = {
             "sources": list(sources.keys()),
             "periods": all_periods,
             "period_count": len(all_periods),
             "has_data": len(all_periods) > 0,
             "first_period": all_periods[0] if all_periods else None,
             "last_period": all_periods[-1] if all_periods else None,
-            "by_source": {},
+            "by_source": by_source,
         }
 
         for name, cfg in sources.items():
             periods = self.list_periods(name)
-            result["by_source"][name] = {
+            by_source[name] = {
                 "subdir": cfg["subdir"],
                 "prefix": cfg["prefix"],
                 "period_count": len(periods),

@@ -309,7 +309,7 @@ print(resolution.cnpj_original) # "60872504"
 Tipo flexivel para parametros de data:
 
 ```python
-DateInput = Union[int, str, list[int], list[str]]
+DateInput = int | str | list[int] | list[str]
 ```
 
 Aceita:
@@ -323,7 +323,7 @@ Aceita:
 Tipo flexivel para parametros de conta:
 
 ```python
-AccountInput = Union[str, list[str]]
+AccountInput = str | list[str]
 ```
 
 Aceita:
@@ -335,7 +335,7 @@ Aceita:
 Tipo flexivel para parametros de instituicao:
 
 ```python
-InstitutionInput = Union[str, list[str]]
+InstitutionInput = str | list[str]
 ```
 
 Aceita:
@@ -382,7 +382,7 @@ except DataUnavailableError as e:
 ### Padroes de Validacao em Explorers
 
 ```python
-def read(self, instituicao, start, end=None, escopo="individual"):
+def read(self, instituicao, start, end=None, escopo=None):
     # 1. Parametros obrigatorios
     if instituicao is None:
         raise MissingRequiredParameterError("instituicao")
@@ -410,54 +410,20 @@ def read(self, instituicao, start, end=None, escopo="individual"):
 
 ---
 
-## Exports Publicos
+## Imports
+
+O `domain/__init__.py` e um namespace leve (sem re-exports). Importe diretamente dos submodulos:
 
 ```python
-# domain/__init__.py
-from ifdata_bcb.domain.exceptions import (
-    BacenAnalysisError,
-    DataUnavailableError,
-    InvalidDateFormatError,
-    InvalidDateRangeError,
-    InvalidIdentifierError,
-    InvalidScopeError,
-    MissingRequiredParameterError,
-    PeriodUnavailableError,
-)
-from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
+# Imports diretos (nao passam pelo __init__.py do domain)
+from ifdata_bcb.domain.exceptions import BacenAnalysisError, InvalidScopeError
+from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
 from ifdata_bcb.domain.models import ScopeResolution
-from ifdata_bcb.domain.validation import (
-    AccountList,
-    InstitutionList,
-    NormalizedDates,
-    ValidatedCnpj8,
-)
+from ifdata_bcb.domain.validation import ValidatedCnpj8, NormalizedDates
 
-__all__ = [
-    # Exceptions
-    "BacenAnalysisError",
-    "DataUnavailableError",
-    "InvalidDateFormatError",
-    "InvalidDateRangeError",
-    "InvalidIdentifierError",
-    "InvalidScopeError",
-    "MissingRequiredParameterError",
-    "PeriodUnavailableError",
-    # Types
-    "AccountInput",
-    "DateInput",
-    "InstitutionInput",
-    # Models
-    "ScopeResolution",
-    # Validation
-    "AccountList",
-    "InstitutionList",
-    "NormalizedDates",
-    "ValidatedCnpj8",
-]
 ```
 
-Re-export no `__init__.py` raiz (apenas as mais comuns):
+Re-export no `__init__.py` raiz (lazy, apenas as mais comuns):
 
 ```python
 # ifdata_bcb/__init__.py

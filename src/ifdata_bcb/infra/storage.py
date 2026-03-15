@@ -40,6 +40,17 @@ def get_parquet_path(
     return cache_path / subdir / f"{filename}.parquet"
 
 
+_metadata_conn: duckdb.DuckDBPyConnection | None = None
+
+
+def _get_metadata_conn() -> duckdb.DuckDBPyConnection:
+    """Reutiliza uma unica conexao DuckDB para consultas de metadata."""
+    global _metadata_conn
+    if _metadata_conn is None:
+        _metadata_conn = duckdb.connect()
+    return _metadata_conn
+
+
 def get_parquet_metadata(
     filename: str,
     subdir: str,
@@ -53,7 +64,7 @@ def get_parquet_metadata(
         return None
 
     try:
-        conn = duckdb.connect()
+        conn = _get_metadata_conn()
         schema = conn.sql(f"DESCRIBE SELECT * FROM '{filepath}' LIMIT 0").df()
         n_cols = len(schema)
 

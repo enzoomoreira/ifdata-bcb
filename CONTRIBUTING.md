@@ -80,15 +80,29 @@ src/ifdata_bcb/
 
 ## Testes
 
+A suite de testes esta organizada em tres categorias:
+
+```
+tests/
+  unit/          # Testes unitarios (validators, utils, domain)
+  integration/   # Testes de integracao (providers, collectors, explorers)
+  qa/            # Testes QA adversariais (inputs invalidos, edge cases, concorrencia)
+```
+
 ```bash
 # Rodar todos os testes
 uv run pytest tests/ -v
 
+# Rodar apenas uma categoria
+uv run pytest tests/unit/ -v
+uv run pytest tests/integration/ -v
+uv run pytest tests/qa/ -v
+
 # Rodar um modulo especifico
-uv run pytest tests/test_validation.py -v
+uv run pytest tests/unit/test_validation.py -v
 ```
 
-Os testes usam dados reais do BCB. Algumas execucoes podem ser lentas na primeira vez por conta da coleta de dados.
+Os testes de integracao e QA usam dados reais do BCB. Algumas execucoes podem ser lentas na primeira vez por conta da coleta de dados.
 
 ## Duvidas?
 

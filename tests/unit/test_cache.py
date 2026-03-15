@@ -1,6 +1,5 @@
 """Testes para ifdata_bcb.infra.cache."""
 
-
 from ifdata_bcb.infra.cache import (
     _registered_caches,
     cached,
