@@ -1,0 +1,24 @@
+name: Feature Request
+description: Sugerir uma nova funcionalidade
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Que problema essa feature resolveria?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solucao proposta
+      description: Como voce imagina que a API ou interface funcionaria?
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Voce tentou algum workaround ou abordagem alternativa?

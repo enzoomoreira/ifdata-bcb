@@ -1,0 +1,49 @@
+name: Bug Report
+description: Reportar um problema ou comportamento inesperado
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Descricao do bug
+      description: Descreva o que aconteceu e o que voce esperava que acontecesse.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Como reproduzir
+      description: Passos ou codigo minimo para reproduzir o problema.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Mensagem de erro
+      description: Cole o traceback ou mensagem de erro, se houver.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Versao do ifdata-bcb
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Sistema operacional
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Versao do Python
+      placeholder: "3.12"
+    validations:
+      required: true

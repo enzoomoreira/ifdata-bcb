@@ -1,0 +1,59 @@
+# Git attributes for consistent line endings across platforms
+# See: https://git-scm.com/docs/gitattributes
+
+# Auto detect text files and normalize line endings to LF in the repository
+* text=auto
+
+# Source code files - enforce LF in repository, CRLF on checkout for Windows
+*.py text eol=lf
+*.pyx text eol=lf
+*.pxd text eol=lf
+*.pyi text eol=lf
+
+# Configuration files - enforce LF
+*.json text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+
+# Documentation - enforce LF
+*.md text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+
+# Jupyter notebooks - enforce LF
+*.ipynb text eol=lf
+
+# Shell scripts - enforce LF (must use LF even on Windows)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Windows scripts - enforce CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Data files - treat as binary (no line ending conversion)
+*.parquet binary
+*.csv binary
+*.xlsx binary
+*.db binary
+*.sqlite binary
+
+# Image files - binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+
+# Archive files - binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.rar binary
+

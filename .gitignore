@@ -1,0 +1,11 @@
+# Python
+.venv
+__pycache__
+*egg-info
+
+# Temp Folders
+temp
+
+# Agents
+CLAUDE.md
+.claude/

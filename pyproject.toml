@@ -1,0 +1,31 @@
+[project]
+name = "ifdata-bcb"
+version = "0.0.0"
+description = "Analise de dados financeiros do Banco Central do Brasil (BCB)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0.0",
+    "pyarrow>=10.0.0",
+    "openpyxl>=3.0.0",
+    "requests>=2.28.0",
+    "platformdirs>=3.0.0",
+    "tqdm>=4.65.0",
+    "thefuzz[speedup]>=0.22.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+    "ipywidgets>=8.0.0",
+    "matplotlib>=3.0.0",
+    "matplotlib-inline>=0.1.0",
+    "duckdb>=1.4.4",
+    "loguru>=0.7.3",
+    "rich>=14.3.1",
+    "tenacity>=9.1.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ifdata_bcb"]
