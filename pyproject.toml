@@ -1,6 +1,6 @@
 [project]
 name = "ifdata-bcb"
-version = "0.2.0"
+version = "0.2.1"
 description = "Analise de dados financeiros do Banco Central do Brasil (BCB)"
 readme = "README.md"
 license = {file = "LICENSE"}
