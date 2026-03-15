@@ -213,6 +213,18 @@ class BaseExplorer(ABC):
         if start is None:
             raise MissingRequiredParameterError("start")
 
+    def _validate_cadastro_columns(self, cadastro: Optional[list[str]]) -> None:
+        """Valida nomes de colunas cadastrais antes de executar qualquer query."""
+        if cadastro is None:
+            return
+        invalid = set(cadastro) - self._VALID_CADASTRO_COLUMNS
+        if invalid:
+            raise InvalidScopeError(
+                "cadastro",
+                str(sorted(invalid)),
+                sorted(self._VALID_CADASTRO_COLUMNS),
+            )
+
     def _build_string_condition(
         self,
         column: str,
@@ -396,14 +408,6 @@ class BaseExplorer(ABC):
         """
         if df.empty:
             return df
-
-        invalid = set(cadastro_columns) - self._VALID_CADASTRO_COLUMNS
-        if invalid:
-            raise InvalidScopeError(
-                "cadastro",
-                str(sorted(invalid)),
-                sorted(self._VALID_CADASTRO_COLUMNS),
-            )
 
         # Lazy-load CadastroExplorer (import local para evitar circular)
         if not hasattr(self, "_cadastro_explorer"):

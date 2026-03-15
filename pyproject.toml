@@ -1,9 +1,23 @@
 [project]
 name = "ifdata-bcb"
-version = "0.0.0"
+version = "0.1.0"
 description = "Analise de dados financeiros do Banco Central do Brasil (BCB)"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Typing :: Typed",
+]
 dependencies = [
     "pandas>=2.0.0",
     "pyarrow>=10.0.0",
@@ -17,6 +31,13 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/enzoomoreira/ifdata-bcb"
+Repository = "https://github.com/enzoomoreira/ifdata-bcb"
+Documentation = "https://github.com/enzoomoreira/ifdata-bcb/tree/master/docs"
+"Bug Tracker" = "https://github.com/enzoomoreira/ifdata-bcb/issues"
+Changelog = "https://github.com/enzoomoreira/ifdata-bcb/blob/master/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

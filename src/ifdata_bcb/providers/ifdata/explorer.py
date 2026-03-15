@@ -428,6 +428,7 @@ class IFDATAExplorer(BaseExplorer):
             InvalidDateRangeError: Se start > end.
         """
         self._validate_required_params(instituicao, start)
+        self._validate_cadastro_columns(cadastro)
         self._logger.debug(f"IFDATA read: instituicao={instituicao}, escopo={escopo}")
 
         escopos = (

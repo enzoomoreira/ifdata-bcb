@@ -1,5 +1,10 @@
 # ifdata-bcb
 
+[![PyPI version](https://img.shields.io/pypi/v/ifdata-bcb)](https://pypi.org/project/ifdata-bcb/)
+[![Python](https://img.shields.io/pypi/pyversions/ifdata-bcb)](https://pypi.org/project/ifdata-bcb/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/enzoomoreira/ifdata-bcb/actions/workflows/ci.yml/badge.svg)](https://github.com/enzoomoreira/ifdata-bcb/actions/workflows/ci.yml)
+
 Coleta e analise de dados contabeis e financeiros de instituicoes financeiras brasileiras. Dados publicos do Banco Central do Brasil.
 
 | Fonte | Modulo | Dados | Periodicidade |
@@ -170,3 +175,19 @@ Metodos especificos:
 | `cosif` | `list_accounts()`, `list_institutions()` |
 | `ifdata` | `list_accounts()`, `list_institutions()`, `list_reporters()`, `list_reports()` |
 | `cadastro` | `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()` |
+
+## Limitacoes Conhecidas
+
+- **Dependencia de APIs do BCB**: a coleta depende da disponibilidade dos endpoints publicos do Banco Central. Se a API estiver fora do ar ou mudar seu schema, a coleta pode falhar.
+- **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periods()` para verificar disponibilidade.
+- **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz requisicoes HTTP sequenciais ao BCB.
+- **Cache sem invalidacao automatica**: dados coletados ficam em cache local indefinidamente. Para atualizar, colete novamente o periodo desejado.
+- **Sem suporte offline**: a coleta requer conexao com a internet. A leitura funciona offline se os dados ja estiverem em cache.
+
+## Contribuindo
+
+Contribuicoes sao bem-vindas! Consulte o [guia de contribuicao](CONTRIBUTING.md) para detalhes sobre como participar.
+
+## Licenca
+
+Distribuido sob a licenca MIT. Veja [LICENSE](LICENSE) para mais informacoes.

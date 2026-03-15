@@ -1,5 +1,14 @@
 # Project Changelog
 
+## [2026-03-15 03:00]
+
+### Fixed
+- `NormalizedDates` agora valida range de mes (1-12), rejeitando inputs como `202413` ou `202400` que antes eram aceitos silenciosamente e resultavam em queries vazias sem erro informativo
+  - Eliminada duplicacao de parsing: validator agora delega para `normalize_date_to_int()` (fonte unica de verdade para conversao de datas)
+- String de ano puro (`"2024"`) agora levanta `InvalidDateFormatError` em vez de ser interpretada como YYYYMM=2024 (ano 20, mes 24)
+- Parametro `cadastro` com colunas invalidas agora levanta `InvalidScopeError` mesmo quando o resultado da query e vazio
+  - Validacao movida para o inicio de `read()` (antes do query), garantindo feedback imediato independente dos dados
+
 ## [2026-03-15 02:12]
 
 ### Added

@@ -4,53 +4,20 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 
 ## Diagrama de Camadas
 
-```
-+---------------------------------------------------------------+
-|                    API PUBLICA (ifdata_bcb/)                  |
-|     __init__.py: cosif, ifdata, cadastro, search()            |
-|                     [lazy loading]                            |
-+---------------------------------------------------------------+
-                              |
-         +--------------------+--------------------+
-         |                                         |
-+------------------+                    +--------------------+
-|   CORE (core/)   |                    |  DOMAIN (domain/)  |
-+------------------+                    +--------------------+
-| BaseExplorer     |                    | Exceptions (9)     |
-| EntityLookup     |                    | ScopeResolution    |
-| constants        |                    | Type aliases       |
-| api.search()     |                    | Validation models  |
-+------------------+                    +--------------------+
-         |                                         |
-         +--------------------+--------------------+
-                              |
-+---------------------------------------------------------------+
-|                    PROVIDERS (providers/)                     |
-+---------------------------------------------------------------+
-| BaseCollector          | cosif/           | ifdata/          |
-| collector_models       | - COSIFCollector | - IFDATACollector|
-|                        | - COSIFExplorer  | - IFDATAExplorer |
-|                        |                  | - CadastroExplorer|
-+---------------------------------------------------------------+
-                              |
-         +--------------------+--------------------+
-         |                                         |
-+------------------+                    +--------------------+
-|  INFRA (infra/)  |                    |   UTILS (utils/)   |
-+------------------+                    +--------------------+
-| config           |                    | text               |
-| QueryEngine      |                    | date               |
-| DataManager      |                    | fuzzy              |
-| log (loguru)     |                    | cnpj               |
-| cache            |                    | period             |
-| resilience       |                    |                    |
-+------------------+                    +--------------------+
-                              |
-                    +------------------+
-                    |   UI (ui/)       |
-                    +------------------+
-                    | Display (Rich)   |
-                    +------------------+
+```mermaid
+graph TD
+    API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro, search()<br/><i>lazy loading</i>"]
+    CORE["<b>CORE (core/)</b><br/>BaseExplorer<br/>EntityLookup<br/>constants<br/>api.search()"]
+    DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>ScopeResolution<br/>Type aliases<br/>Validation models"]
+    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseCollector | collector_models<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/ : IFDATACollector, IFDATAExplorer, CadastroExplorer"]
+    INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
+    UTILS["<b>UTILS (utils/)</b><br/>text | date<br/>fuzzy | cnpj<br/>period"]
+    UI["<b>UI (ui/)</b><br/>Display (Rich)"]
+
+    API --> CORE & DOMAIN
+    CORE & DOMAIN --> PROVIDERS
+    PROVIDERS --> INFRA & UTILS
+    INFRA & UTILS --> UI
 ```
 
 ## Estrutura de Diretorios
@@ -372,30 +339,40 @@ Retorna: DataFrame[CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE]
 
 ## Diagrama de Dependencias
 
-```
-__init__.py
-    |
-    +-- providers/cosif/explorer.py (COSIFExplorer)
-    |   |
-    |   +-- core/base_explorer.py (BaseExplorer)
-    |   |   +-- core/entity_lookup.py (EntityLookup)
-    |   |   +-- infra/query.py (QueryEngine)
-    |   |   +-- domain/exceptions.py
-    |   |
-    |   +-- providers/cosif/collector.py (COSIFCollector)
-    |       +-- providers/base_collector.py (BaseCollector)
-    |       +-- infra/storage.py (DataManager)
-    |       +-- infra/resilience.py (@retry)
-    |
-    +-- providers/ifdata/explorer.py (IFDATAExplorer)
-    |   (mesma estrutura)
-    |
-    +-- providers/ifdata/cadastro_explorer.py (CadastroExplorer)
-    |
-    +-- core/api.py (search)
-        +-- core/entity_lookup.py (EntityLookup)
-            +-- utils/fuzzy.py (FuzzyMatcher)
-            +-- utils/text.py (normalize_accents)
+```mermaid
+graph LR
+    init["__init__.py"]
+
+    cosif_exp["COSIFExplorer<br/><i>cosif/explorer.py</i>"]
+    ifdata_exp["IFDATAExplorer<br/><i>ifdata/explorer.py</i>"]
+    cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro_explorer.py</i>"]
+    api["search()<br/><i>core/api.py</i>"]
+
+    base_exp["BaseExplorer<br/><i>core/base_explorer.py</i>"]
+    entity["EntityLookup<br/><i>core/entity_lookup.py</i>"]
+    query["QueryEngine<br/><i>infra/query.py</i>"]
+    exceptions["exceptions<br/><i>domain/exceptions.py</i>"]
+
+    cosif_col["COSIFCollector<br/><i>cosif/collector.py</i>"]
+    base_col["BaseCollector<br/><i>providers/base_collector.py</i>"]
+    storage["DataManager<br/><i>infra/storage.py</i>"]
+    resilience["@retry<br/><i>infra/resilience.py</i>"]
+
+    fuzzy["FuzzyMatcher<br/><i>utils/fuzzy.py</i>"]
+    text["normalize_accents<br/><i>utils/text.py</i>"]
+
+    init --> cosif_exp & ifdata_exp & cadastro_exp & api
+
+    cosif_exp --> base_exp
+    cosif_exp --> cosif_col
+    ifdata_exp --> base_exp
+
+    base_exp --> entity & query & exceptions
+
+    cosif_col --> base_col & storage & resilience
+
+    api --> entity
+    entity --> fuzzy & text
 ```
 
 ## Thread Safety
