@@ -1,6 +1,6 @@
 [project]
 name = "ifdata-bcb"
-version = "0.1.0"
+version = "0.1.1"
 description = "Analise de dados financeiros do Banco Central do Brasil (BCB)"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -30,6 +30,7 @@ dependencies = [
     "tenacity>=9.1.2",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "ipywidgets>=8.1.8",
 ]
 
 [project.urls]
@@ -49,7 +50,6 @@ packages = ["src/ifdata_bcb"]
 [dependency-groups]
 dev = [
     "ipykernel==6.29.5",
-    "ipywidgets>=8.1.8",
     "openpyxl>=3.1.5",
     "pytest>=9.0.2",
 ]
