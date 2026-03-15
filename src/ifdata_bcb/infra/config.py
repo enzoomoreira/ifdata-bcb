@@ -1,32 +1,33 @@
-import os
 from pathlib import Path
-from platformdirs import user_cache_dir
 
-# Nome da aplicacao para diretorio de cache
+from platformdirs import user_cache_dir
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 APP_NAME = "py-bacen"
 
 
-def get_cache_path() -> Path:
-    """
-    Retorna caminho para cache de dados.
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="BACEN_")
 
-    Prioridade: BACEN_DATA_DIR env var > AppData/Local/py-bacen/Cache.
-    """
-    env_path = os.environ.get("BACEN_DATA_DIR")
-    if env_path:
-        path = Path(env_path)
-    else:
-        # user_cache_dir no Windows retorna AppData/Local/py-bacen/Cache
-        path = Path(user_cache_dir(APP_NAME, appauthor=False))
+    data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
 
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    @property
+    def cache_path(self) -> Path:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        return self.data_dir
+
+    @property
+    def logs_path(self) -> Path:
+        path = self.data_dir.parent / "Logs"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
 
-def get_logs_path() -> Path:
-    """Retorna caminho para logs: AppData/Local/py-bacen/Logs/."""
-    # Pega o parent do cache (py-bacen) para criar Logs no mesmo nivel
-    cache_path = Path(user_cache_dir(APP_NAME, appauthor=False))
-    logs_path = cache_path.parent / "Logs"
-    logs_path.mkdir(parents=True, exist_ok=True)
-    return logs_path
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings

@@ -9,7 +9,8 @@ src/ifdata_bcb/domain/
 |-- __init__.py           # Exports publicos
 |-- exceptions.py        # Hierarquia de excecoes
 |-- models.py            # Dataclasses (ScopeResolution)
-+-- types.py             # Type aliases
+|-- types.py             # Type aliases
++-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 ```
 
 ---
@@ -30,6 +31,7 @@ Exception
             +-- InvalidDateRangeError
             +-- InvalidDateFormatError
             +-- PeriodUnavailableError
+            +-- DataProcessingError
 ```
 
 ### BacenAnalysisError
@@ -55,28 +57,18 @@ Escopo ou tipo invalido:
 
 ```python
 class InvalidScopeError(BacenAnalysisError):
-    def __init__(
-        self,
-        scope_name: str,
-        value: Optional[str] = None,
-        valid_values: Optional[list[str]] = None,
-        context: Optional[str] = None,
-    ):
-        self.scope_name = scope_name
+    def __init__(self, scope: str, value: str, valid_values: list[str]):
+        self.scope = scope
         self.value = value
         self.valid_values = valid_values
-        self.context = context
 
 # Uso
 raise InvalidScopeError(
-    scope_name="escopo",
+    scope="escopo",
     value="invalido",
     valid_values=["individual", "prudencial", "financeiro"],
-    context="Instituicao pertence a conglomerado"
 )
-# Mensagem: "O parametro 'escopo' tem valor invalido: 'invalido'.
-#            Valores validos: individual, prudencial, financeiro.
-#            Contexto: Instituicao pertence a conglomerado"
+# Mensagem: "Escopo 'invalido' invalido. Validos: 'individual', 'prudencial', 'financeiro'."
 ```
 
 ### DataUnavailableError
@@ -85,25 +77,18 @@ Dados nao disponiveis para a consulta:
 
 ```python
 class DataUnavailableError(BacenAnalysisError):
-    def __init__(
-        self,
-        entity: str,
-        scope_type: str,
-        reason: Optional[str] = None,
-        suggestions: Optional[list[str]] = None,
-    ):
+    def __init__(self, entity: str, scope_type: str, reason: str = ""):
         self.entity = entity
         self.scope_type = scope_type
         self.reason = reason
-        self.suggestions = suggestions
 
 # Uso
 raise DataUnavailableError(
     entity="60872504",
     scope_type="financeiro",
     reason="Instituicao nao possui dados de conglomerado financeiro",
-    suggestions=["Tente escopo='prudencial'", "Verifique bcb.cadastro.info()"]
 )
+# Mensagem: "Dados indisponiveis para '60872504' no escopo 'financeiro'. ..."
 ```
 
 ### EntityNotFoundError
@@ -112,19 +97,12 @@ Entidade nao encontrada:
 
 ```python
 class EntityNotFoundError(BacenAnalysisError):
-    def __init__(
-        self,
-        identifier: str,
-        suggestions: Optional[list[str]] = None,
-    ):
+    def __init__(self, identifier: str):
         self.identifier = identifier
-        self.suggestions = suggestions
 
 # Uso
-raise EntityNotFoundError(
-    identifier="Banco Inexistente",
-    suggestions=["Verifique o nome", "Use bcb.search('termo')"]
-)
+raise EntityNotFoundError(identifier="Banco Inexistente")
+# Mensagem: "Entidade nao encontrada: 'Banco Inexistente'."
 ```
 
 ### AmbiguousIdentifierError
@@ -133,22 +111,16 @@ Identificador com multiplas correspondencias:
 
 ```python
 class AmbiguousIdentifierError(BacenAnalysisError):
-    def __init__(
-        self,
-        identifier: str,
-        matches: Optional[list[str]] = None,
-        suggestion: Optional[str] = None,
-    ):
+    def __init__(self, identifier: str, matches: list[str]):
         self.identifier = identifier
         self.matches = matches
-        self.suggestion = suggestion
 
 # Uso
 raise AmbiguousIdentifierError(
     identifier="Itau",
     matches=["ITAU UNIBANCO S.A.", "BANCO ITAU BBA S.A."],
-    suggestion="Use CNPJ de 8 digitos ou nome mais completo"
 )
+# Mensagem: "Identificador 'Itau' ambiguo. Encontrados: 'ITAU UNIBANCO S.A.', 'BANCO ITAU BBA S.A.'."
 ```
 
 ### InvalidIdentifierError
@@ -157,21 +129,12 @@ Formato de identificador invalido:
 
 ```python
 class InvalidIdentifierError(BacenAnalysisError):
-    def __init__(
-        self,
-        identificador: str,
-        suggestion: Optional[str] = None,
-    ):
+    def __init__(self, identificador: str):
         self.identificador = identificador
-        self.suggestion = suggestion
 
 # Uso
-raise InvalidIdentifierError(
-    identificador="Itau",
-    suggestion="Use bcb.search('Itau') para encontrar o CNPJ de 8 digitos."
-)
-# Mensagem: "Identificador 'Itau' em formato invalido. Esperado CNPJ de 8 digitos.
-#            Use bcb.search('Itau') para encontrar o CNPJ de 8 digitos."
+raise InvalidIdentifierError(identificador="Itau")
+# Mensagem: "Identificador 'Itau' invalido. Esperado CNPJ de 8 digitos."
 ```
 
 ### MissingRequiredParameterError
@@ -180,21 +143,12 @@ Parametro obrigatorio ausente:
 
 ```python
 class MissingRequiredParameterError(BacenAnalysisError):
-    def __init__(
-        self,
-        param_name: str,
-        context: Optional[str] = None,
-    ):
+    def __init__(self, param_name: str):
         self.param_name = param_name
-        self.context = context
 
 # Uso
-raise MissingRequiredParameterError(
-    param_name="instituicao",
-    context="Forneca CNPJ de 8 digitos (use bcb.search() para encontrar)"
-)
-# Mensagem: "O parametro 'instituicao' e obrigatorio.
-#            Forneca CNPJ de 8 digitos (use bcb.search() para encontrar)"
+raise MissingRequiredParameterError(param_name="instituicao")
+# Mensagem: "Parametro obrigatorio ausente: 'instituicao'."
 ```
 
 ### InvalidDateRangeError
@@ -218,15 +172,13 @@ Formato de data nao reconhecido:
 
 ```python
 class InvalidDateFormatError(BacenAnalysisError):
-    def __init__(self, value: str, expected_formats: Optional[list[str]] = None):
+    def __init__(self, value: str, detail: str = ""):
         self.value = value
-        self.expected_formats = expected_formats or ["YYYYMM", "YYYY-MM"]
+        self.detail = detail
 
 # Uso
-raise InvalidDateFormatError(
-    value="2024/12/01",
-    expected_formats=["YYYYMM", "YYYY-MM", "YYYY-MM-DD"]
-)
+raise InvalidDateFormatError(value="2024/12/01")
+# Mensagem: "Formato de data invalido: '2024/12/01'."
 ```
 
 ### PeriodUnavailableError
@@ -235,12 +187,86 @@ Periodo nao disponivel no BCB (usado internamente na coleta):
 
 ```python
 class PeriodUnavailableError(BacenAnalysisError):
-    def __init__(self, period: int, source: str):
+    def __init__(self, period: int):
         self.period = period
-        self.source = source
 
 # Uso interno
-raise PeriodUnavailableError(period=202501, source="COSIF Individual")
+raise PeriodUnavailableError(period=202501)
+# Mensagem: "Periodo 202501 indisponivel na fonte."
+```
+
+### DataProcessingError
+
+Falha no processamento de dados de uma fonte (usado internamente nos collectors):
+
+```python
+class DataProcessingError(BacenAnalysisError):
+    def __init__(self, source: str, detail: str = ""):
+        self.source = source
+        self.detail = detail
+
+# Uso interno
+raise DataProcessingError("cosif:prudencial", "Erro na leitura do CSV")
+```
+
+---
+
+## validation.py
+
+Modelos Pydantic para normalizacao e validacao de inputs. Usados internamente pelo `BaseExplorer`.
+
+### NormalizedDates
+
+Normaliza `DateInput` para `list[int]` no formato YYYYMM:
+
+```python
+class NormalizedDates(BaseModel):
+    values: list[int]
+
+    @field_validator("values", mode="before")
+    def normalize(cls, v: DateInput) -> list[int]: ...
+
+# Uso
+NormalizedDates(values="2024-12").values  # [202412]
+NormalizedDates(values=[202401, "2024-02"]).values  # [202401, 202402]
+```
+
+### ValidatedCnpj8
+
+Valida CNPJ de exatamente 8 digitos:
+
+```python
+class ValidatedCnpj8(BaseModel):
+    value: str
+
+# Uso
+ValidatedCnpj8(value="60872504").value  # "60872504"
+ValidatedCnpj8(value="abc")  # Raises InvalidIdentifierError
+```
+
+### InstitutionList
+
+Normaliza `InstitutionInput` para lista de CNPJs validados:
+
+```python
+class InstitutionList(BaseModel):
+    values: list[str]
+
+# Uso
+InstitutionList(values="60872504").values  # ["60872504"]
+InstitutionList(values=["60872504", "60746948"]).values  # ["60872504", "60746948"]
+```
+
+### AccountList
+
+Normaliza `AccountInput` para lista de strings:
+
+```python
+class AccountList(BaseModel):
+    values: list[str]
+
+# Uso
+AccountList(values="TOTAL DO ATIVO").values  # ["TOTAL DO ATIVO"]
 ```
 
 ---
@@ -334,7 +360,7 @@ except BacenAnalysisError as e:
 ### Capturar Erros Especificos
 
 ```python
-from ifdata_bcb import (
+from ifdata_bcb.domain.exceptions import (
     InvalidIdentifierError,
     MissingRequiredParameterError,
     InvalidDateRangeError,
@@ -345,15 +371,12 @@ try:
     df = bcb.ifdata.read(instituicao='Itau', start='2024-12', escopo='prudencial')
 except InvalidIdentifierError as e:
     print(f"CNPJ invalido: {e.identificador}")
-    print(f"Sugestao: {e.suggestion}")
 except MissingRequiredParameterError as e:
     print(f"Faltou: {e.param_name}")
 except InvalidDateRangeError as e:
     print(f"Datas invertidas: {e.start} > {e.end}")
 except DataUnavailableError as e:
     print(f"Sem dados para {e.entity} em {e.scope_type}")
-    for s in e.suggestions or []:
-        print(f"  - {s}")
 ```
 
 ### Padroes de Validacao em Explorers
@@ -362,15 +385,9 @@ except DataUnavailableError as e:
 def read(self, instituicao, start, end=None, escopo="individual"):
     # 1. Parametros obrigatorios
     if instituicao is None:
-        raise MissingRequiredParameterError(
-            param_name="instituicao",
-            context="Forneca CNPJ de 8 digitos"
-        )
+        raise MissingRequiredParameterError("instituicao")
     if start is None:
-        raise MissingRequiredParameterError(
-            param_name="start",
-            context="Formato: YYYY-MM"
-        )
+        raise MissingRequiredParameterError("start")
 
     # 2. Validar range de datas
     if end is not None:
@@ -385,9 +402,9 @@ def read(self, instituicao, start, end=None, escopo="individual"):
     # 4. Validar escopo (em IFDATAExplorer)
     if escopo not in ["individual", "prudencial", "financeiro"]:
         raise InvalidScopeError(
-            scope_name="escopo",
+            scope="escopo",
             value=escopo,
-            valid_values=["individual", "prudencial", "financeiro"]
+            valid_values=["individual", "prudencial", "financeiro"],
         )
 ```
 
@@ -399,57 +416,62 @@ def read(self, instituicao, start, end=None, escopo="individual"):
 # domain/__init__.py
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
-    InvalidScopeError,
     DataUnavailableError,
-    EntityNotFoundError,
-    AmbiguousIdentifierError,
-    InvalidIdentifierError,
-    MissingRequiredParameterError,
-    InvalidDateRangeError,
     InvalidDateFormatError,
+    InvalidDateRangeError,
+    InvalidIdentifierError,
+    InvalidScopeError,
+    MissingRequiredParameterError,
     PeriodUnavailableError,
 )
+from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
 from ifdata_bcb.domain.models import ScopeResolution
-from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
+from ifdata_bcb.domain.validation import (
+    AccountList,
+    InstitutionList,
+    NormalizedDates,
+    ValidatedCnpj8,
+)
 
 __all__ = [
+    # Exceptions
     "BacenAnalysisError",
-    "InvalidScopeError",
     "DataUnavailableError",
-    "EntityNotFoundError",
-    "AmbiguousIdentifierError",
-    "InvalidIdentifierError",
-    "MissingRequiredParameterError",
-    "InvalidDateRangeError",
     "InvalidDateFormatError",
+    "InvalidDateRangeError",
+    "InvalidIdentifierError",
+    "InvalidScopeError",
+    "MissingRequiredParameterError",
     "PeriodUnavailableError",
-    "ScopeResolution",
-    "DateInput",
+    # Types
     "AccountInput",
+    "DateInput",
     "InstitutionInput",
+    # Models
+    "ScopeResolution",
+    # Validation
+    "AccountList",
+    "InstitutionList",
+    "NormalizedDates",
+    "ValidatedCnpj8",
 ]
 ```
 
-Re-export no `__init__.py` raiz:
+Re-export no `__init__.py` raiz (apenas as mais comuns):
 
 ```python
 # ifdata_bcb/__init__.py
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
-    InvalidScopeError,
-    # ... todas as excecoes
+    DataUnavailableError,
 )
 
 __all__ = [
-    # Explorers
     "cosif",
     "ifdata",
     "cadastro",
-    # Funcoes
     "search",
-    # Excecoes (para import direto: from ifdata_bcb import BacenAnalysisError)
     "BacenAnalysisError",
-    "InvalidScopeError",
-    # ...
+    "DataUnavailableError",
 ]
 ```

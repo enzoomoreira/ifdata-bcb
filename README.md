@@ -31,9 +31,10 @@ bcb.search('Itau')
 bcb.search('Bradesco')
 #    CNPJ_8                       INSTITUICAO  SITUACAO  FONTES  SCORE
 # 0  60872504  ITAU UNIBANCO HOLDING S.A.           A    ...    100
+# Quando possivel, prioriza resultados com dados disponiveis em FONTES.
 
 # 3. Ler dados usando CNPJ de 8 digitos
-# instituicao e start sao OBRIGATORIOS
+# COSIF/IFDATA: instituicao e start sao OBRIGATORIOS
 # start sozinho = data unica; start + end = range
 
 # COSIF (escopo=None busca em todos os escopos)
@@ -54,6 +55,9 @@ df = bcb.ifdata.read(
 
 # Cadastro
 info = bcb.cadastro.info('60872504', start='2024-12')
+
+# Cadastro tambem pode ser filtrado sem instituicao
+df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
 
 # 4. Listar contas e instituicoes disponiveis
 bcb.cosif.list_accounts(escopo='prudencial')
@@ -76,25 +80,26 @@ df = qe.sql("""
 
 ### Guias de Uso
 
-- **[getting-started.md](docs2/getting-started.md)** - Instalacao e primeiro uso
+- **[getting-started.md](docs/getting-started.md)** - Instalacao e primeiro uso
 
 ### Fontes de Dados
 
-- **[cosif.md](docs2/providers/cosif.md)** - Plano contabil (individual/prudencial)
-- **[ifdata.md](docs2/providers/ifdata.md)** - Informacoes financeiras trimestrais
-- **[cadastro.md](docs2/providers/cadastro.md)** - Metadados de instituicoes
+- **[cosif.md](docs/providers/cosif.md)** - Plano contabil (individual/prudencial)
+- **[ifdata.md](docs/providers/ifdata.md)** - Informacoes financeiras trimestrais
+- **[cadastro.md](docs/providers/cadastro.md)** - Metadados de instituicoes
 
 ### Uso Avancado
 
-- **[sql-queries.md](docs2/advanced/sql-queries.md)** - Queries SQL com DuckDB
-- **[extending.md](docs2/advanced/extending.md)** - Como criar novos providers
+- **[sql-queries.md](docs/advanced/sql-queries.md)** - Queries SQL com DuckDB
+- **[extending.md](docs/advanced/extending.md)** - Como criar novos providers
 
 ### Arquitetura Interna
 
-- **[architecture.md](docs2/internals/architecture.md)** - Visao geral da arquitetura
-- **[domain.md](docs2/internals/domain.md)** - BaseExplorer, Exceptions
-- **[infra.md](docs2/internals/infra.md)** - Config, QueryEngine, DataManager
-- **[services.md](docs2/internals/services.md)** - BaseCollector, EntityLookup
+- **[architecture.md](docs/internals/architecture.md)** - Visao geral da arquitetura
+- **[core.md](docs/internals/core.md)** - BaseExplorer, EntityLookup, Constants
+- **[domain.md](docs/internals/domain.md)** - Exceptions, Models, Types, Validation
+- **[infra.md](docs/internals/infra.md)** - Settings, QueryEngine, DataManager
+- **[providers.md](docs/internals/providers.md)** - BaseCollector, Explorers
 
 ## Estrutura de Dados
 
@@ -154,5 +159,5 @@ Metodos especificos:
 | Explorer | Metodos Adicionais |
 |----------|-------------------|
 | `cosif` | `list_accounts()`, `list_institutions()` |
-| `ifdata` | `list_accounts()`, `list_institutions()`, `list_reports()` |
+| `ifdata` | `list_accounts()`, `list_institutions()`, `list_reporters()`, `list_reports()` |
 | `cadastro` | `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()` |

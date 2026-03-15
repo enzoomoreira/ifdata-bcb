@@ -98,19 +98,19 @@ class NovoCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         """
-        Baixa dados de um periodo especifico.
+        Baixa dados de um periodo para work_dir.
 
         Args:
             period: Periodo no formato YYYYMM.
+            work_dir: Diretorio temporario para downloads.
 
         Returns:
             Path do arquivo CSV baixado ou None se falhar.
         """
         url = f"https://api.exemplo.com/dados/{period}.csv"
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"novo_{period}_"))
-        output_path = temp_dir / f"novo_{period}.csv"
+        output_path = work_dir / f"novo_{period}.csv"
 
         try:
             self._download_single(url, output_path, period)
@@ -270,7 +270,8 @@ class NovoExplorer(BaseExplorer):
             if contas:
                 conditions.append(
                     self._build_string_condition(
-                        self._storage_col("CONTA"), contas, case_insensitive=True
+                        self._storage_col("CONTA"), contas,
+                        case_insensitive=True, accent_insensitive=True,
                     )
                 )
 
@@ -362,12 +363,13 @@ def _get_file_prefix(self) -> str:
 def _get_subdir(self) -> str:
     """Subdiretorio de armazenamento (ex: 'cosif/individual')."""
 
-def _download_period(self, period: int) -> Optional[Path]:
+def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
     """
-    Baixa dados de um periodo especifico.
+    Baixa dados de um periodo para work_dir.
 
     Args:
         period: Numero do periodo em formato YYYYMM
+        work_dir: Diretorio temporario para downloads
 
     Returns:
         Path ao arquivo CSV temporario, ou None se falhar
@@ -450,7 +452,7 @@ def _resolve_entity(self, identificador: str) -> str  # Valida CNPJ
 def _resolve_date_range(self, start, end, trimestral=False) -> Optional[list[int]]
 
 # Construcao de queries SQL
-def _build_string_condition(self, column, values, case_insensitive=False) -> str
+def _build_string_condition(self, column, values, case_insensitive=False, accent_insensitive=False) -> str
 def _build_int_condition(self, column, values) -> str
 def _build_date_condition(self, start, end, trimestral=False) -> Optional[str]
 def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> Optional[str]

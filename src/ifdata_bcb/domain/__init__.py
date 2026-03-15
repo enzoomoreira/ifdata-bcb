@@ -16,6 +16,12 @@ from ifdata_bcb.domain.types import (
 from ifdata_bcb.domain.models import (
     ScopeResolution,
 )
+from ifdata_bcb.domain.validation import (
+    AccountList,
+    InstitutionList,
+    NormalizedDates,
+    ValidatedCnpj8,
+)
 
 __all__ = [
     # Exceptions
@@ -33,4 +39,9 @@ __all__ = [
     "InstitutionInput",
     # Models
     "ScopeResolution",
+    # Validation
+    "AccountList",
+    "InstitutionList",
+    "NormalizedDates",
+    "ValidatedCnpj8",
 ]

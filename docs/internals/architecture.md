@@ -16,10 +16,10 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 +------------------+                    +--------------------+
 |   CORE (core/)   |                    |  DOMAIN (domain/)  |
 +------------------+                    +--------------------+
-| BaseExplorer     |                    | Exceptions (8)     |
+| BaseExplorer     |                    | Exceptions (9)     |
 | EntityLookup     |                    | ScopeResolution    |
 | constants        |                    | Type aliases       |
-| api.search()     |                    |                    |
+| api.search()     |                    | Validation models  |
 +------------------+                    +--------------------+
          |                                         |
          +--------------------+--------------------+
@@ -68,7 +68,8 @@ src/ifdata_bcb/
 |   |-- __init__.py
 |   |-- exceptions.py        # Hierarquia de excecoes
 |   |-- models.py            # ScopeResolution
-|   +-- types.py             # DateInput, AccountInput, etc
+|   |-- types.py             # DateInput, AccountInput, etc
+|   +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 |-- providers/                # Implementacoes por fonte
 |   |-- __init__.py
 |   |-- base_collector.py    # Template para coleta
@@ -84,7 +85,8 @@ src/ifdata_bcb/
 |       +-- cadastro_explorer.py  # CadastroExplorer
 |-- infra/                    # Infraestrutura tecnica
 |   |-- __init__.py
-|   |-- config.py            # Paths e configuracoes
+|   |-- config.py            # Settings (pydantic-settings)
+|   |-- paths.py             # ensure_dir, temp_dir
 |   |-- query.py             # QueryEngine (DuckDB)
 |   |-- storage.py           # DataManager (Parquet)
 |   |-- log.py               # Logging (Loguru)
@@ -120,9 +122,10 @@ src/ifdata_bcb/
 
 ### Domain (`domain/`)
 
-- **exceptions**: Hierarquia de 8 excecoes customizadas
+- **exceptions**: Hierarquia de 9 excecoes customizadas
 - **models**: `ScopeResolution` dataclass para resolucao IFDATA
 - **types**: Type aliases para parametros flexiveis
+- **validation**: Pydantic models para normalizacao/validacao de inputs
 
 ### Providers (`providers/`)
 
@@ -133,7 +136,8 @@ src/ifdata_bcb/
 
 ### Infra (`infra/`)
 
-- **config**: Paths por SO, variavel BACEN_DATA_DIR
+- **config**: Settings via pydantic-settings (BACEN_DATA_DIR)
+- **paths**: Gerenciamento de diretorios (`ensure_dir`, `temp_dir`)
 - **QueryEngine**: Motor DuckDB sobre Parquet
 - **DataManager**: Persistencia em Parquet
 - **log**: Dual output (console WARNING+, arquivo DEBUG+)
@@ -272,12 +276,14 @@ COSIFCollector.collect()
     +-- ThreadPoolExecutor (4 workers)
         |
         +-- Worker 0: staggered_delay(0) --> 0s
-        |   +-- _download_period(202401)
+        |   +-- temp_dir() as work_dir
+        |   +-- _download_period(202401, work_dir)
         |   +-- _process_to_parquet(csv_path)
         |   +-- dm.save(df, 'cosif_ind_202401', 'cosif/individual')
+        |   +-- work_dir cleanup automatico
         |
         +-- Worker 1: staggered_delay(1) --> ~0.5s
-        |   +-- _download_period(202402)
+        |   +-- _download_period(202402, work_dir)
         |   ...
         |
         +-- (Workers 2, 3 com delays crescentes)
@@ -297,7 +303,7 @@ COSIFExplorer.read()
     +-- _validate_required_params(instituicao, start)
     |
     +-- _normalize_institutions('60872504')
-    |   +-- _resolve_entity() --> Valida regex \d{8}
+    |   +-- InstitutionList (Pydantic) --> Valida regex \d{8}
     |
     +-- _resolve_date_range('2024-01', '2024-12')
     |   +-- generate_month_range() --> [202401, 202402, ..., 202412]
@@ -338,21 +344,27 @@ EntityLookup.search('Itau')
     |
     +-- normalize_accents('Itau'.upper()) --> 'ITAU'
     |
-    +-- _build_entity_union_sql()
-    |   +-- UNION 3 fontes (cadastro, cosif_ind, cosif_prud)
-    |   +-- SELECT CNPJ_8, NOME, NOME_NORM, FONTE
+    +-- Query 1: Entidades reais do cadastro
+    |   +-- Filtro real_entity_condition() (CodInst numerico ou heuristica)
+    |   +-- Dedup por CNPJ (nome mais recente)
     |
-    +-- DuckDB executa, retorna nomes unicos
+    +-- Query 2: Aliases pesquisaveis
+    |   +-- Inclui nomes prudenciais/financeiros
+    |   +-- Resolvidos para CNPJ real via resolved_entity_cnpj_expr()
     |
     +-- FuzzyMatcher.search(query='ITAU', choices={nome: cnpj})
     |   +-- token_set_ratio scorer
-    |   +-- Filtra score >= 50, ordena desc(score) + asc(nome)
+    |   +-- Filtra score >= threshold_suggest, ordena desc(score) + asc(nome)
     |
     +-- _get_data_sources_for_cnpjs(cnpjs)
     |   +-- Verifica presenca em COSIF e IFDATA
     |
     +-- _get_latest_situacao(cnpjs)
     |   +-- Window function para situacao mais recente
+    |
+    +-- Filtra: se ha matches com FONTES, descarta sem dados
+    |
+    +-- Ordena (ativas, score, nome) e aplica limit
     |
     v
 Retorna: DataFrame[CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE]

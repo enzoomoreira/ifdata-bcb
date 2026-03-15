@@ -149,7 +149,7 @@ contas = bcb.ifdata.list_accounts(escopo='individual', limit=50)
 
 ### list_institutions()
 
-Lista instituicoes disponiveis nos dados.
+Lista entidades analiticas com disponibilidade por escopo.
 
 ```python
 bcb.ifdata.list_institutions(
@@ -158,19 +158,56 @@ bcb.ifdata.list_institutions(
 ) -> pd.DataFrame
 ```
 
-**Retorna**: DataFrame com colunas `COD_INST`, `TIPO_INST` e `INSTITUICAO` (para tipo_inst=3).
+**Retorna**: DataFrame com colunas:
+- `CNPJ_8`: CNPJ de 8 digitos da entidade
+- `INSTITUICAO`: Nome canônico do cadastro
+- `TEM_INDIVIDUAL`: bool - se ha dados no escopo individual
+- `TEM_PRUDENCIAL`: bool - se ha dados no escopo prudencial
+- `TEM_FINANCEIRO`: bool - se ha dados no escopo financeiro
+- `COD_INST_INDIVIDUAL`: Codigo(s) de reporte individual
+- `COD_INST_PRUDENCIAL`: Codigo(s) de reporte prudencial
+- `COD_INST_FINANCEIRO`: Codigo(s) de reporte financeiro
 
 **Exemplos**:
 
 ```python
-# Listar instituicoes de dezembro/2024
+# Listar entidades de dezembro/2024
 inst = bcb.ifdata.list_institutions(start='2024-12')
 
-# Listar de um range de periodos
-inst = bcb.ifdata.list_institutions(start='2024-01', end='2024-12')
+# Filtrar entidades com dados prudenciais
+prud = inst[inst['TEM_PRUDENCIAL']]
 
-# Contar por tipo
-print(inst.groupby('TIPO_INST').size())
+# Ver codigos de reporte de uma entidade
+row = inst[inst['CNPJ_8'] == '60872504'].iloc[0]
+print(f"Individual: {row['COD_INST_INDIVIDUAL']}")
+print(f"Prudencial: {row['COD_INST_PRUDENCIAL']}")
+```
+
+### list_reporters()
+
+Lista chaves operacionais de reporte do IFDATA por entidade e escopo.
+
+```python
+bcb.ifdata.list_reporters(
+    start: str | None = None,      # Data inicial ou unica
+    end: str | None = None         # Data final para range
+) -> pd.DataFrame
+```
+
+**Retorna**: DataFrame com colunas:
+- `COD_INST`: Codigo de reporte no IFDATA
+- `TIPO_INST`: Codigo do tipo de instituicao (1, 2, 3)
+- `ESCOPO`: "individual", "prudencial" ou "financeiro"
+- `REPORT_KEY_TYPE`: "cnpj" ou nome do escopo (indica se COD_INST e CNPJ direto ou codigo de conglomerado)
+- `CNPJ_8`: CNPJ da entidade associada
+- `INSTITUICAO`: Nome canônico
+
+**Exemplo**:
+
+```python
+# Ver mapeamento completo de reporters
+reporters = bcb.ifdata.list_reporters(start='2024-12')
+print(reporters[reporters['CNPJ_8'] == '60872504'])
 ```
 
 ### list_reports()
@@ -219,7 +256,7 @@ info = bcb.ifdata.describe()
 |--------|------|-----------|
 | `DATA` | datetime | Periodo de referencia (trimestral) |
 | `CNPJ_8` | str | CNPJ de 8 digitos da consulta original |
-| `INSTITUICAO` | str | Nome da instituicao |
+| `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial, financeiro) |
 | `COD_INST` | str | Codigo da instituicao no BCB |
 | `CONTA` | str | Nome/descricao da conta |
@@ -233,7 +270,8 @@ info = bcb.ifdata.describe()
 - `CNPJ_8`: CNPJ de 8 digitos que voce passou na consulta
 
 Para escopo `individual`, `COD_INST` e igual ao `CNPJ_8`.
-Para escopos `prudencial` e `financeiro`, `COD_INST` e o codigo do conglomerado.
+Para escopos `prudencial` e `financeiro`, `COD_INST` pode ser o codigo do conglomerado
+ou o proprio CNPJ, dependendo de como a entidade reporta ao BCB.
 
 ### Sobre RELATORIO
 
@@ -289,8 +327,12 @@ print(df_sorted[['DATA', 'VALOR']])
 ### Ranking por Ativo Total (SQL)
 
 ```python
+from ifdata_bcb.infra import QueryEngine
+
+qe = QueryEngine()
+
 # Usando SQL para ranking
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CodInst as COD_INST,
         NomeColuna as CONTA,

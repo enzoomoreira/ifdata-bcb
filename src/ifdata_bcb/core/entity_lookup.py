@@ -41,66 +41,85 @@ class EntityLookup:
         """Retorna path completo para glob de arquivos."""
         return f"{self._qe.cache_path}/{subdir}/{pattern}"
 
-    def _build_entity_union_sql(
-        self,
-        select_cols: str = "CNPJ_8, NOME, NOME_NORM, FONTE",
-        where: Optional[str] = None,
-    ) -> str:
-        """
-        Gera SQL que une cadastro + cosif_ind + cosif_prud.
-
-        Colunas disponiveis: CNPJ_8, NOME, NOME_NORM (sem acentos, upper), FONTE
-        """
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
-        )
-        cosif_ind_path = self._get_source_path(
-            get_subdir("cosif_individual"), get_pattern("cosif_individual")
-        )
-        cosif_prud_path = self._get_source_path(
-            get_subdir("cosif_prudencial"), get_pattern("cosif_prudencial")
-        )
-
-        where_clause = f"WHERE {where}" if where else ""
-
-        sql = f"""
-        SELECT DISTINCT {select_cols}
-        FROM (
-            SELECT
-                CNPJ_8,
-                NomeInstituicao AS NOME,
-                strip_accents(UPPER(NomeInstituicao)) AS NOME_NORM,
-                'cadastro' AS FONTE
-            FROM '{cadastro_path}'
-            WHERE NomeInstituicao IS NOT NULL
-
-            UNION ALL
-
-            SELECT
-                CNPJ_8,
-                NOME_INSTITUICAO AS NOME,
-                strip_accents(UPPER(NOME_INSTITUICAO)) AS NOME_NORM,
-                'cosif_ind' AS FONTE
-            FROM '{cosif_ind_path}'
-            WHERE NOME_INSTITUICAO IS NOT NULL
-
-            UNION ALL
-
-            SELECT
-                CNPJ_8,
-                NOME_INSTITUICAO AS NOME,
-                strip_accents(UPPER(NOME_INSTITUICAO)) AS NOME_NORM,
-                'cosif_prud' AS FONTE
-            FROM '{cosif_prud_path}'
-            WHERE NOME_INSTITUICAO IS NOT NULL
-        ) AS entity_union
-        {where_clause}
-        """
-        return sql
-
     def _escape_sql_string(self, value: str) -> str:
         """Escapa aspas simples para SQL."""
         return value.replace("'", "''")
+
+    @cached(maxsize=1)
+    def _cadastro_has_codinst(self) -> bool:
+        """Indica se o cache de cadastro ja preserva CodInst bruto."""
+        cadastro_path = self._get_source_path(
+            get_subdir("cadastro"), get_pattern("cadastro")
+        )
+        try:
+            df = self._qe.sql(f"DESCRIBE SELECT * FROM '{cadastro_path}' LIMIT 1")
+        except Exception:
+            return False
+        return "CodInst" in df["column_name"].astype(str).tolist()
+
+    def _legacy_alias_condition(
+        self,
+        cnpj_col: str = "CNPJ_8",
+        cnpj_lider_col: str = "CNPJ_LIDER_8",
+        name_col: str = "NomeInstituicao",
+    ) -> str:
+        """
+        Heuristica para caches legados sem CodInst.
+
+        Mantem entidades reais com CNPJ_8, inclusive membros de conglomerado,
+        e tenta excluir aliases prudenciais/financeiros mais obvios.
+        """
+        name_norm = f"strip_accents(UPPER(COALESCE({name_col}, '')))"
+        return (
+            f"(({cnpj_lider_col} IS NOT NULL AND {cnpj_col} <> {cnpj_lider_col} "
+            f"AND {name_norm} LIKE '%PRUDENCIAL%') "
+            f"OR {name_norm} = 'MASTER')"
+        )
+
+    def real_entity_condition(
+        self,
+        cnpj_col: str = "CNPJ_8",
+        cnpj_lider_col: str = "CNPJ_LIDER_8",
+        name_col: str = "NomeInstituicao",
+        cod_inst_col: str = "CodInst",
+    ) -> str:
+        """
+        Filtra apenas linhas que representam entidades reais.
+
+        Regra canônica:
+        - toda linha com CNPJ_8 e CodInst numerico representa uma entidade
+        - aliases prudenciais/financeiros sao identificados pelo CodInst bruto
+
+        Para caches legados sem CodInst, usa heuristica por nome.
+        """
+        if self._cadastro_has_codinst():
+            return (
+                f"{cnpj_col} IS NOT NULL AND "
+                f"regexp_matches(COALESCE({cod_inst_col}, ''), '^[0-9]+$')"
+            )
+        return (
+            f"{cnpj_col} IS NOT NULL AND "
+            f"NOT {self._legacy_alias_condition(cnpj_col, cnpj_lider_col, name_col)}"
+        )
+
+    def resolved_entity_cnpj_expr(
+        self,
+        cnpj_col: str = "CNPJ_8",
+        cnpj_lider_col: str = "CNPJ_LIDER_8",
+        name_col: str = "NomeInstituicao",
+        cod_inst_col: str = "CodInst",
+    ) -> str:
+        """Resolve aliases prudenciais para o CNPJ da entidade lider."""
+        entity_condition = self.real_entity_condition(
+            cnpj_col=cnpj_col,
+            cnpj_lider_col=cnpj_lider_col,
+            name_col=name_col,
+            cod_inst_col=cod_inst_col,
+        )
+        return (
+            f"CASE WHEN {entity_condition} THEN {cnpj_col} "
+            f"ELSE COALESCE({cnpj_lider_col}, {cnpj_col}) END"
+        )
 
     def _get_data_sources_for_cnpjs(self, cnpjs: list[str]) -> dict[str, set[str]]:
         """
@@ -118,7 +137,8 @@ class EntityLookup:
             get_subdir("cosif_prudencial"), get_pattern("cosif_prudencial")
         )
 
-        cnpjs_str = ", ".join(f"'{c}'" for c in cnpjs)
+        cnpjs_escaped = [self._escape_sql_string(c) for c in cnpjs]
+        cnpjs_str = ", ".join(f"'{c}'" for c in cnpjs_escaped)
         sql_cosif = f"""
         SELECT DISTINCT CNPJ_8 FROM (
             SELECT CNPJ_8 FROM '{cosif_ind_path}' WHERE CNPJ_8 IN ({cnpjs_str})
@@ -135,7 +155,8 @@ class EntityLookup:
 
         # Para IFDATA, precisamos verificar:
         # 1. Individual: CNPJ aparece como CodInst com TipoInstituicao=individual
-        # 2. Prudencial/Financeiro: codigo do conglomerado aparece como CodInst
+        # 2. Prudencial/Financeiro: a chave de reporte pode ser conglomerado
+        #    ou o proprio CNPJ, dependendo do escopo/fonte
 
         ifdata_path = self._get_source_path(
             get_subdir("ifdata_valores"), get_pattern("ifdata_valores")
@@ -164,6 +185,7 @@ class EntityLookup:
             CodConglomeradoFinanceiro as cod_fin
         FROM '{cadastro_path}'
         WHERE CNPJ_8 IN ({cnpjs_str})
+          AND {self.real_entity_condition()}
           AND (CodConglomeradoPrudencial IS NOT NULL
                OR CodConglomeradoFinanceiro IS NOT NULL)
         """
@@ -203,7 +225,8 @@ class EntityLookup:
         cadastro_path = self._get_source_path(
             get_subdir("cadastro"), get_pattern("cadastro")
         )
-        cnpjs_str = ", ".join(f"'{c}'" for c in cnpjs)
+        cnpjs_escaped = [self._escape_sql_string(c) for c in cnpjs]
+        cnpjs_str = ", ".join(f"'{c}'" for c in cnpjs_escaped)
 
         sql = f"""
         SELECT CNPJ_8, Situacao
@@ -213,13 +236,16 @@ class EntityLookup:
             ) as rn
             FROM '{cadastro_path}'
             WHERE CNPJ_8 IN ({cnpjs_str})
+              AND {self.real_entity_condition()}
         )
         WHERE rn = 1
         """
 
         try:
             df = self._qe.sql(sql)
-            return {str(row["CNPJ_8"]): str(row["Situacao"]) for _, row in df.iterrows()}
+            return {
+                str(row["CNPJ_8"]): str(row["Situacao"]) for _, row in df.iterrows()
+            }
         except Exception:
             return {}
 
@@ -231,14 +257,27 @@ class EntityLookup:
         Ordenado por ativas primeiro, depois por score.
         FONTES indica onde ha dados disponiveis: 'cosif', 'ifdata'.
         """
+        _RESULT_COLUMNS = [
+            "CNPJ_8",
+            "INSTITUICAO",
+            "SITUACAO",
+            "FONTES",
+            "SCORE",
+        ]
+
+        if limit <= 0:
+            raise ValueError(f"limit deve ser > 0, recebido: {limit}")
+
         termo_norm = normalize_accents(termo.strip().upper())
 
-        # Carrega nomes do cadastro para fuzzy
-        # Pega nome mais recente de cada CNPJ para resultado determinístico
+        if not termo_norm:
+            return pd.DataFrame(columns=_RESULT_COLUMNS)
+
+        # Entidades reais para exibicao deterministica dos resultados
         cadastro_path = self._get_source_path(
             get_subdir("cadastro"), get_pattern("cadastro")
         )
-        sql = f"""
+        sql_entities = f"""
         SELECT CNPJ_8, NOME, strip_accents(UPPER(NOME)) AS NOME_NORM
         FROM (
             SELECT
@@ -247,8 +286,22 @@ class EntityLookup:
                 ROW_NUMBER() OVER (PARTITION BY CNPJ_8 ORDER BY Data DESC) as rn
             FROM '{cadastro_path}'
             WHERE NomeInstituicao IS NOT NULL
+              AND {self.real_entity_condition()}
         )
         WHERE rn = 1
+        """
+
+        # Aliases do cadastro, incluindo linhas prudenciais/financeiras
+        # resolvidas para o CNPJ da entidade lider.
+        resolved_cnpj = self.resolved_entity_cnpj_expr()
+        sql_aliases = f"""
+        SELECT DISTINCT
+            {resolved_cnpj} AS CNPJ_8,
+            NomeInstituicao AS NOME,
+            strip_accents(UPPER(NomeInstituicao)) AS NOME_NORM
+        FROM '{cadastro_path}'
+        WHERE NomeInstituicao IS NOT NULL
+          AND {resolved_cnpj} IS NOT NULL
         """
 
         empty_df = pd.DataFrame(
@@ -256,17 +309,18 @@ class EntityLookup:
         )
 
         try:
-            df = self._qe.sql(sql)
+            df_entities = self._qe.sql(sql_entities)
+            df_aliases = self._qe.sql(sql_aliases)
         except Exception as e:
             self._logger.warning(f"Search query failed: {e}")
             return empty_df
 
-        if df.empty:
+        if df_entities.empty:
             return empty_df
 
-        # Agrupa por CNPJ (pode ter multiplos nomes)
+        # Dados oficiais para exibicao do resultado
         cnpj_data: dict[str, dict] = {}
-        for _, row in df.iterrows():
+        for _, row in df_entities.iterrows():
             cnpj = str(row["CNPJ_8"])
             if cnpj not in cnpj_data:
                 cnpj_data[cnpj] = {
@@ -274,19 +328,19 @@ class EntityLookup:
                     "nome_norm": str(row["NOME_NORM"]),
                 }
 
-        # Monta dict para fuzzy: {nome_norm: cnpj}
+        # Aliases pesquisaveis -> CNPJ real
         nome_to_cnpj: dict[str, str] = {}
-        for cnpj, data in cnpj_data.items():
-            nome_norm = data["nome_norm"]
-            if nome_norm not in nome_to_cnpj:
+        for _, row in df_aliases.iterrows():
+            cnpj = str(row["CNPJ_8"])
+            nome_norm = str(row["NOME_NORM"])
+            if cnpj in cnpj_data and nome_norm not in nome_to_cnpj:
                 nome_to_cnpj[nome_norm] = cnpj
 
-        # Fuzzy search
+        # Fuzzy search (sem limit aqui, aplicado apos ordenar por situacao)
         matches = self._fuzzy.search(
             query=termo_norm,
             choices=nome_to_cnpj,
-            limit=limit,
-            score_cutoff=50,
+            score_cutoff=self._fuzzy.threshold_suggest,
         )
 
         if not matches:
@@ -317,15 +371,22 @@ class EntityLookup:
             data = cnpj_data[cnpj]
             fontes = cnpj_sources.get(cnpj, set())
             situacao = cnpj_situacao.get(cnpj, "")
-            results.append({
-                "CNPJ_8": cnpj,
-                "INSTITUICAO": data["nome"],
-                "SITUACAO": situacao,
-                "FONTES": ",".join(sorted(fontes)) if fontes else "",
-                "SCORE": score,
-            })
+            results.append(
+                {
+                    "CNPJ_8": cnpj,
+                    "INSTITUICAO": data["nome"],
+                    "SITUACAO": situacao,
+                    "FONTES": ",".join(sorted(fontes)) if fontes else "",
+                    "SCORE": score,
+                }
+            )
 
         result_df = pd.DataFrame(results)
+
+        # Quando houver entidades com dados no repositorio, prioriza apenas essas
+        # para evitar sugestoes nao acionaveis no fluxo search -> read.
+        if not result_df.empty and (result_df["FONTES"] != "").any():
+            result_df = result_df[result_df["FONTES"] != ""].copy()
 
         # Ordena: ativas primeiro (A < I), depois por score desc, depois alfabetico
         result_df = result_df.sort_values(
@@ -333,7 +394,9 @@ class EntityLookup:
             ascending=[True, False, True],
         ).reset_index(drop=True)
 
-        return result_df[["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]]
+        return result_df.head(limit)[
+            ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
+        ].reset_index(drop=True)
 
     @cached(maxsize=256)
     def get_entity_identifiers(self, cnpj_8: str) -> dict[str, Optional[str]]:
@@ -369,6 +432,7 @@ class EntityLookup:
             CNPJ_LIDER_8
         FROM '{cadastro_path}'
         WHERE CNPJ_8 = '{cnpj_8}'
+          AND {self.real_entity_condition()}
         ORDER BY Data DESC
         LIMIT 1
         """
@@ -469,54 +533,92 @@ class EntityLookup:
                 escopo="prudencial",
             )
 
-        # financeiro
+        # financeiro: a chave de reporte observada pode ser o proprio CNPJ
+        # ou um codigo de conglomerado financeiro.
         cod_congl = info.get("cod_congl_fin")
-        if not cod_congl:
+        candidates = [c for c in [cod_congl, cnpj_8] if c]
+        ifdata_path = self._get_source_path(
+            get_subdir("ifdata_valores"), get_pattern("ifdata_valores")
+        )
+        candidates_str = ", ".join(
+            f"'{self._escape_sql_string(candidate)}'" for candidate in candidates
+        )
+        sql_fin = f"""
+        SELECT DISTINCT CodInst
+        FROM '{ifdata_path}'
+        WHERE TipoInstituicao = {TIPO_INST_MAP["financeiro"]}
+          AND CodInst IN ({candidates_str})
+        ORDER BY CASE
+            WHEN CodInst = '{self._escape_sql_string(cod_congl or "")}' THEN 0
+            WHEN CodInst = '{self._escape_sql_string(cnpj_8)}' THEN 1
+            ELSE 2
+        END,
+        CodInst
+        LIMIT 1
+        """
+        try:
+            df_fin = self._qe.sql(sql_fin)
+        except Exception:
+            df_fin = pd.DataFrame()
+        if df_fin.empty:
             raise DataUnavailableError(
                 cnpj_8,
                 "financeiro",
-                "Entidade nao pertence a conglomerado financeiro.",
+                "Entidade nao possui dados no escopo financeiro.",
             )
         return ScopeResolution(
-            cod_inst=cod_congl,
+            cod_inst=str(df_fin["CodInst"].iloc[0]),
             tipo_inst=TIPO_INST_MAP["financeiro"],
             cnpj_original=cnpj_8,
             escopo="financeiro",
         )
 
-    def get_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
+    def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
         """
-        Retorna mapeamento {cnpj: nome} para lista de CNPJs.
-        CNPJs nao encontrados terao string vazia.
+        Retorna nomes canônicos a partir do cadastro mais recente.
+
+        O cadastro e a fonte mestra para nomes de entidades nas leituras
+        analiticas. Se um CNPJ nao existir no cadastro, retorna string vazia.
         """
         if not cnpjs:
             return {}
 
-        # Escapa e monta IN clause
         cnpjs_escaped = [self._escape_sql_string(c) for c in cnpjs]
         cnpjs_str = ", ".join(f"'{c}'" for c in cnpjs_escaped)
-
-        sql = self._build_entity_union_sql(
-            select_cols="CNPJ_8, NOME",
-            where=f"CNPJ_8 IN ({cnpjs_str})",
+        cadastro_path = self._get_source_path(
+            get_subdir("cadastro"), get_pattern("cadastro")
         )
+
+        sql = f"""
+        SELECT CNPJ_8, NOME
+        FROM (
+            SELECT
+                CNPJ_8,
+                NomeInstituicao AS NOME,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CNPJ_8
+                    ORDER BY Data DESC
+                ) as rn
+            FROM '{cadastro_path}'
+            WHERE NomeInstituicao IS NOT NULL
+              AND CNPJ_8 IN ({cnpjs_str})
+              AND {self.real_entity_condition()}
+        )
+        WHERE rn = 1
+        """
 
         try:
             df = self._qe.sql(sql)
         except Exception as e:
-            self._logger.warning(f"get_names_for_cnpjs query failed: {e}")
+            self._logger.warning(f"get_canonical_names_for_cnpjs query failed: {e}")
             return {cnpj: "" for cnpj in cnpjs}
 
-        # Monta mapeamento (primeiro nome encontrado para cada CNPJ)
-        cnpj_to_name: dict[str, str] = {}
-        for _, row in df.iterrows():
-            cnpj = str(row["CNPJ_8"])
-            if cnpj not in cnpj_to_name:
-                cnpj_to_name[cnpj] = str(row["NOME"])
-
-        # Retorna com string vazia para CNPJs nao encontrados
+        cnpj_to_name = {
+            str(row["CNPJ_8"]): str(row["NOME"]) for _, row in df.iterrows()
+        }
         return {cnpj: cnpj_to_name.get(cnpj, "") for cnpj in cnpjs}
 
     def clear_cache(self) -> None:
         """Limpa caches LRU."""
+        self._cadastro_has_codinst.cache_clear()
         self.get_entity_identifiers.cache_clear()

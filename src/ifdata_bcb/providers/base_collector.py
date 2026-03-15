@@ -7,10 +7,11 @@ from typing import Optional
 import duckdb
 import pandas as pd
 
+from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
+from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.resilience import staggered_delay
 from ifdata_bcb.infra.storage import DataManager
-from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.providers.collector_models import CollectStatus
 from ifdata_bcb.ui.display import get_display
 from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
@@ -58,8 +59,8 @@ class BaseCollector(ABC):
         pass
 
     @abstractmethod
-    def _download_period(self, period: int) -> Optional[Path]:
-        """Baixa dados de um periodo (YYYYMM). Retorna path ou None se falhar."""
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+        """Baixa dados de um periodo para work_dir. Retorna path ou None se falhar."""
         pass
 
     @abstractmethod
@@ -143,18 +144,8 @@ class BaseCollector(ABC):
 
     def _normalize_text_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove newlines e espacos multiplos de colunas de texto dos CSVs do BCB."""
-        text_columns = [
-            "CONTA",
-            "INSTITUICAO",
-            "RELATORIO",
-            "GRUPO",
-            "NOME_CONGL",
-        ]
-
-        for col in text_columns:
-            if col in df.columns:
-                df[col] = df[col].apply(normalize_text)
-
+        for col in df.select_dtypes(include=["object"]).columns:
+            df[col] = df[col].apply(normalize_text)
         return df
 
     # =========================================================================
@@ -171,41 +162,34 @@ class BaseCollector(ABC):
         Retorna (registros, status, erro_msg).
         """
         try:
-            # Staggered delay para evitar rate limiting
             staggered_delay(worker_index)
 
-            # Download
-            csv_path = self._download_period(period)
-            if csv_path is None:
-                return (
-                    0,
-                    CollectStatus.FAILED,
-                    f"Falha no download do periodo {period}",
-                )
+            with temp_dir(prefix=f"{self._get_file_prefix()}_{period}") as work_dir:
+                csv_path = self._download_period(period, work_dir)
+                if csv_path is None:
+                    return (
+                        0,
+                        CollectStatus.FAILED,
+                        f"Falha no download do periodo {period}",
+                    )
 
-            # Processar
-            df = self._process_to_parquet(csv_path, period)
-            if df is None or df.empty:
-                # Periodo sem dados disponiveis (ex: trimestre ainda nao publicado)
-                self.logger.debug(f"Periodo {period} indisponivel no BCB")
-                return (0, CollectStatus.UNAVAILABLE, None)
+                df = self._process_to_parquet(csv_path, period)
+                if df is None or df.empty:
+                    self.logger.debug(f"Periodo {period} indisponivel no BCB")
+                    return (0, CollectStatus.UNAVAILABLE, None)
 
-            # Normalizar campos de texto antes de salvar
-            df = self._normalize_text_fields(df)
+                df = self._normalize_text_fields(df)
 
-            # Salvar
-            filename = f"{self._get_file_prefix()}_{period}"
-            self.dm.save(df, filename, self._get_subdir())
+                filename = f"{self._get_file_prefix()}_{period}"
+                self.dm.save(df, filename, self._get_subdir())
 
-            return (len(df), CollectStatus.SUCCESS, None)
+                return (len(df), CollectStatus.SUCCESS, None)
 
         except PeriodUnavailableError:
-            # Periodo nao disponivel no BCB (404 ou resposta vazia)
             self.logger.debug(f"Periodo {period} indisponivel no BCB")
             return (0, CollectStatus.UNAVAILABLE, None)
 
         except Exception as e:
-            # Log tecnico em arquivo; mensagem visual sera mostrada pelo collect()
             self.logger.debug(f"Erro no periodo {period}: {e}")
             return (0, CollectStatus.FAILED, str(e))
 

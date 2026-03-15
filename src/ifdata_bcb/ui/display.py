@@ -18,7 +18,6 @@ from rich.progress import (
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
-    TimeRemainingColumn,
 )
 
 T = TypeVar("T")
@@ -233,7 +232,9 @@ class Display:
         if verbose:
             self._console.print("-" * 70, style="dim")
 
-    def fetch_start(self, name: str, since: Optional[str] = None, verbose: bool = True) -> None:
+    def fetch_start(
+        self, name: str, since: Optional[str] = None, verbose: bool = True
+    ) -> None:
         if not verbose:
             return
 

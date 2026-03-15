@@ -4,10 +4,10 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 from ifdata_bcb.domain.exceptions import (
+    InvalidDateFormatError,
     InvalidIdentifierError,
 )
 from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
-from ifdata_bcb.utils.date import normalize_date_to_int
 
 
 class NormalizedDates(BaseModel):
@@ -20,7 +20,20 @@ class NormalizedDates(BaseModel):
     def normalize(cls, v: DateInput) -> list[int]:
         if not isinstance(v, list):
             v = [v]
-        return [normalize_date_to_int(d) for d in v]
+
+        result = []
+        for d in v:
+            if isinstance(d, int):
+                result.append(d)
+            elif isinstance(d, str):
+                clean = d.replace("-", "").replace("/", "")[:6]
+                try:
+                    result.append(int(clean))
+                except ValueError:
+                    raise InvalidDateFormatError(str(d))
+            else:
+                raise InvalidDateFormatError(str(d))
+        return result
 
 
 class ValidatedCnpj8(BaseModel):

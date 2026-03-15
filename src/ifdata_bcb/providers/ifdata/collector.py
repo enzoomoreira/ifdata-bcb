@@ -1,4 +1,3 @@
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
@@ -7,6 +6,7 @@ import pandas as pd
 import requests
 
 from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP, get_subdir
+from ifdata_bcb.domain.exceptions import DataProcessingError
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
@@ -35,9 +35,8 @@ class IFDATAValoresCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         """Baixa 3 tipos de instituicao em paralelo."""
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"ifdata_val_{period}_"))
         tipos_inst = list(TIPO_INST_MAP.values())
         downloaded = []
 
@@ -47,7 +46,7 @@ class IFDATAValoresCollector(BaseCollector):
                 f"(AnoMes=@AnoMes,TipoInstituicao=@TipoInstituicao,Relatorio=@Relatorio)"
                 f"?@AnoMes={period}&@TipoInstituicao={tipo}&@Relatorio='T'&$format=text/csv"
             )
-            output_path = temp_dir / f"ifdata_val_{period}_{tipo}.csv"
+            output_path = work_dir / f"ifdata_val_{period}_{tipo}.csv"
             try:
                 self._download_single(url, output_path)
                 return output_path
@@ -61,7 +60,7 @@ class IFDATAValoresCollector(BaseCollector):
                 if path:
                     downloaded.append(path)
 
-        return temp_dir if downloaded else None
+        return work_dir if downloaded else None
 
     def _process_to_parquet(self, csv_dir: Path, period: int) -> Optional[pd.DataFrame]:
         """Processa CSVs do diretorio em um unico DataFrame."""
@@ -112,7 +111,7 @@ class IFDATAValoresCollector(BaseCollector):
 
         except Exception as e:
             self.logger.error(f"Erro processando {csv_dir}: {e}")
-            return None
+            raise DataProcessingError("ifdata_valores", str(e)) from e
 
 
 class IFDATACadastroCollector(BaseCollector):
@@ -137,14 +136,13 @@ class IFDATACadastroCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         url = (
             f"{self._BASE_URL}/IfDataCadastro(AnoMes=@AnoMes)"
             f"?@AnoMes={period}&$format=text/csv"
         )
 
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"ifdata_cad_{period}_"))
-        output_path = temp_dir / f"ifdata_cad_{period}.csv"
+        output_path = work_dir / f"ifdata_cad_{period}.csv"
 
         try:
             self._download_single(url, output_path)
@@ -194,15 +192,21 @@ class IFDATACadastroCollector(BaseCollector):
                 return None
 
             df = df.replace("null", None)
-            df["CNPJ_8"] = df["CodInst"].apply(standardize_cnpj_base8)
             df["CNPJ_LIDER_8"] = df["CnpjInstituicaoLider"].apply(
                 lambda x: standardize_cnpj_base8(x) if pd.notna(x) else None
             )
+            cod_inst = df["CodInst"].astype(str).str.strip()
+            is_numeric_cod_inst = cod_inst.str.fullmatch(r"\d+").fillna(False)
+            df["CNPJ_8"] = None
+            df.loc[is_numeric_cod_inst, "CNPJ_8"] = df.loc[
+                is_numeric_cod_inst, "CodInst"
+            ].apply(standardize_cnpj_base8)
             df["Data"] = pd.to_numeric(df["Data"], errors="coerce").astype("Int64")
-            df = df.drop(columns=["CodInst", "CnpjInstituicaoLider"])
+            df = df.drop(columns=["CnpjInstituicaoLider"])
 
             cols = [
                 "Data",
+                "CodInst",
                 "CNPJ_8",
                 "NomeInstituicao",
                 "SegmentoTb",
@@ -223,4 +227,4 @@ class IFDATACadastroCollector(BaseCollector):
 
         except Exception as e:
             self.logger.error(f"Erro processando {csv_path}: {e}")
-            return None
+            raise DataProcessingError("ifdata_cadastro", str(e)) from e

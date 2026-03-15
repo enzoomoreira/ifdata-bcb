@@ -8,6 +8,7 @@ from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.utils.text import normalize_accents
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.ui.display import get_display
 
@@ -22,6 +23,10 @@ _EMPTY_COLUMNS = [
     "CONTA",
     "VALOR",
 ]
+_EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
+_EMPTY_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPO"]
+_EMPTY_INSTITUTION_COLUMNS = ["CNPJ_8", "INSTITUICAO"]
+_EMPTY_INSTITUTION_COLUMNS_ALL = ["CNPJ_8", "INSTITUICAO", "ESCOPO"]
 
 
 class COSIFExplorer(BaseExplorer):
@@ -90,16 +95,12 @@ class COSIFExplorer(BaseExplorer):
         return escopo_lower  # type: ignore
 
     def _reorder_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return df
         existing = [c for c in self._COLUMN_ORDER if c in df.columns]
         remaining = [c for c in df.columns if c not in existing]
         return df[existing + remaining]
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove colunas internas, aplica mapeamento e reordena."""
-        if df.empty:
-            return df
         # Remove colunas internas antes do mapeamento
         drop_cols = [c for c in self._DROP_COLUMNS if c in df.columns]
         if drop_cols:
@@ -108,6 +109,22 @@ class COSIFExplorer(BaseExplorer):
         df = super()._finalize_read(df)
         # Reordena colunas apos rename
         return self._reorder_columns(df)
+
+    def _apply_canonical_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Substitui aliases do COSIF por nomes canônicos do cadastro."""
+        if df.empty or "CNPJ_8" not in df.columns or "INSTITUICAO" not in df.columns:
+            return df
+
+        cnpjs = df["CNPJ_8"].dropna().astype(str).unique().tolist()
+        if not cnpjs:
+            return df
+
+        nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
+        df = df.copy()
+        canonical = df["CNPJ_8"].astype(str).map(nomes)
+        mask = canonical.notna() & (canonical != "")
+        df.loc[mask, "INSTITUICAO"] = canonical[mask]
+        return df
 
     def _read_single_scope(
         self,
@@ -129,14 +146,17 @@ class COSIFExplorer(BaseExplorer):
         if contas:
             conditions.append(
                 self._build_string_condition(
-                    self._storage_col("CONTA"), contas, case_insensitive=True
+                    self._storage_col("CONTA"),
+                    contas,
+                    case_insensitive=True,
+                    accent_insensitive=True,
                 )
             )
 
         return self._qe.read_glob(
             pattern=self._get_pattern(escopo),
             subdir=self._get_escopo_config(escopo)["subdir"],
-            columns=columns,
+            columns=self._translate_columns(columns),
             where=self._join_conditions(conditions),
         )
 
@@ -236,9 +256,7 @@ class COSIFExplorer(BaseExplorer):
         self._logger.debug(f"COSIF read: escopo={escopo}, instituicao={instituicao}")
 
         escopos = (
-            [self._validate_escopo(escopo)]
-            if escopo
-            else list(self._ESCOPOS.keys())
+            [self._validate_escopo(escopo)] if escopo else list(self._ESCOPOS.keys())
         )
 
         results = []
@@ -254,7 +272,8 @@ class COSIFExplorer(BaseExplorer):
 
         df = pd.concat(results, ignore_index=True)
         self._logger.debug(f"COSIF result: {len(df)} rows")
-        return self._finalize_read(df)
+        df = self._finalize_read(df)
+        return self._apply_canonical_institution_names(df)
 
     def list_accounts(
         self,
@@ -277,20 +296,27 @@ class COSIFExplorer(BaseExplorer):
         dfs = []
         for esc in self._ESCOPOS:
             df = self._list_accounts_single(esc, termo, limit)
+            if df.empty:
+                continue
             df["ESCOPO"] = esc
             dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS_ALL)
         return pd.concat(dfs, ignore_index=True)
 
     def _list_accounts_single(
         self, escopo: EscopoCOSIF, termo: Optional[str], limit: int
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
+        if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):
+            return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS)
+
         path = self._qe.cache_path / cfg["subdir"] / self._get_pattern(escopo)
 
         where = ""
         if termo:
-            termo_clean = termo.strip().replace("'", "''").upper()
-            where = f"WHERE UPPER(NOME_CONTA) LIKE '%{termo_clean}%'"
+            termo_clean = normalize_accents(termo.strip().replace("'", "''")).upper()
+            where = f"WHERE strip_accents(UPPER(NOME_CONTA)) LIKE '%{termo_clean}%'"
 
         query = f"""
             SELECT DISTINCT CONTA as COD_CONTA, NOME_CONTA as CONTA
@@ -315,8 +341,12 @@ class COSIFExplorer(BaseExplorer):
         dfs = []
         for esc in self._ESCOPOS:
             df = self._list_institutions_single(esc, start, end)
+            if df.empty:
+                continue
             df["ESCOPO"] = esc
             dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS_ALL)
         return pd.concat(dfs, ignore_index=True)
 
     def _list_institutions_single(
@@ -326,6 +356,9 @@ class COSIFExplorer(BaseExplorer):
         end: Optional[str] = None,
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
+        if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):
+            return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS)
+
         path = self._qe.cache_path / cfg["subdir"] / self._get_pattern(escopo)
 
         where = ""
@@ -340,4 +373,5 @@ class COSIFExplorer(BaseExplorer):
             {where}
             ORDER BY INSTITUICAO
         """
-        return self._qe.sql(query)
+        df = self._qe.sql(query)
+        return self._apply_canonical_institution_names(df)

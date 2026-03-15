@@ -3,7 +3,8 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from ifdata_bcb.infra.config import get_cache_path
+from ifdata_bcb.infra.config import get_settings
+from ifdata_bcb.infra.paths import ensure_dir
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.utils.period import extract_periods_from_files
 
@@ -13,8 +14,8 @@ def list_parquet_files(
     pattern: str = "*.parquet",
     base_path: Path | None = None,
 ) -> list[str]:
-    cache_path = base_path or get_cache_path()
-    dir_path = cache_path / subdir
+    path = base_path or get_settings().cache_path
+    dir_path = path / subdir
     if not dir_path.exists():
         return []
     return [f.stem for f in dir_path.glob(pattern)]
@@ -25,7 +26,7 @@ def parquet_exists(
     subdir: str,
     base_path: Path | None = None,
 ) -> bool:
-    cache_path = base_path or get_cache_path()
+    cache_path = base_path or get_settings().cache_path
     filepath = cache_path / subdir / f"{filename}.parquet"
     return filepath.exists()
 
@@ -35,7 +36,7 @@ def get_parquet_path(
     subdir: str,
     base_path: Path | None = None,
 ) -> Path:
-    cache_path = base_path or get_cache_path()
+    cache_path = base_path or get_settings().cache_path
     return cache_path / subdir / f"{filename}.parquet"
 
 
@@ -45,7 +46,7 @@ def get_parquet_metadata(
     base_path: Path | None = None,
 ) -> dict | None:
     """Retorna {arquivo, subdir, registros, colunas, status} ou None se nao existir."""
-    cache_path = base_path or get_cache_path()
+    cache_path = base_path or get_settings().cache_path
     filepath = cache_path / subdir / f"{filename}.parquet"
 
     if not filepath.exists():
@@ -81,14 +82,9 @@ class DataManager:
     """Gerenciador de persistencia em Parquet."""
 
     def __init__(self, base_path: Path | None = None):
-        self.cache_path = Path(base_path) if base_path else get_cache_path()
+        self.cache_path = Path(base_path) if base_path else get_settings().cache_path
         self._logger = get_logger(__name__)
         self._conn = duckdb.connect()
-
-    def _ensure_dir(self, subdir: str) -> Path:
-        output_dir = self.cache_path / subdir
-        output_dir.mkdir(parents=True, exist_ok=True)
-        return output_dir
 
     def save(
         self,
@@ -98,7 +94,7 @@ class DataManager:
         compression: str = "snappy",
     ) -> Path:
         """Salva DataFrame para Parquet via PyArrow."""
-        output_dir = self._ensure_dir(subdir)
+        output_dir = ensure_dir(self.cache_path / subdir)
         filepath = output_dir / f"{filename}.parquet"
 
         df.to_parquet(filepath, engine="pyarrow", compression=compression, index=False)
@@ -114,7 +110,7 @@ class DataManager:
         compression: str = "snappy",
     ) -> Path:
         """Salva resultado de query DuckDB direto para Parquet (sem Pandas)."""
-        output_dir = self._ensure_dir(subdir)
+        output_dir = ensure_dir(self.cache_path / subdir)
         filepath = output_dir / f"{filename}.parquet"
 
         self._conn.sql(query).to_parquet(str(filepath), compression=compression)

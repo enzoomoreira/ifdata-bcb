@@ -4,7 +4,7 @@ from typing import Optional
 import duckdb
 import pandas as pd
 
-from ifdata_bcb.infra.config import get_cache_path
+from ifdata_bcb.infra.config import get_settings
 from ifdata_bcb.infra.log import get_logger
 
 
@@ -16,7 +16,7 @@ class QueryEngine:
         base_path: Optional[Path] = None,
         progress_bar: bool = False,
     ):
-        self._cache_path = Path(base_path) if base_path else get_cache_path()
+        self._cache_path = Path(base_path) if base_path else get_settings().cache_path
         self._conn = duckdb.connect()
         self._conn.execute(f"SET enable_progress_bar = {str(progress_bar).lower()}")
         self._logger = get_logger(__name__)
@@ -24,6 +24,11 @@ class QueryEngine:
     @property
     def cache_path(self) -> Path:
         return self._cache_path
+
+    def has_glob(self, pattern: str, subdir: str) -> bool:
+        """Indica se existe ao menos um arquivo para o glob informado."""
+        dir_path = self._cache_path / subdir
+        return dir_path.exists() and any(dir_path.glob(pattern))
 
     def read_glob(
         self,

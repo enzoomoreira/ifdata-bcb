@@ -14,18 +14,15 @@ class FuzzyMatcher:
         self,
         query: str,
         choices: dict[str, str],
-        limit: int = 5,
         score_cutoff: int = 0,
     ) -> list[tuple[str, int]]:
-        # Busca mais resultados para garantir que pegamos todos com mesmo score
-        # antes de aplicar limit, garantindo resultado determinístico
-        matches = process.extract(
+        matches = process.extractBests(
             query,
             choices.keys(),
             scorer=fuzz.token_set_ratio,
-            limit=None,  # Pega todos
+            score_cutoff=score_cutoff,
+            limit=None,
         )
-        # Filtra por score_cutoff e ordena: score desc, nome asc (determinístico)
-        filtered = [(chave, score) for chave, score in matches if score >= score_cutoff]
+        filtered = [(chave, score) for chave, score in matches]
         filtered.sort(key=lambda x: (-x[1], x[0]))
-        return filtered[:limit]
+        return filtered

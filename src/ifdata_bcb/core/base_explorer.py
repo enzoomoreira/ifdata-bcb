@@ -1,4 +1,3 @@
-import re
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -6,16 +5,21 @@ import pandas as pd
 
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import (
-    InvalidDateFormatError,
     InvalidDateRangeError,
-    InvalidIdentifierError,
     MissingRequiredParameterError,
 )
 from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
+from ifdata_bcb.domain.validation import (
+    AccountList,
+    InstitutionList,
+    NormalizedDates,
+    ValidatedCnpj8,
+)
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import list_parquet_files
 from ifdata_bcb.utils.date import yyyymm_to_datetime
+from ifdata_bcb.utils.text import normalize_accents
 
 
 class BaseExplorer(ABC):
@@ -75,7 +79,7 @@ class BaseExplorer(ABC):
         return self._reverse_column_map.get(presentation_col, presentation_col)
 
     def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty or not self._COLUMN_MAP:
+        if not self._COLUMN_MAP:
             return df
         rename_map = {k: v for k, v in self._COLUMN_MAP.items() if k in df.columns}
         return df.rename(columns=rename_map) if rename_map else df
@@ -103,24 +107,17 @@ class BaseExplorer(ABC):
             }
         }
 
+    @staticmethod
+    def _align_to_quarter_end(yyyymm: int) -> int:
+        """Alinha YYYYMM para o fim do trimestre correspondente (03, 06, 09, 12)."""
+        year, month = divmod(yyyymm, 100)
+        quarter_month = ((month - 1) // 3 + 1) * 3
+        return year * 100 + quarter_month
+
     def _normalize_dates(self, datas: DateInput) -> list[int]:
         """Aceita int, str, ou lista. Formatos: 202412, '202412', '2024-12'."""
-        original = datas
-        if not isinstance(datas, list):
-            datas = [datas]
-
-        result = []
-        for d in datas:
-            if isinstance(d, int):
-                result.append(d)
-            elif isinstance(d, str):
-                # Remove separadores e converte para int
-                clean = d.replace("-", "").replace("/", "")[:6]
-                result.append(int(clean))
-            else:
-                raise InvalidDateFormatError(str(d))
-
-        self._logger.debug(f"Dates: {original} -> {result}")
+        result = NormalizedDates(values=datas).values
+        self._logger.debug(f"Dates: {datas} -> {result}")
         return result
 
     def _normalize_accounts(
@@ -128,22 +125,14 @@ class BaseExplorer(ABC):
     ) -> Optional[list[str]]:
         if contas is None:
             return None
-
-        if isinstance(contas, str):
-            return [contas]
-
-        return list(contas)
+        return AccountList(values=contas).values
 
     def _normalize_institutions(
         self, instituicoes: Optional[InstitutionInput]
     ) -> Optional[list[str]]:
         if instituicoes is None:
             return None
-
-        if isinstance(instituicoes, str):
-            return [self._resolve_entity(instituicoes)]
-
-        return [self._resolve_entity(i) for i in instituicoes]
+        return InstitutionList(values=instituicoes).values
 
     def _resolve_date_range(
         self,
@@ -166,6 +155,8 @@ class BaseExplorer(ABC):
 
         # Data unica (apenas start)
         if end is None:
+            if trimestral:
+                return [self._align_to_quarter_end(start_normalized)]
             return [start_normalized]
 
         # Normalizar end e validar range
@@ -190,14 +181,9 @@ class BaseExplorer(ABC):
         Excecoes:
             InvalidIdentifierError: Se nao for CNPJ de 8 digitos.
         """
-        identificador = identificador.strip()
-
-        if not re.fullmatch(r"\d{8}", identificador):
-            self._logger.warning(f"Invalid identifier: {identificador}")
-            raise InvalidIdentifierError(identificador)
-
-        self._logger.debug(f"Entity validated: {identificador}")
-        return identificador
+        validated = ValidatedCnpj8(value=identificador).value
+        self._logger.debug(f"Entity validated: {validated}")
+        return validated
 
     def _validate_required_params(
         self,
@@ -214,20 +200,30 @@ class BaseExplorer(ABC):
         column: str,
         values: list[str],
         case_insensitive: bool = False,
+        accent_insensitive: bool = False,
     ) -> str:
         """Constroi condicao para valores string com escape de aspas."""
         escaped = [v.strip().replace("'", "''") for v in values]
+        col_expr = column
+
+        if accent_insensitive:
+            col_expr = f"strip_accents({col_expr})"
+            escaped = [normalize_accents(v) for v in escaped]
 
         if case_insensitive:
-            col_expr = f"UPPER({column})"
+            col_expr = f"UPPER({col_expr})"
             escaped = [v.upper() for v in escaped]
-        else:
-            col_expr = column
 
         if len(escaped) == 1:
             return f"{col_expr} = '{escaped[0]}'"
         values_str = ", ".join(f"'{v}'" for v in escaped)
         return f"{col_expr} IN ({values_str})"
+
+    def _translate_columns(self, columns: Optional[list[str]]) -> Optional[list[str]]:
+        """Traduz nomes de apresentacao para storage. Aceita ambos."""
+        if columns is None:
+            return None
+        return [self._storage_col(c) for c in columns]
 
     def _build_int_condition(self, column: str, values: list[int]) -> str:
         """Constroi condicao para valores inteiros (datas, tipos, etc)."""
@@ -267,23 +263,25 @@ class BaseExplorer(ABC):
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica mapeamento de colunas, converte DATA para datetime e ordena."""
+        # Mapeamento de colunas funciona mesmo em DataFrames vazios
+        df = self._apply_column_mapping(df)
+
         if df.empty:
             return df
 
-        df = df.copy()  # Evitar SettingWithCopyWarning
+        df = df.copy()
+        df = df.drop_duplicates()
 
-        # 1. Aplicar mapeamento de colunas (storage -> apresentacao)
-        df = self._apply_column_mapping(df)
-
-        # 2. Converter DATA para datetime (usa nome de apresentacao)
         if "DATA" in df.columns:
             df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
-
-        # 3. Ordenar por DATA (mais antigo primeiro)
-        if "DATA" in df.columns:
             df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
 
         return df
+
+    def _get_latest_period(self, source: Optional[str] = None) -> Optional[int]:
+        """Retorna o periodo mais recente disponivel, ou None."""
+        periods = self.list_periods(source)
+        return periods[-1] if periods else None
 
     def _list_periods_for_source(self, subdir: str, prefix: str) -> list[int]:
         """Lista periodos de uma fonte especifica."""
@@ -313,7 +311,9 @@ class BaseExplorer(ABC):
 
         all_periods: set[int] = set()
         for cfg in sources.values():
-            all_periods.update(self._list_periods_for_source(cfg["subdir"], cfg["prefix"]))
+            all_periods.update(
+                self._list_periods_for_source(cfg["subdir"], cfg["prefix"])
+            )
         return sorted(all_periods)
 
     def has_data(self, source: Optional[str] = None) -> bool:

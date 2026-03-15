@@ -86,7 +86,7 @@ A biblioteca usa o padrao "search + select" para identificar instituicoes:
 # Buscar instituicao por nome (fuzzy matching)
 bcb.search('Itau')
 #    CNPJ_8                       INSTITUICAO  SITUACAO                           FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cadastro,cosif_ind,cosif_prud    100
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A                   cosif,ifdata    100
 
 bcb.search('Bradesco')
 bcb.search('Santander')
@@ -99,8 +99,10 @@ O resultado retorna:
 | `CNPJ_8` | CNPJ de 8 digitos (usar este valor nas consultas) |
 | `INSTITUICAO` | Nome completo da instituicao |
 | `SITUACAO` | Status: A (Ativa) ou I (Inativa) |
-| `FONTES` | Fontes onde a instituicao aparece (cadastro, cosif_ind, cosif_prud) |
+| `FONTES` | Fontes onde ha dados disponiveis para consulta (`cosif`, `ifdata`) |
 | `SCORE` | Score de similaridade (0-100) |
+
+Quando houver matches com e sem dados disponiveis, o `search()` prioriza os que possuem `FONTES`.
 
 ### 4. Consultar dados
 
@@ -123,8 +125,11 @@ df = bcb.ifdata.read(
     conta='Lucro Liquido'
 )
 
-# Cadastro: consultar info basica
-info = bcb.cadastro.info('60872504', start='2024-12')
+# Cadastro: consultar info basica (start=None usa ultimo periodo)
+info = bcb.cadastro.info('60872504')
+
+# Cadastro: instituicao e start sao opcionais
+df = bcb.cadastro.read(segmento='Banco Multiplo')
 ```
 
 ## Conceitos Fundamentais
@@ -294,8 +299,8 @@ plt.show()
 ```python
 import ifdata_bcb as bcb
 
-# Info completa de uma instituicao
-info = bcb.cadastro.info('60872504', start='2024-12')
+# Info completa de uma instituicao (ultimo periodo)
+info = bcb.cadastro.info('60872504')
 print(f"Nome: {info['INSTITUICAO']}")
 print(f"Segmento: {info['SEGMENTO']}")
 print(f"UF: {info['UF']}")
@@ -397,9 +402,9 @@ Para limpar dados coletados, delete os arquivos `.parquet` no diretorio de cache
 
 ```python
 from pathlib import Path
-from ifdata_bcb.infra import get_cache_path
+from ifdata_bcb.infra import get_settings
 
-cache = get_cache_path()
+cache = get_settings().cache_path
 # Deletar arquivo especifico
 (cache / 'cosif' / 'prudencial' / 'cosif_prud_202412.parquet').unlink()
 ```
@@ -431,7 +436,7 @@ except BacenAnalysisError as e:
 | Excecao | Quando ocorre |
 |---------|---------------|
 | `InvalidIdentifierError` | CNPJ invalido ou nome ao inves de CNPJ |
-| `MissingRequiredParameterError` | `instituicao` ou `start` nao fornecidos |
+| `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (`instituicao` e `start` para COSIF/IFDATA; cadastro aceita ambos opcionais) |
 | `InvalidScopeError` | Escopo invalido (ex: 'xyz') |
 | `InvalidDateRangeError` | start > end |
 | `DataUnavailableError` | Dados nao disponiveis para o CNPJ/escopo |

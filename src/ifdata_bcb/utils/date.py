@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date, datetime
 
 import pandas as pd
@@ -97,4 +98,5 @@ def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
 
 def yyyymm_to_datetime(value: int) -> pd.Timestamp:
     year, month = divmod(int(value), 100)
-    return pd.Timestamp(year=year, month=month, day=1)
+    last_day = monthrange(year, month)[1]
+    return pd.Timestamp(year=year, month=month, day=last_day)

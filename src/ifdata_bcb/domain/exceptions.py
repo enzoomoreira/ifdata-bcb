@@ -77,3 +77,13 @@ class PeriodUnavailableError(BacenAnalysisError):
     def __init__(self, period: int):
         self.period = period
         super().__init__(f"Periodo {period} indisponivel na fonte.")
+
+
+class DataProcessingError(BacenAnalysisError):
+    def __init__(self, source: str, detail: str = ""):
+        self.source = source
+        self.detail = detail
+        msg = f"Falha no processamento da fonte '{source}'."
+        if detail:
+            msg += f" {detail}"
+        super().__init__(msg)

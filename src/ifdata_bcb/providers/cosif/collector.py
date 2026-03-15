@@ -1,4 +1,3 @@
-import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -7,7 +6,11 @@ import pandas as pd
 import requests
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
-from ifdata_bcb.domain.exceptions import InvalidScopeError, PeriodUnavailableError
+from ifdata_bcb.domain.exceptions import (
+    DataProcessingError,
+    InvalidScopeError,
+    PeriodUnavailableError,
+)
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
@@ -28,7 +31,7 @@ class COSIFCollector(BaseCollector):
             "suffixes": ["BANCOS.csv.zip", "BANCOS.zip", "BANCOS.csv"],
             "prefix": DATA_SOURCES["cosif_individual"]["prefix"],
             "subdir": get_subdir("cosif_individual"),
-            "encoding": "cp1252",
+            "encoding": "CP1252",
         },
         "prudencial": {
             "url_segment": "Conglomerados-prudenciais",
@@ -80,7 +83,7 @@ class COSIFCollector(BaseCollector):
         output_path.write_bytes(response.content)
         return True
 
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         """
         Tenta diferentes sufixos ate encontrar um que funcione.
 
@@ -91,16 +94,13 @@ class COSIFCollector(BaseCollector):
         suffixes = self._config["suffixes"]
         file_pattern = self._config["file_pattern"]
 
-        # Diretorio temporario para download
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"cosif_{period}_"))
-
         # Contadores para diferenciar 404 de outros erros
         not_found_count = 0
         other_errors = 0
 
         for suffix in suffixes:
             url = f"https://www.bcb.gov.br/content/estabilidadefinanceira/cosif/{url_segment}/{period}{suffix}"
-            local_file = temp_dir / f"{period}{suffix}"
+            local_file = work_dir / f"{period}{suffix}"
 
             try:
                 self._download_single(url, local_file, period)
@@ -117,8 +117,8 @@ class COSIFCollector(BaseCollector):
                                 and file_pattern.lower() in m.lower()
                             ]
                             if csv_files:
-                                zf.extractall(temp_dir, members=csv_files)
-                                csv_path = temp_dir / csv_files[0]
+                                zf.extractall(work_dir, members=csv_files)
+                                csv_path = work_dir / csv_files[0]
                                 return csv_path
                     except zipfile.BadZipFile:
                         other_errors += 1
@@ -192,4 +192,4 @@ class COSIFCollector(BaseCollector):
 
         except Exception as e:
             self.logger.error(f"Erro processando {csv_path}: {e}")
-            return None
+            raise DataProcessingError(f"cosif:{self.escopo}", str(e)) from e

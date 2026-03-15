@@ -7,7 +7,8 @@ A camada de infraestrutura fornece servicos tecnicos para a biblioteca.
 ```
 src/ifdata_bcb/infra/
 |-- __init__.py           # Exports publicos
-|-- config.py            # Paths e configuracoes
+|-- config.py            # Settings (pydantic-settings)
+|-- paths.py             # ensure_dir, temp_dir
 |-- query.py             # QueryEngine (DuckDB)
 |-- storage.py           # DataManager (Parquet)
 |-- log.py               # Logging (Loguru)
@@ -17,28 +18,29 @@ src/ifdata_bcb/infra/
 
 ---
 
-## config.py
+## config.py (Settings)
 
-### Constantes
-
-```python
-APP_NAME = "py-bacen"
-```
-
-### get_cache_path()
-
-Retorna o caminho para cache de dados:
+Configuracao centralizada via pydantic-settings.
 
 ```python
-def get_cache_path() -> Path:
-    """
-    Prioridade:
-    1. Variavel de ambiente BACEN_DATA_DIR
-    2. Diretorio de cache do sistema (platformdirs)
-    """
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="BACEN_")
+
+    data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
+
+    @property
+    def cache_path(self) -> Path: ...   # data_dir com mkdir
+
+    @property
+    def logs_path(self) -> Path: ...    # data_dir.parent / "Logs" com mkdir
 ```
 
-**Paths por sistema**:
+```python
+def get_settings() -> Settings:
+    """Singleton. Retorna instancia unica de Settings."""
+```
+
+**Paths por sistema** (padrao, sem env var):
 
 | Sistema | Caminho Padrao |
 |---------|----------------|
@@ -56,20 +58,11 @@ $env:BACEN_DATA_DIR = "D:\dados\bcb"
 export BACEN_DATA_DIR="/dados/bcb"
 ```
 
-### get_logs_path()
-
-Retorna o caminho para diretorio de logs:
-
-```python
-def get_logs_path() -> Path:
-    """Logs sao armazenados separadamente do cache."""
-```
-
 **Estrutura de diretorios**:
 
 ```
 py-bacen/
-|-- Cache/
+|-- Cache/                   (ou valor de BACEN_DATA_DIR)
 |   |-- cosif/
 |   |   |-- individual/
 |   |   +-- prudencial/
@@ -80,14 +73,39 @@ py-bacen/
     +-- ifdata_2024-01-15.log
 ```
 
-### get_subdir() / ensure_subdir()
+---
+
+## paths.py
+
+Utilitarios de filesystem centralizados.
+
+### ensure_dir()
 
 ```python
-def get_subdir(dataset: str) -> str:
-    """Retorna subdiretorio para um dataset."""
+def ensure_dir(path: Path) -> Path:
+    """Cria diretorio (e pais) se nao existir. Thread-safe."""
+```
 
-def ensure_subdir(dataset: str) -> Path:
-    """Garante que subdiretorio existe e retorna Path."""
+Usado por `DataManager.save()` para garantir que subdiretorios existam antes de gravar parquet.
+
+### temp_dir()
+
+```python
+@contextmanager
+def temp_dir(prefix: str) -> Generator[Path, None, None]:
+    """Context manager para diretorio temporario com cleanup automatico."""
+```
+
+Cria diretorio em `%TEMP%` via `tempfile.mkdtemp`, remove com `shutil.rmtree` no `finally`.
+Thread-safe (cada chamada cria diretorio independente).
+
+**Uso em BaseCollector**:
+
+```python
+with temp_dir(prefix=f"{self._get_file_prefix()}_{period}") as work_dir:
+    csv_path = self._download_period(period, work_dir)
+    df = self._process_to_parquet(csv_path, period)
+    # ... work_dir limpo automaticamente ao sair
 ```
 
 ---
@@ -104,35 +122,17 @@ Motor de consultas DuckDB sobre arquivos Parquet.
 class QueryEngine:
     def __init__(
         self,
-        base_path: Optional[Path] = None,  # Padrao: get_cache_path()
-        progress_bar: bool = False         # Barra de progresso DuckDB
+        base_path: Optional[Path] = None,  # Padrao: get_settings().cache_path
+        progress_bar: bool = False          # Barra de progresso DuckDB
     ):
 ```
 
-### read()
+### has_glob()
 
-Le um arquivo Parquet especifico:
-
-```python
-def read(
-    self,
-    filename: str,       # Nome sem extensao (ex: "cosif_prud_202412")
-    subdir: str,         # Subdiretorio (ex: "cosif/prudencial")
-    columns: list = None,  # Colunas a carregar (None = todas)
-    where: str = None      # Filtro SQL
-) -> pd.DataFrame:
-```
-
-**Exemplo**:
+Verifica se existe ao menos um arquivo para o glob informado:
 
 ```python
-qe = QueryEngine()
-df = qe.read(
-    "cosif_prud_202412",
-    "cosif/prudencial",
-    columns=["CNPJ_8", "VALOR"],
-    where="CNPJ_8 = '60872504'"
-)
+def has_glob(self, pattern: str, subdir: str) -> bool:
 ```
 
 ### read_glob()
@@ -152,6 +152,7 @@ def read_glob(
 **Exemplo**:
 
 ```python
+qe = QueryEngine()
 df = qe.read_glob(
     "cosif_prud_2024*.parquet",
     "cosif/prudencial",
@@ -178,7 +179,6 @@ def sql(self, query: str) -> pd.DataFrame:
     """
     Variaveis disponiveis:
         {cache} - Caminho para diretorio de cache
-        {raw}   - Alias para {cache}
     """
 ```
 
@@ -195,48 +195,6 @@ df = qe.sql("""
 """)
 ```
 
-### describe()
-
-Retorna schema do arquivo:
-
-```python
-def describe(self, filename: str, subdir: str) -> pd.DataFrame:
-    """Retorna: column_name, column_type, null, key, default, extra"""
-```
-
-### get_metadata()
-
-Retorna metadados basicos:
-
-```python
-def get_metadata(self, filename: str, subdir: str) -> Optional[dict]:
-    """
-    Retorna:
-    {
-        'arquivo': str,
-        'subdir': str,
-        'registros': int,
-        'colunas': int,
-        'status': str
-    }
-    """
-```
-
-### list_files()
-
-Lista arquivos em um subdiretorio:
-
-```python
-def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
-    """Retorna lista de nomes (sem extensao)."""
-```
-
-### file_exists()
-
-```python
-def file_exists(self, filename: str, subdir: str) -> bool:
-```
-
 ---
 
 ## storage.py (DataManager)
@@ -250,6 +208,7 @@ Gerenciador de persistencia em formato Parquet.
 ```python
 class DataManager:
     def __init__(self, base_path: Optional[Path] = None):
+        # Padrao: get_settings().cache_path
 ```
 
 ### save()
@@ -266,43 +225,35 @@ def save(
 ) -> Path:
 ```
 
-**Exemplo**:
+### save_from_query()
+
+Salva resultado de query DuckDB direto para Parquet (sem materializar em Pandas):
 
 ```python
-dm = DataManager()
-path = dm.save(df, "cosif_prud_202412", "cosif/prudencial")
-```
-
-### read()
-
-Le arquivo via QueryEngine:
-
-```python
-def read(
+def save_from_query(
     self,
+    query: str,
     filename: str,
     subdir: str,
-    columns: list = None,
-    where: str = None
-) -> pd.DataFrame:
+    compression: str = "snappy"
+) -> Path:
 ```
 
-### get_last_period()
-
-Retorna ultimo periodo disponivel:
+### list_files()
 
 ```python
-def get_last_period(
-    self,
-    prefix: str,    # Ex: "cosif_prud"
-    subdir: str
-) -> Optional[tuple[int, int]]:
-    """Retorna (ano, mes) ou None."""
+def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
+    """Retorna lista de nomes (sem extensao)."""
+```
+
+### get_metadata()
+
+```python
+def get_metadata(self, filename: str, subdir: str) -> dict | None:
+    """Retorna {arquivo, subdir, registros, colunas, status} ou None."""
 ```
 
 ### get_available_periods()
-
-Retorna todos os periodos disponiveis:
 
 ```python
 def get_available_periods(
@@ -313,13 +264,15 @@ def get_available_periods(
     """Retorna lista de (ano, mes) ordenada."""
 ```
 
-### delete()
+### Funcoes de modulo
 
-Remove um arquivo:
+Funcoes standalone para uso sem instanciar DataManager:
 
 ```python
-def delete(self, filename: str, subdir: str) -> bool:
-    """Retorna True se removeu, False se nao existia."""
+list_parquet_files(subdir, pattern, base_path=None) -> list[str]
+parquet_exists(filename, subdir, base_path=None) -> bool
+get_parquet_path(filename, subdir, base_path=None) -> Path
+get_parquet_metadata(filename, subdir, base_path=None) -> dict | None
 ```
 
 ---
@@ -562,8 +515,8 @@ from ifdata_bcb.infra import QueryEngine
 
 qe = QueryEngine()
 
-# Listar arquivos
-arquivos = qe.list_files('cosif/prudencial')
+# Verificar existencia
+qe.has_glob('cosif_prud_*.parquet', 'cosif/prudencial')
 
 # Ler com filtros
 df = qe.read_glob(
@@ -586,13 +539,19 @@ dm = DataManager()
 
 # Verificar periodos
 periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
-ultimo = dm.get_last_period('cosif_prud', 'cosif/prudencial')
 
 # Salvar DataFrame
 dm.save(df, 'meu_arquivo', 'meu_subdir')
+```
 
-# Deletar
-dm.delete('meu_arquivo', 'meu_subdir')
+### Settings
+
+```python
+from ifdata_bcb.infra import get_settings
+
+settings = get_settings()
+print(f"Cache: {settings.cache_path}")
+print(f"Logs: {settings.logs_path}")
 ```
 
 ### Logging
@@ -617,25 +576,17 @@ logger.info("Mensagem")
 
 ```python
 # infra/__init__.py
-from ifdata_bcb.infra.config import get_cache_path, get_logs_path
-from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.storage import DataManager
-from ifdata_bcb.infra.log import get_logger, set_log_level, configure_logging
 from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
-from ifdata_bcb.infra.resilience import retry, staggered_delay
-
-__all__ = [
-    "get_cache_path",
-    "get_logs_path",
-    "QueryEngine",
-    "DataManager",
-    "get_logger",
-    "set_log_level",
-    "configure_logging",
-    "cached",
-    "clear_all_caches",
-    "get_cache_info",
-    "retry",
-    "staggered_delay",
-]
+from ifdata_bcb.infra.config import Settings, get_settings
+from ifdata_bcb.infra.log import configure_logging, get_log_path, get_logger, set_log_level
+from ifdata_bcb.infra.paths import ensure_dir, temp_dir
+from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.infra.resilience import retry
+from ifdata_bcb.infra.storage import (
+    DataManager,
+    get_parquet_metadata,
+    get_parquet_path,
+    list_parquet_files,
+    parquet_exists,
+)
 ```

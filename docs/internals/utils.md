@@ -124,10 +124,10 @@ Converte inteiro YYYYMM para pandas Timestamp:
 ```python
 def yyyymm_to_datetime(value: int) -> pd.Timestamp:
     """
-    Converte para Timestamp no primeiro dia do mes.
+    Converte para Timestamp no ultimo dia do mes.
 
     Exemplo:
-        yyyymm_to_datetime(202412) -> Timestamp('2024-12-01')
+        yyyymm_to_datetime(202412) -> Timestamp('2024-12-31')
     """
 ```
 
@@ -155,14 +155,13 @@ class FuzzyMatcher:
 
 ### search()
 
-Busca fuzzy retornando matches ordenados:
+Busca fuzzy retornando todos os matches acima do cutoff:
 
 ```python
 def search(
     self,
     query: str,
     choices: dict[str, str],  # {identificador: label}
-    limit: int = 5,
     score_cutoff: int = 0
 ) -> list[tuple[str, int]]:
     """
@@ -170,8 +169,8 @@ def search(
 
     Algoritmo:
     - Scorer: fuzz.token_set_ratio (tolerante a ordem de palavras)
+    - Retorna TODOS os matches acima de score_cutoff
     - Ordenacao: score DESC, nome ASC (deterministico)
-    - Filtra por score_cutoff
     """
 ```
 
@@ -186,7 +185,7 @@ choices = {
     "60746948": "BANCO BRADESCO S.A.",
 }
 
-results = matcher.search("BANCO BRASIL", choices, limit=3)
+results = matcher.search("BANCO BRASIL", choices, score_cutoff=50)
 # [("33000167", 95), ...]
 ```
 
@@ -284,12 +283,11 @@ class EntityLookup:
         # Normaliza termo para comparacao
         termo_norm = normalize_accents(termo.upper())
 
-        # Busca fuzzy
+        # Busca fuzzy (sem limit, aplicado apos ordenar por situacao)
         matches = self._fuzzy.search(
             query=termo_norm,
             choices=nome_to_cnpj,
-            limit=limit,
-            score_cutoff=50,
+            score_cutoff=self._fuzzy.threshold_suggest,
         )
 ```
 

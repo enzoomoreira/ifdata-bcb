@@ -16,7 +16,7 @@ def configure_logging(
     Configura loguru com dual output (console + arquivo).
 
     Idempotente - chamadas subsequentes sao ignoradas.
-    Console: WARNING+ por padrao. Arquivo: DEBUG+ em py-bacen/Logs/.
+    Console: WARNING+ por padrao. Arquivo: DEBUG+ em Logs/ ao lado do cache efetivo.
     """
     global _configured, _logger_instance
 
@@ -35,20 +35,24 @@ def configure_logging(
     )
 
     if enable_file:
-        from ifdata_bcb.infra.config import get_logs_path
+        from ifdata_bcb.infra.config import get_settings
 
-        log_path = get_logs_path()
-        today = datetime.now().strftime("%Y-%m-%d")
-        log_file = log_path / f"ifdata_{today}.log"
+        try:
+            log_path = get_settings().logs_path
+            today = datetime.now().strftime("%Y-%m-%d")
+            log_file = log_path / f"ifdata_{today}.log"
 
-        logger.add(
-            log_file,
-            format="[{time:YYYY-MM-DD HH:mm:ss}] {level: <8} [{name}] {message}",
-            level=file_level,
-            rotation="10 MB",
-            retention="30 days",
-            encoding="utf-8",
-        )
+            logger.add(
+                log_file,
+                format="[{time:YYYY-MM-DD HH:mm:ss}] {level: <8} [{name}] {message}",
+                level=file_level,
+                rotation="10 MB",
+                retention="30 days",
+                encoding="utf-8",
+            )
+        except OSError:
+            # Ambiente restrito: mantem apenas sink de console.
+            pass
 
     _logger_instance = logger
     _configured = True
@@ -68,6 +72,6 @@ def set_log_level(level: str) -> None:
 
 
 def get_log_path() -> Path:
-    from ifdata_bcb.infra.config import get_logs_path
+    from ifdata_bcb.infra.config import get_settings
 
-    return get_logs_path()
+    return get_settings().logs_path

@@ -53,8 +53,8 @@ def _get_subdir(self) -> str:
     """Subdiretorio (ex: 'cosif/individual')."""
 
 @abstractmethod
-def _download_period(self, period: int) -> Optional[Path]:
-    """Baixa dados de um periodo. Retorna Path do CSV ou None."""
+def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
+    """Baixa dados de um periodo para work_dir. Retorna Path do CSV ou None."""
 
 @abstractmethod
 def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
@@ -108,14 +108,16 @@ collect(start, end)
         +-- Worker 0:
         |   +-- staggered_delay(0) --> 0s
         |   +-- _process_single_period(202401, 0)
-        |       +-- _download_period(202401)
-        |       |   +-- @retry(max_attempts=3)
-        |       |   +-- requests.get(url)
-        |       |   --> Path do CSV ou None
-        |       +-- _process_to_parquet(csv_path, 202401)
-        |       |   --> pd.DataFrame normalizado
-        |       +-- dm.save(df, 'cosif_ind_202401', 'cosif/individual')
-        |       --> (registros, CollectStatus.SUCCESS, None)
+        |       +-- temp_dir(prefix="cosif_ind_202401") as work_dir
+        |       |   +-- _download_period(202401, work_dir)
+        |       |   |   +-- @retry(max_attempts=3)
+        |       |   |   +-- requests.get(url)
+        |       |   |   --> Path do CSV ou None
+        |       |   +-- _process_to_parquet(csv_path, 202401)
+        |       |   |   --> pd.DataFrame normalizado
+        |       |   +-- dm.save(df, 'cosif_ind_202401', 'cosif/individual')
+        |       |   --> (registros, CollectStatus.SUCCESS, None)
+        |       +-- work_dir limpo automaticamente
         |
         +-- Worker 1, 2, 3... (paralelo com delays escalonados)
     |
@@ -179,12 +181,12 @@ class COSIFCollector(BaseCollector):
         return f"cosif/{self.escopo}"
 
     @retry(max_attempts=3, delay=2.0)
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         """
         URL: https://www4.bcb.gov.br/fis/cosif/balancetes/{YYYYMM}BANCOS.CSV.zip
         Ou para prudencial: {YYYYMM}CONGL.CSV.zip
         """
-        # Download, extrai ZIP, retorna Path do CSV
+        # Download para work_dir, extrai ZIP, retorna Path do CSV
 
     def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
         """
@@ -201,6 +203,7 @@ class COSIFCollector(BaseCollector):
 ### Especificidades
 
 - **Multi-source**: individual + prudencial
+- **Nomes canônicos**: Substitui nomes do COSIF por nomes do cadastro via `get_canonical_names_for_cnpjs()`
 - **Mapeamento de colunas**:
   - `DATA_BASE` -> `DATA`
   - `NOME_INSTITUICAO` -> `INSTITUICAO`
@@ -228,6 +231,9 @@ class COSIFExplorer(BaseExplorer):
     def _get_sources(self):
         return self._ESCOPOS
 
+    def _apply_canonical_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Substitui aliases do COSIF por nomes canônicos do cadastro."""
+
     def read(
         self,
         instituicao: InstitutionInput,
@@ -239,14 +245,7 @@ class COSIFExplorer(BaseExplorer):
     ) -> pd.DataFrame:
         """
         Le dados COSIF.
-
-        Args:
-            instituicao: CNPJ de 8 digitos
-            start: Periodo inicial (YYYY-MM)
-            end: Periodo final (opcional, default=start)
-            conta: Nome(s) da conta a filtrar
-            escopo: "individual" ou "prudencial"
-            columns: Colunas a retornar (None=todas)
+        Apos finalizacao, aplica nomes canônicos do cadastro.
         """
 
     def collect(
@@ -296,11 +295,11 @@ class IFDATAValoresCollector(BaseCollector):
     def _get_subdir(self):
         return "ifdata/valores"
 
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         """
         URL OData: https://olinda.bcb.gov.br/olinda/servico/IFData/...
         Parametro: AnoMes={YYYYMM}
-        Formato: JSON
+        Formato: CSV
         """
 ```
 
@@ -328,6 +327,8 @@ class IFDATACadastroCollector(BaseCollector):
 ### Especificidades
 
 - **Resolucao de escopo**: Usa EntityLookup para resolver CNPJ -> codigo IFDATA
+- **Nomes canônicos**: Usa `get_canonical_names_for_cnpjs()` do cadastro
+- **Mapeamento de reporters**: Resolve chaves de reporte para entidades analiticas
 - **Mapeamento de colunas**:
   - `AnoMes` -> `DATA`
   - `CodInst` -> `COD_INST`
@@ -372,18 +373,55 @@ def _resolve_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
 
     individual: CNPJ direto, TipoInstituicao=3
     prudencial: CodConglomeradoPrudencial, TipoInstituicao=1
-    financeiro: CodConglomeradoFinanceiro, TipoInstituicao=2
+    financeiro: CodConglomeradoFinanceiro ou CNPJ direto, TipoInstituicao=2
     """
     return self._resolver.resolve_ifdata_scope(cnpj_8, escopo)
 ```
 
-### Colunas Disponiveis
+### Mapeamento de Reporters
+
+O metodo `_resolve_reporter_mappings()` cruza dados do IFDATA com o cadastro para mapear
+chaves de reporte (COD_INST) para entidades analiticas (CNPJ_8):
+
+- **Individual**: COD_INST = CNPJ_8 direto
+- **Prudencial**: COD_INST pode ser CodConglomeradoPrudencial ou CNPJ direto
+- **Financeiro**: COD_INST pode ser CodConglomeradoFinanceiro ou CNPJ direto
+
+### list_institutions()
+
+Retorna visao centrada em entidades com disponibilidade por escopo:
+
+| Coluna | Descricao |
+|--------|-----------|
+| CNPJ_8 | CNPJ de 8 digitos |
+| INSTITUICAO | Nome canônico do cadastro |
+| TEM_INDIVIDUAL | bool |
+| TEM_PRUDENCIAL | bool |
+| TEM_FINANCEIRO | bool |
+| COD_INST_INDIVIDUAL | Codigo(s) de reporte |
+| COD_INST_PRUDENCIAL | Codigo(s) de reporte |
+| COD_INST_FINANCEIRO | Codigo(s) de reporte |
+
+### list_reporters()
+
+Lista chaves operacionais de reporte por entidade e escopo:
+
+| Coluna | Descricao |
+|--------|-----------|
+| COD_INST | Codigo de reporte no IFDATA |
+| TIPO_INST | 1, 2 ou 3 |
+| ESCOPO | individual, prudencial, financeiro |
+| REPORT_KEY_TYPE | "cnpj" ou nome do escopo |
+| CNPJ_8 | CNPJ da entidade associada |
+| INSTITUICAO | Nome canônico |
+
+### Colunas Disponiveis (read)
 
 | Coluna | Descricao |
 |--------|-----------|
 | DATA | Data do trimestre (datetime) |
 | CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome da instituicao |
+| INSTITUICAO | Nome da instituicao (canônico do cadastro) |
 | ESCOPO | "individual", "prudencial", "financeiro" |
 | COD_INST | Codigo no IFDATA |
 | CONTA | Nome da conta |
@@ -398,12 +436,16 @@ def _resolve_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
 ### Especificidades
 
 - **Fonte unica**: ifdata/cadastro
+- **Filtragem de entidades reais**: Todas as queries filtram aliases via `_real_entity_condition()`
+- **Drop de colunas internas**: `CodInst` removido do output
 - **Mapeamento extenso de colunas**
 
 ### Implementacao
 
 ```python
 class CadastroExplorer(BaseExplorer):
+    _DROP_COLUMNS = ["CodInst"]
+
     _COLUMN_MAP = {
         "Data": "DATA",
         "NomeInstituicao": "INSTITUICAO",
@@ -480,14 +522,13 @@ class NovoCollector(BaseCollector):
         return "novo/dados"
 
     @retry(max_attempts=3, delay=2.0)
-    def _download_period(self, period: int) -> Optional[Path]:
+    def _download_period(self, period: int, work_dir: Path) -> Optional[Path]:
         url = f"https://api.exemplo.com/dados/{period}"
         response = requests.get(url, timeout=120)
         response.raise_for_status()
-        # Salvar em arquivo temporario
-        temp_path = Path(tempfile.mktemp(suffix=".csv"))
-        temp_path.write_bytes(response.content)
-        return temp_path
+        output_path = work_dir / f"novo_{period}.csv"
+        output_path.write_bytes(response.content)
+        return output_path
 
     def _process_to_parquet(self, csv_path: Path, period: int) -> Optional[pd.DataFrame]:
         df = pd.read_csv(csv_path)

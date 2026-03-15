@@ -240,7 +240,7 @@ info = bcb.cosif.describe()
 |--------|------|-----------|
 | `DATA` | datetime | Periodo de referencia |
 | `CNPJ_8` | str | CNPJ de 8 digitos |
-| `INSTITUICAO` | str | Nome da instituicao |
+| `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial) |
 | `CONTA` | str | Nome/descricao da conta |
 | `VALOR` | float | Valor em reais |
@@ -309,8 +309,12 @@ df_sorted.plot(x='DATA', y='VALOR', kind='line', title='Patrimonio Liquido 2024'
 ### Top Instituicoes por Ativo (SQL)
 
 ```python
+from ifdata_bcb.infra import QueryEngine
+
+qe = QueryEngine()
+
 # Usando SQL para ranking
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CNPJ_8,
         NOME_INSTITUICAO as INSTITUICAO,

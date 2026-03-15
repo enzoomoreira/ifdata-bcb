@@ -54,33 +54,33 @@ Le dados cadastrais com filtros.
 
 ```python
 bcb.cadastro.read(
-    instituicao: str | list[str],           # CNPJ(s) de 8 digitos. OBRIGATORIO
-    start: str,                             # Data inicial ou unica. OBRIGATORIO
+    instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos (opcional)
+    start: str | None = None,               # Data inicial ou unica. Se None, usa ultimo periodo
     end: str | None = None,                 # Data final para range
-    segmento: str | None = None,            # Segmento para filtrar
+    segmento: str | None = None,            # Segmento para filtrar (accent-insensitive)
     uf: str | None = None,                  # UF para filtrar
-    columns: list[str] | None = None        # Colunas especificas
+    columns: list[str] | None = None        # Colunas especificas (aceita nomes de apresentacao)
 ) -> pd.DataFrame
 ```
 
-**Parametros Obrigatorios**: `instituicao` e `start`.
-
 **API de Datas**:
+- `start=None`: usa ultimo periodo disponivel
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
+
+**Filtros de texto** (`segmento`, `uf`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
 
 **Exemplos**:
 
 ```python
-# Dados de uma instituicao em um periodo
+# Dados de uma instituicao no ultimo periodo disponivel
+df = bcb.cadastro.read(instituicao='60872504')
+
+# Dados de uma instituicao em um periodo especifico
 df = bcb.cadastro.read(instituicao='60872504', start='2024-12')
 
-# Filtrar por segmento
-df = bcb.cadastro.read(
-    instituicao='60872504',
-    start='2024-12',
-    segmento='Banco Multiplo'
-)
+# Filtrar por segmento (accent-insensitive)
+df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
 
 # Filtrar por UF
 df = bcb.cadastro.read(instituicao='60872504', start='2024-12', uf='SP')
@@ -100,8 +100,8 @@ Retorna informacoes detalhadas de uma instituicao como dicionario.
 
 ```python
 bcb.cadastro.info(
-    instituicao: str,         # CNPJ de 8 digitos
-    start: str                # Periodo (YYYY-MM). OBRIGATORIO
+    instituicao: str,                # CNPJ de 8 digitos
+    start: str | None = None         # Periodo (YYYY-MM). Se None, usa ultimo periodo
 ) -> dict | None
 ```
 
@@ -111,6 +111,9 @@ Valores "null" sao convertidos para `None`.
 **Exemplo**:
 
 ```python
+# Dados do ultimo periodo disponivel
+info = bcb.cadastro.info('60872504')
+
 # Dados de um periodo especifico
 info = bcb.cadastro.info('60872504', start='2024-12')
 
@@ -159,20 +162,20 @@ Retorna membros de um conglomerado prudencial.
 
 ```python
 bcb.cadastro.get_conglomerate_members(
-    cod_congl: str,           # Codigo do conglomerado
-    start: str                # Periodo (YYYY-MM). OBRIGATORIO
+    cod_congl: str,                  # Codigo do conglomerado
+    start: str | None = None         # Periodo (YYYY-MM). Se None, usa ultimo periodo
 ) -> pd.DataFrame
 ```
-
-**Raises**:
-- `MissingRequiredParameterError`: Se `start` nao fornecido.
 
 **Exemplo**:
 
 ```python
-# Membros do conglomerado do Itau
-membros = bcb.cadastro.get_conglomerate_members('C0080099', start='2024-12')
+# Membros do conglomerado do Itau (ultimo periodo)
+membros = bcb.cadastro.get_conglomerate_members('C0080099')
 print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
+
+# Membros em um periodo especifico
+membros = bcb.cadastro.get_conglomerate_members('C0080099', start='2024-12')
 ```
 
 ## Colunas Disponiveis
@@ -185,6 +188,7 @@ print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
 | `SEGMENTO` | str | Segmento de atuacao |
 | `COD_CONGL_PRUD` | str | Codigo do conglomerado prudencial |
 | `COD_CONGL_FIN` | str | Codigo do conglomerado financeiro |
+| `CNPJ_LIDER_8` | str | CNPJ do lider do conglomerado |
 | `SITUACAO` | str | Situacao (A=Ativo) |
 | `ATIVIDADE` | str | Atividade principal |
 | `TCB` | str | Tipo de Consolidacao Bancaria |
@@ -194,8 +198,6 @@ print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
 | `MUNICIPIO` | str | Municipio da sede |
 | `SR` | str | Segmento Regulatorio |
 | `DATA_INICIO_ATIVIDADE` | str | Data de inicio das atividades (YYYYMM) |
-
-**Nota**: A coluna `CNPJ_LIDER_8` presente em versoes anteriores foi removida.
 
 ## Segmentos e Classificacoes
 
@@ -253,23 +255,29 @@ if df['SR'].iloc[0] == 'S1':
 ### Listar Membros do Conglomerado
 
 ```python
-# Obter codigo do conglomerado
-info = bcb.cadastro.info('60872504', start='2024-12')
+# Obter codigo do conglomerado (ultimo periodo)
+info = bcb.cadastro.info('60872504')
 cod_congl = info['COD_CONGL_PRUD']
 
 # Listar todos os membros
-membros = bcb.cadastro.get_conglomerate_members(cod_congl, start='2024-12')
+membros = bcb.cadastro.get_conglomerate_members(cod_congl)
 print(f"Conglomerado {cod_congl} tem {len(membros)} membros:")
 print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
 ```
 
 ## Exemplos Avancados
 
+Nos exemplos SQL abaixo, assuma `qe = QueryEngine()` ja inicializado.
+
 ### Estatisticas por Segmento (SQL)
 
 ```python
+from ifdata_bcb.infra import QueryEngine
+
+qe = QueryEngine()
+
 # Contar instituicoes por segmento
-df = bcb.sql("""
+df = qe.sql("""
     SELECT SegmentoTb as SEGMENTO, COUNT(*) as TOTAL
     FROM '{cache}/ifdata/cadastro/*.parquet'
     WHERE Data = 202412
@@ -283,7 +291,7 @@ print(df)
 
 ```python
 # Distribuicao geografica
-df = bcb.sql("""
+df = qe.sql("""
     SELECT Uf as UF, COUNT(*) as TOTAL
     FROM '{cache}/ifdata/cadastro/*.parquet'
     WHERE Data = 202412
@@ -297,7 +305,7 @@ print(df)
 ### Fintechs Ativas (SQL)
 
 ```python
-df = bcb.sql("""
+df = qe.sql("""
     SELECT CNPJ_8, NomeInstituicao as INSTITUICAO, SegmentoTb as SEGMENTO, Uf as UF
     FROM '{cache}/ifdata/cadastro/*.parquet'
     WHERE Data = 202412
@@ -313,7 +321,7 @@ print(df)
 
 ```python
 # Contar membros por conglomerado
-df = bcb.sql("""
+df = qe.sql("""
     SELECT
         CodConglomeradoPrudencial as COD_CONGL,
         COUNT(*) as MEMBROS
@@ -366,22 +374,13 @@ Mapeamento para colunas de apresentacao:
 ## Tratamento de Erros
 
 ```python
-from ifdata_bcb import MissingRequiredParameterError
-
-# Erro: parametro obrigatorio ausente
-try:
-    df = bcb.cadastro.read(instituicao='60872504')  # Falta start!
-except MissingRequiredParameterError as e:
-    print(f"Erro: {e}")
-
-# Erro: start obrigatorio em get_conglomerate_members
-try:
-    membros = bcb.cadastro.get_conglomerate_members('C0080099', start=None)
-except MissingRequiredParameterError as e:
-    print(f"Erro: {e}")
-
 # Instituicao nao encontrada
-info = bcb.cadastro.info('99999999', start='2024-12')
+info = bcb.cadastro.info('99999999')
 if info is None:
     print("Instituicao nao encontrada no cadastro")
+
+# start=None funciona (usa ultimo periodo disponivel)
+df = bcb.cadastro.read(instituicao='60872504')  # OK!
+info = bcb.cadastro.info('60872504')             # OK!
+membros = bcb.cadastro.get_conglomerate_members('C0080099')  # OK!
 ```
