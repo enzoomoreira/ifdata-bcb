@@ -5,11 +5,12 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import requests
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
-from ifdata_bcb.infra.resilience import staggered_delay
+from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.collector_models import CollectStatus
 from ifdata_bcb.ui.display import get_display
@@ -63,9 +64,22 @@ class BaseCollector(ABC):
         pass
 
     @abstractmethod
-    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
-        """Processa CSV e retorna DataFrame normalizado, ou None se falhar."""
+    def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
+        """Processa dados e retorna DataFrame normalizado, ou None se falhar.
+
+        Args:
+            data_path: Caminho para arquivo CSV ou diretorio com CSVs,
+                dependendo do provider.
+        """
         pass
+
+    @retry(delay=2.0)
+    def _download_single(self, url: str, output_path: Path) -> bool:
+        """Baixa um arquivo da URL e salva em output_path."""
+        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
+        response.raise_for_status()
+        output_path.write_bytes(response.content)
+        return True
 
     def _start(self, title: str, num_items: int, verbose: bool = True) -> None:
         self._collect_total = 0
@@ -180,15 +194,15 @@ class BaseCollector(ABC):
             staggered_delay(worker_index)
 
             with temp_dir(prefix=f"{self._get_file_prefix()}_{period}") as work_dir:
-                csv_path = self._download_period(period, work_dir)
-                if csv_path is None:
+                data_path = self._download_period(period, work_dir)
+                if data_path is None:
                     return (
                         0,
                         CollectStatus.FAILED,
                         f"Falha no download do periodo {period}",
                     )
 
-                df = self._process_to_parquet(csv_path, period)
+                df = self._process_to_parquet(data_path, period)
                 if df is None or df.empty:
                     self.logger.debug(f"Periodo {period} indisponivel no BCB")
                     return (0, CollectStatus.UNAVAILABLE, None)

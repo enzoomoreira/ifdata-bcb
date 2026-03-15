@@ -19,7 +19,6 @@ from ifdata_bcb.domain.validation import (
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import list_parquet_files
-from ifdata_bcb.utils.date import yyyymm_to_datetime
 from ifdata_bcb.utils.text import normalize_accents
 
 
@@ -321,7 +320,9 @@ class BaseExplorer(ABC):
         df = df.drop_duplicates()
 
         if "DATA" in df.columns:
-            df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
+            df["DATA"] = pd.to_datetime(
+                df["DATA"].astype(str), format="%Y%m"
+            ) + pd.offsets.MonthEnd(0)
             df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
 
         return df

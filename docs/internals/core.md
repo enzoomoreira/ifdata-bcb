@@ -10,7 +10,8 @@ src/ifdata_bcb/core/
 |-- api.py               # Funcao search() de alto nivel
 |-- base_explorer.py     # Classe base abstrata para explorers
 |-- entity_lookup.py     # Resolucao e busca de entidades
-+-- constants.py         # Configuracoes centralizadas
+|-- constants.py         # Configuracoes centralizadas
++-- eras.py              # Deteccao e tratamento de eras de formato BCB
 ```
 
 ## constants.py
@@ -491,17 +492,12 @@ O `EntityLookup` centraliza toda logica de busca e resolucao de entidades:
 def __init__(
     self,
     query_engine: QueryEngine | None = None,
-    fuzzy_threshold_auto: int = 85,
     fuzzy_threshold_suggest: int = 78,
 ):
     self._qe = query_engine or QueryEngine()
-    self._fuzzy = FuzzyMatcher(
-        threshold_auto=fuzzy_threshold_auto,
-        threshold_suggest=fuzzy_threshold_suggest,
-    )
+    self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 ```
 
-- `threshold_auto`: Score >= 85 aceita automaticamente
 - `threshold_suggest`: Score >= 78 aparece em sugestoes
 
 ### search()
@@ -738,6 +734,69 @@ class EntityLookup:
         pattern = get_pattern(source)
         return f"{self._cache_path}/{subdir}/{pattern}"
 ```
+
+---
+
+## eras.py
+
+### Responsabilidades
+
+O modulo `eras` centraliza toda logica de deteccao e tratamento das diferentes eras de formato do BCB:
+
+1. **Deteccao**: Identifica a era de um CSV COSIF pelo header
+2. **SQL Building**: Gera queries que normalizam qualquer era para um schema uniforme
+3. **Warnings**: Alerta quando uma query abrange periodos com codigos de conta incompativeis
+
+### Constantes
+
+```python
+COSIF_ERA_BOUNDARY: int = 202501   # Primeiro periodo COSIF com novo plano contabil
+IFDATA_ERA_BOUNDARY: int = 202503  # Primeiro trimestre IFDATA com codigos novos
+```
+
+### Eras de Formato COSIF
+
+| Era | Periodo | Colunas CSV | CONTA | NOME_CONTA |
+|-----|---------|-------------|-------|------------|
+| 1 | 199501-201009 | 8 (`DATA;CNPJ;...`) | 10 digitos com leading zeros | UPPER |
+| 2 | 201010-202412 | 11 (`#DATA_BASE;...`) | 8 digitos | UPPER |
+| 3 | 202501+ | 11 (`#DATA_BASE;...`) | 10 digitos (COSIF 1.5) | Title Case |
+
+Eras 1-2 tem codigos de conta compativeis (strip leading zeros). Era 3 tem codigos incompativeis (novo plano contabil, Resolucao CMN 4.966).
+
+### detect_cosif_csv_era()
+
+```python
+def detect_cosif_csv_era(csv_path: Path, encoding: str) -> int:
+    """Retorna 1 (pre-201010) ou 2 (201010+, inclui Era 3)."""
+```
+
+Pula 3 linhas de metadata e verifica se o header contem `#DATA_BASE`. Usa `errors="replace"` para robustez com encoding incorreto.
+
+### build_cosif_select()
+
+```python
+def build_cosif_select(era: int, csv_path: Path, encoding: str) -> str:
+    """Retorna query SQL que produz schema normalizado independente da era."""
+```
+
+Output uniforme: `DATA_BASE, CNPJ, NOME_INSTITUICAO, DOCUMENTO, CONTA, NOME_CONTA, SALDO`.
+
+- **Era 1**: Mapeia colunas antigas (`"DATA"` -> `DATA_BASE`, `"NOME INSTITUICAO"` -> `NOME_INSTITUICAO`), `CAST(CONTA AS BIGINT)` para strip leading zeros, `UPPER("NOME CONTA")`
+- **Era 2/3**: Query padrao com `UPPER(NOME_CONTA)` para normalizar Title Case da Era 3
+
+### check_era_boundary()
+
+```python
+def check_era_boundary(
+    dates: list[int] | None,
+    boundary: int,
+    source_name: str,
+) -> None:
+    """Emite IncompatibleEraWarning se dates cruzam o boundary."""
+```
+
+Condicao: `min(dates) < boundary <= max(dates)`. Nao bloqueia a query -- apenas emite `warnings.warn()`.
 
 ---
 

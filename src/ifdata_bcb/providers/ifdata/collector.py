@@ -2,11 +2,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
-import requests
 
 from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP, get_subdir
 from ifdata_bcb.domain.exceptions import DataProcessingError
-from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
@@ -26,13 +24,6 @@ class IFDATAValoresCollector(BaseCollector):
 
     def _get_subdir(self) -> str:
         return get_subdir("ifdata_valores")
-
-    @retry(delay=2.0)
-    def _download_single(self, url: str, output_path: Path) -> bool:
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        return True
 
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """Baixa 3 tipos de instituicao em paralelo."""
@@ -127,13 +118,6 @@ class IFDATACadastroCollector(BaseCollector):
 
     def _get_subdir(self) -> str:
         return get_subdir("cadastro")
-
-    @retry(delay=2.0)
-    def _download_single(self, url: str, output_path: Path) -> bool:
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        return True
 
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         url = (

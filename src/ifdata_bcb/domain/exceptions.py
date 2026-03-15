@@ -87,3 +87,7 @@ class DataProcessingError(BacenAnalysisError):
         if detail:
             msg += f" {detail}"
         super().__init__(msg)
+
+
+class IncompatibleEraWarning(UserWarning):
+    """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""

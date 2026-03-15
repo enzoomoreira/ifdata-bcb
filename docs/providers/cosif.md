@@ -383,15 +383,27 @@ https://www.bcb.gov.br/content/estabilidadefinanceira/cosif/Bancos/{YYYYMM}BANCO
 https://www.bcb.gov.br/content/estabilidadefinanceira/cosif/Conglomerados-prudenciais/{YYYYMM}BLOPRUDENCIAL.csv.zip
 ```
 
-### Estrutura do CSV Original
+### Eras de Formato CSV
 
-O CSV original tem:
-- 3 linhas de metadata (ignoradas)
-- Header na linha 4 comecando com `#DATA_BASE`
-- Separador: `;` (ponto-e-virgula)
-- Encoding: `cp1252` (individual) ou `latin-1` (prudencial)
+O BCB mudou o formato dos CSVs COSIF ao longo do tempo. O collector detecta e normaliza automaticamente:
 
-Colunas originais (armazenadas em Parquet):
+| Era | Periodo | Header | Colunas |
+|-----|---------|--------|---------|
+| 1 | 199501-201009 | `DATA;CNPJ;NOME INSTITUICAO;...` | 8 |
+| 2 | 201010-202412 | `#DATA_BASE;DOCUMENTO;CNPJ;...` | 11 |
+| 3 | 202501+ | `#DATA_BASE;DOCUMENTO;CNPJ;...` | 11 (COSIF 1.5) |
+
+Todos os CSVs tem 3 linhas de metadata antes do header. Separador: `;`. Encoding: `cp1252` (individual) ou `latin-1` (prudencial).
+
+A Era 3 introduziu o novo plano contabil COSIF 1.5 (Resolucao CMN 4.966) com codigos de conta renumerados e incompativeis com as eras anteriores.
+
+### Normalizacao
+
+O collector normaliza todas as eras para um schema uniforme antes de salvar em Parquet:
+- Era 1: Colunas renomeadas (`DATA` -> `DATA_BASE`, `NOME INSTITUICAO` -> `NOME_INSTITUICAO`), `CONTA` com leading zeros removidos via `CAST(BIGINT)`
+- Todas as eras: `NOME_CONTA` normalizado para UPPER (Era 3 usa Title Case)
+
+Colunas armazenadas em Parquet (uniformes para todas as eras):
 
 | Coluna Original | Coluna Mapeada |
 |-----------------|----------------|
@@ -402,6 +414,17 @@ Colunas originais (armazenadas em Parquet):
 | NOME_CONTA | CONTA |
 | DOCUMENTO | DOCUMENTO |
 | SALDO | VALOR |
+
+### Warning de Compatibilidade
+
+Ao consultar periodos que cruzam a fronteira Era 2/Era 3 (202501), um `IncompatibleEraWarning` e emitido automaticamente:
+
+```python
+# Emite IncompatibleEraWarning: codigos de conta foram renumerados
+df = bcb.cosif.read(instituicao='60872504', start='2024-12', end='2025-01')
+```
+
+O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
 
 ## Tratamento de Erros
 

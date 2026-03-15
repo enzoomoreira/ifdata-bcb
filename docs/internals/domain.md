@@ -22,16 +22,18 @@ src/ifdata_bcb/domain/
 ```
 Exception
     +-- BacenAnalysisError (base)
-            +-- InvalidScopeError
-            +-- DataUnavailableError
-            +-- EntityNotFoundError
-            +-- AmbiguousIdentifierError
-            +-- InvalidIdentifierError
-            +-- MissingRequiredParameterError
-            +-- InvalidDateRangeError
-            +-- InvalidDateFormatError
-            +-- PeriodUnavailableError
-            +-- DataProcessingError
+    |       +-- InvalidScopeError
+    |       +-- DataUnavailableError
+    |       +-- EntityNotFoundError
+    |       +-- AmbiguousIdentifierError
+    |       +-- InvalidIdentifierError
+    |       +-- MissingRequiredParameterError
+    |       +-- InvalidDateRangeError
+    |       +-- InvalidDateFormatError
+    |       +-- PeriodUnavailableError
+    |       +-- DataProcessingError
+    +-- UserWarning
+            +-- IncompatibleEraWarning
 ```
 
 ### BacenAnalysisError
@@ -207,6 +209,31 @@ class DataProcessingError(BacenAnalysisError):
 
 # Uso interno
 raise DataProcessingError("cosif:prudencial", "Erro na leitura do CSV")
+```
+
+### IncompatibleEraWarning
+
+Warning emitido quando uma query abrange periodos com codigos de conta incompativeis (pre/pos COSIF 1.5):
+
+```python
+class IncompatibleEraWarning(UserWarning):
+    """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
+
+# Emitido automaticamente por check_era_boundary() em core/eras.py
+# Exemplo: cosif.read(start='2024-12', end='2025-01') emite este warning
+```
+
+Nao herda de `BacenAnalysisError` -- e um `UserWarning` capturavel via `warnings.catch_warnings()`:
+
+```python
+import warnings
+from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
+
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    df = bcb.cosif.read(instituicao='60872504', start='2024-12', end='2025-01')
+    if w and issubclass(w[0].category, IncompatibleEraWarning):
+        print("Cuidado: codigos de conta podem ser incompativeis")
 ```
 
 ---

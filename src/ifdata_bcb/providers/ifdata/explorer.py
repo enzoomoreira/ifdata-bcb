@@ -431,6 +431,14 @@ class IFDATAExplorer(BaseExplorer):
         """
         self._validate_required_params(instituicao, start)
         self._validate_cadastro_columns(cadastro)
+
+        from ifdata_bcb.core.eras import IFDATA_ERA_BOUNDARY, check_era_boundary
+
+        check_era_boundary(
+            self._resolve_date_range(start, end, trimestral=True),
+            IFDATA_ERA_BOUNDARY,
+            "IFDATA",
+        )
         self._logger.debug(f"IFDATA read: instituicao={instituicao}, escopo={escopo}")
 
         escopos = (

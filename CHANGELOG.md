@@ -1,5 +1,29 @@
 # Project Changelog
 
+## [2026-03-15 17:58]
+
+### Added
+- Modulo `core/eras.py` para deteccao e tratamento de multiplas eras de formato do BCB (Era 1: 1995-2010/09, Era 2: 2010/10-2024/12, Era 3: 2025/01+)
+  - `detect_cosif_csv_era()`: identifica era do CSV pelo header (8 colunas vs 11 colunas)
+  - `build_cosif_select()`: gera SQL normalizado por era, produzindo schema uniforme independente do formato de origem
+  - `check_era_boundary()`: emite warning quando query abrange periodos com codigos de conta incompativeis
+- `IncompatibleEraWarning` em `domain/exceptions.py` para alertar usuarios sobre combinacao de periodos com planos COSIF diferentes (pre/pos COSIF 1.5)
+- COSIF collector agora suporta todas as eras (antes crashava em CSVs Era 1 com `BinderException: "#DATA_BASE" not found`)
+- `union_by_name=true` no `QueryEngine.read_glob` para leitura defensiva de parquets com schemas heterogeneos
+- `_download_single` movido para `BaseCollector`, eliminando duplicacao nos collectors IFDATA
+- 46 novos testes: `test_eras.py` (27), `test_cosif_collector_eras.py` (13), `test_query_engine_union.py` (6)
+
+### Changed
+- NOME_CONTA normalizado para UPPER em todas as eras (Era 3 vinha em Title Case)
+- Contrato de `_process_to_parquet` atualizado: parametro renomeado de `csv_path` para `data_path` (IFDATA Valores passa diretorio, nao arquivo)
+- `base_explorer.py`: conversao de DATA usa `pd.to_datetime` + `MonthEnd` em vez de funcao custom `yyyymm_to_datetime`
+- `entity_lookup.py`: iteracao por DataFrame substituida por operacoes vetorizadas com `zip()` sobre arrays numpy
+
+### Removed
+- Parametro `threshold_auto` de `FuzzyMatcher` (nao era utilizado)
+- Parametro `fuzzy_threshold_auto` de `EntityLookup.__init__`
+- Metodos `_download_single` duplicados em `IFDATAValoresCollector` e `IFDATACadastroCollector`
+
 ## [2026-03-15 16:51]
 
 ### Added

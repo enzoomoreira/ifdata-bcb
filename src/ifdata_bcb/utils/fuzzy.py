@@ -2,12 +2,7 @@ from thefuzz import fuzz, process
 
 
 class FuzzyMatcher:
-    def __init__(
-        self,
-        threshold_auto: int = 85,
-        threshold_suggest: int = 78,
-    ):
-        self.threshold_auto = threshold_auto
+    def __init__(self, threshold_suggest: int = 78):
         self.threshold_suggest = threshold_suggest
 
     def search(

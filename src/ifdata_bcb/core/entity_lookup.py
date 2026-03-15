@@ -25,15 +25,11 @@ class EntityLookup:
     def __init__(
         self,
         query_engine: QueryEngine | None = None,
-        fuzzy_threshold_auto: int = 85,
         fuzzy_threshold_suggest: int = 78,
     ):
         self._qe = query_engine or QueryEngine()
         self._logger = get_logger(__name__)
-        self._fuzzy = FuzzyMatcher(
-            threshold_auto=fuzzy_threshold_auto,
-            threshold_suggest=fuzzy_threshold_suggest,
-        )
+        self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 
     def _get_source_path(self, subdir: str, pattern: str) -> str:
         """Retorna path completo para glob de arquivos."""
@@ -192,13 +188,13 @@ class EntityLookup:
             if not df_congl.empty:
                 # Coletar todos os codigos de conglomerado
                 cod_to_cnpjs: dict[str, list[str]] = {}
-                for _, row in df_congl.iterrows():
-                    cnpj = str(row["CNPJ_8"])
-                    for col in ["cod_prud", "cod_fin"]:
-                        cod = row[col]
+                cnpjs_col = df_congl["CNPJ_8"].astype(str).values
+                prud_col = df_congl["cod_prud"].values
+                fin_col = df_congl["cod_fin"].values
+                for cnpj, cod_prud, cod_fin in zip(cnpjs_col, prud_col, fin_col):
+                    for cod in (cod_prud, cod_fin):
                         if pd.notna(cod):
-                            cod_str = str(cod)
-                            cod_to_cnpjs.setdefault(cod_str, []).append(cnpj)
+                            cod_to_cnpjs.setdefault(str(cod), []).append(cnpj)
 
                 if cod_to_cnpjs:
                     cods_str = ", ".join(f"'{c}'" for c in cod_to_cnpjs.keys())
@@ -241,9 +237,12 @@ class EntityLookup:
 
         try:
             df = self._qe.sql(sql)
-            return {
-                str(row["CNPJ_8"]): str(row["Situacao"]) for _, row in df.iterrows()
-            }
+            return dict(
+                zip(
+                    df["CNPJ_8"].astype(str).values,
+                    df["Situacao"].astype(str).values,
+                )
+            )
         except Exception:
             return {}
 
@@ -318,19 +317,18 @@ class EntityLookup:
 
         # Dados oficiais para exibicao do resultado
         cnpj_data: dict[str, dict] = {}
-        for _, row in df_entities.iterrows():
-            cnpj = str(row["CNPJ_8"])
+        cnpjs_arr = df_entities["CNPJ_8"].astype(str).values
+        nomes_arr = df_entities["NOME"].astype(str).values
+        nomes_norm_arr = df_entities["NOME_NORM"].astype(str).values
+        for cnpj, nome, nome_norm in zip(cnpjs_arr, nomes_arr, nomes_norm_arr):
             if cnpj not in cnpj_data:
-                cnpj_data[cnpj] = {
-                    "nome": str(row["NOME"]),
-                    "nome_norm": str(row["NOME_NORM"]),
-                }
+                cnpj_data[cnpj] = {"nome": nome, "nome_norm": nome_norm}
 
         # Aliases pesquisaveis -> CNPJ real
         nome_to_cnpj: dict[str, str] = {}
-        for _, row in df_aliases.iterrows():
-            cnpj = str(row["CNPJ_8"])
-            nome_norm = str(row["NOME_NORM"])
+        alias_cnpjs = df_aliases["CNPJ_8"].astype(str).values
+        alias_norms = df_aliases["NOME_NORM"].astype(str).values
+        for cnpj, nome_norm in zip(alias_cnpjs, alias_norms):
             if cnpj in cnpj_data and nome_norm not in nome_to_cnpj:
                 nome_to_cnpj[nome_norm] = cnpj
 
@@ -623,9 +621,9 @@ class EntityLookup:
             self._logger.warning(f"get_canonical_names_for_cnpjs query failed: {e}")
             return {cnpj: "" for cnpj in cnpjs}
 
-        cnpj_to_name = {
-            str(row["CNPJ_8"]): str(row["NOME"]) for _, row in df.iterrows()
-        }
+        cnpj_to_name = dict(
+            zip(df["CNPJ_8"].astype(str).values, df["NOME"].astype(str).values)
+        )
         return {cnpj: cnpj_to_name.get(cnpj, "") for cnpj in cnpjs}
 
     def clear_cache(self) -> None:

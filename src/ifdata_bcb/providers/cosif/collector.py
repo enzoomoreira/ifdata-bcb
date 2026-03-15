@@ -153,26 +153,13 @@ class COSIFCollector(BaseCollector):
         return None
 
     def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
-        """Processa CSV COSIF para DataFrame."""
+        """Processa CSV COSIF para DataFrame. Suporta todas as eras de formato."""
         try:
+            from ifdata_bcb.core.eras import build_cosif_select, detect_cosif_csv_era
+
             encoding = self._config["encoding"]
-            query = f"""
-                SELECT
-                    "#DATA_BASE" as DATA_BASE,
-                    CNPJ,
-                    NOME_INSTITUICAO,
-                    DOCUMENTO,
-                    CONTA,
-                    NOME_CONTA,
-                    TRY_CAST(REPLACE(SALDO, ',', '.') AS DOUBLE) as SALDO
-                FROM read_csv(
-                    '{csv_path}',
-                    delim=';',
-                    header=true,
-                    skip=3,
-                    encoding='{encoding}'
-                )
-            """
+            era = detect_cosif_csv_era(csv_path, encoding)
+            query = build_cosif_select(era, csv_path, encoding)
 
             cursor = self._get_cursor()
             df = cursor.sql(query).df()

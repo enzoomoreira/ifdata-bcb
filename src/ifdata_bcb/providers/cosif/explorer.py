@@ -261,6 +261,12 @@ class COSIFExplorer(BaseExplorer):
         """
         self._validate_required_params(instituicao, start)
         self._validate_cadastro_columns(cadastro)
+
+        from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY, check_era_boundary
+
+        check_era_boundary(
+            self._resolve_date_range(start, end), COSIF_ERA_BOUNDARY, "COSIF"
+        )
         self._logger.debug(f"COSIF read: escopo={escopo}, instituicao={instituicao}")
 
         escopos: list[EscopoCOSIF] = (

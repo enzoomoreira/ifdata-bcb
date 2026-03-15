@@ -160,13 +160,15 @@ df = qe.read_glob(
 )
 ```
 
+**union_by_name**: A leitura usa `read_parquet(..., union_by_name=true)` para compatibilidade com parquets que tenham schemas ligeiramente diferentes (ex: eras distintas de formato COSIF).
+
 **Predicate Pushdown**:
 
 O DuckDB aplica filtros durante leitura do Parquet, evitando carregar dados desnecessarios:
 
 ```sql
 -- Query interna
-SELECT * FROM '{cache}/cosif/prudencial/cosif_prud_*.parquet'
+SELECT * FROM read_parquet('{cache}/cosif/prudencial/cosif_prud_*.parquet', union_by_name=true)
 WHERE CNPJ_8 = '60872504' AND DATA_BASE = 202412
 ```
 

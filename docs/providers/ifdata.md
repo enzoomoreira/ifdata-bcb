@@ -399,6 +399,17 @@ Mapeamento para colunas de apresentacao:
 | NomeRelatorio | RELATORIO |
 | Grupo | GRUPO |
 
+### Warning de Compatibilidade
+
+A partir de 202503 (marco/2025), o BCB renumerou os codigos de conta no IFDATA. Ao consultar periodos que cruzam essa fronteira, um `IncompatibleEraWarning` e emitido automaticamente:
+
+```python
+# Emite IncompatibleEraWarning: codigos de conta foram renumerados
+df = bcb.ifdata.read(instituicao='60872504', start='2024-12', end='2025-03')
+```
+
+O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
+
 ## Diferenca Entre COSIF e IFDATA
 
 | Aspecto | COSIF | IFDATA |

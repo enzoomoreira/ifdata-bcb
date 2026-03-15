@@ -57,9 +57,22 @@ def _download_period(self, period: int, work_dir: Path) -> Path | None:
     """Baixa dados de um periodo para work_dir. Retorna Path do CSV ou None."""
 
 @abstractmethod
-def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
-    """Processa CSV e retorna DataFrame normalizado."""
+def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
+    """Processa dados e retorna DataFrame normalizado.
+    data_path: CSV (COSIF) ou diretorio com CSVs (IFDATA Valores)."""
 ```
+
+### _download_single()
+
+Metodo compartilhado para download de arquivos com retry:
+
+```python
+@retry(delay=2.0)
+def _download_single(self, url: str, output_path: Path) -> bool:
+    """Baixa um arquivo da URL e salva em output_path."""
+```
+
+Herdado por todos os collectors (COSIF, IFDATA Valores, IFDATA Cadastro).
 
 ### collect()
 
@@ -191,9 +204,11 @@ class COSIFCollector(BaseCollector):
 
     def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """
-        - Leitura via DuckDB (ISO-8859-1, separador ';')
+        - Detecta era via eras.detect_cosif_csv_era()
+        - Gera SQL normalizado via eras.build_cosif_select()
+        - Suporta todas as eras (Era 1/2/3)
+        - Normaliza NOME_CONTA para UPPER
         - Adiciona coluna ESCOPO
-        - Normaliza campos de texto
         """
 ```
 

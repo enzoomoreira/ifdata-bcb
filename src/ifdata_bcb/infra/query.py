@@ -51,7 +51,7 @@ class QueryEngine:
 
         full_pattern = str(self._cache_path / subdir / pattern)
         select_clause = ", ".join(columns) if columns else "*"
-        query = f"SELECT {select_clause} FROM '{full_pattern}'"
+        query = f"SELECT {select_clause} FROM read_parquet('{full_pattern}', union_by_name=true)"
 
         if where:
             query += f" WHERE {where}"
