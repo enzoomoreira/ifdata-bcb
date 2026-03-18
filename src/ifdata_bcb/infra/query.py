@@ -61,7 +61,16 @@ class QueryEngine:
         try:
             return self._conn.sql(query).df()
         except Exception as e:
-            self._logger.error(f"Glob failed: {subdir}/{pattern} - {e}")
+            self._logger.warning(f"Glob query failed: {subdir}/{pattern} - {e}")
+            from ifdata_bcb.infra.log import emit_user_warning
+            from ifdata_bcb.domain.exceptions import PartialDataWarning
+
+            emit_user_warning(
+                f"Query de leitura falhou para {subdir}/{pattern}: {e}. "
+                f"Isso pode indicar incompatibilidade de schema ou bug interno.",
+                PartialDataWarning,
+                stacklevel=2,
+            )
             return pd.DataFrame()
 
     def sql(self, query: str) -> pd.DataFrame:

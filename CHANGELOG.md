@@ -1,5 +1,35 @@
 # Project Changelog
 
+## [2026-03-18 01:35]
+
+### Added
+- Modulo `infra/sql.py` com 8 funcoes utilitarias de construcao SQL extraidas do BaseExplorer: `build_string_condition`, `build_int_condition`, `build_account_condition`, `build_like_condition`, `join_conditions`, `escape_sql_string`, `build_in_clause`
+  - Consolida logica SQL dispersa em metodos de instancia, habilitando reuso entre explorers
+  - `build_account_condition()` suporta match dual por nome (accent/case insensitive) OU codigo numerico
+  - `build_like_condition()` escapa metacaracteres SQL (`%`, `_`, `$`) automaticamente
+- `TemporalResolver` em `providers/ifdata/temporal.py`: resolve CNPJs para codigos IFDATA por periodo, rastreando mudancas de conglomerado ao longo do tempo
+  - `TemporalGroup` dataclass encapsula cod_inst, tipo_inst, periodos e mapeamento de CNPJs
+  - Suporte a backfill/forward-fill para periodos sem correspondencia direta
+- `resolve_ifdata_escopo()` extraido para `providers/ifdata/scope.py`: valida CNPJ contra escopo (individual, prudencial, financeiro) de forma isolada
+- `enrich_with_cadastro()` extraido para `providers/enrichment.py`: enriquecimento cadastral com merge temporal via `merge_asof` backward-looking para series temporais
+- `ValoresExplorer` (renomeado de `IFDATAExplorer`) com novos metodos de introspeccao: `list_contas()`, `list_instituicoes()`, `list_mapeamento()`, `list_relatorios()`
+- 4 novos subtipos de warning: `PartialDataWarning`, `ScopeUnavailableWarning`, `NullValuesWarning`, `EmptyFilterWarning`
+- Novos metodos no BaseExplorer: `_validate_escopo()`, `_validate_columns()`, `_filter_columns()`, `_storage_columns_for_query()`, `_apply_canonical_names()`, `_check_null_value_instituicoes()`, `_diagnose_empty_result()`, `_ensure_data_exists()`
+- 5 novos modulos de teste: `test_sql.py`, `test_temporal.py`, `test_enrichment.py` (unit), `test_temporal_resolution.py`, `test_heterogeneous_schemas.py` (integration)
+
+### Changed
+- BaseExplorer movido de `core/base_explorer.py` para `providers/base_explorer.py` -- pertence a hierarquia de providers, nao ao core
+- `IFDATAExplorer` decomposto: `explorer.py` renomeado para `valores_explorer.py`, logica de escopo extraida para `scope.py`, resolucao temporal para `temporal.py`, enriquecimento para `enrichment.py`
+- Metodos publicos padronizados para portugues: `list_periods()` -> `list_periodos()`, `_normalize_dates()` -> `_normalize_datas()`, `_normalize_accounts()` -> `_normalize_contas()`, `_normalize_institutions()` -> `_normalize_instituicoes()`, `_resolve_entity()` -> `_resolve_entidade()`
+- Metodos SQL migrados de instancia para funcoes de modulo em `infra/sql.py`
+- `EntityLookup`: `_real_entity_condition()` e `_resolved_entity_cnpj_expr()` tornados publicos (sem underscore) e parametrizaveis por nome de coluna
+- Pipeline de finalizacao `_finalize_read()` expandido para 7 etapas: drop colunas internas, mapeamento, dedup, conversao DATA->datetime, sort, reordenacao, reset index
+- Documentacao atualizada em 11 arquivos refletindo nova arquitetura modular
+
+### Removed
+- `src/ifdata_bcb/core/base_explorer.py` (movido para providers)
+- `src/ifdata_bcb/providers/ifdata/explorer.py` (substituido por `valores_explorer.py`)
+
 ## [2026-03-15 17:58]
 
 ### Added

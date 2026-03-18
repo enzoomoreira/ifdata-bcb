@@ -148,7 +148,7 @@ bcb.cosif.read(instituicao=['60872504', '60746948'], start='2024-12')
 # ERRO: nome direto gera InvalidIdentifierError
 bcb.cosif.read(instituicao='Itau', start='2024-12')  # Erro!
 
-# ERRO: sem start gera TypeError (start e argumento obrigatorio)
+# ERRO: sem start gera MissingRequiredParameterError
 bcb.cosif.read(instituicao='60872504', escopo='prudencial')  # Erro!
 ```
 
@@ -405,15 +405,15 @@ export BACEN_DATA_DIR="/dados/bcb"
 
 ```python
 # Via explorers
-bcb.cosif.list_periods()                    # Todos os periodos (ambos escopos)
-bcb.cosif.list_periods(source='individual')  # Apenas individual
+bcb.cosif.list_periodos()                    # Todos os periodos (ambos escopos)
+bcb.cosif.list_periodos(source='individual')  # Apenas individual
 bcb.cosif.has_data()                         # True se tem dados
 
 # Via DataManager (mais baixo nivel)
 from ifdata_bcb.infra import DataManager
 
 dm = DataManager()
-periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
 print(f"Periodos: {periodos}")  # [(2024, 1), (2024, 2), ...]
 ```
 
@@ -457,8 +457,7 @@ except BacenAnalysisError as e:
 | Excecao | Quando ocorre |
 |---------|---------------|
 | `InvalidIdentifierError` | CNPJ invalido ou nome ao inves de CNPJ |
-| `TypeError` | `start` ausente (argumento posicional obrigatorio em COSIF/IFDATA) |
-| `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (ex: `start` em cadastro quando nao ha dados) |
+| `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (ex: `instituicao` ou `start`) |
 | `InvalidScopeError` | Escopo invalido (ex: 'xyz') |
 | `InvalidDateRangeError` | start > end |
 | `DataUnavailableError` | Dados nao disponiveis para o CNPJ/escopo |

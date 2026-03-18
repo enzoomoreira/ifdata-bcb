@@ -6,7 +6,7 @@ from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 
 
 @pytest.fixture
@@ -26,9 +26,9 @@ def test_ifdata_list_methods_return_empty_when_cache_is_missing(
 ) -> None:
     explorer = IFDATAExplorer(query_engine=query_engine)
 
-    accounts = explorer.list_accounts()
-    institutions = explorer.list_institutions()
-    reporters = explorer.list_reporters()
+    accounts = explorer.list_contas()
+    institutions = explorer.list_instituicoes()
+    reporters = explorer.list_mapeamento()
 
     assert accounts.empty
     assert list(accounts.columns) == ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
@@ -52,7 +52,7 @@ def test_ifdata_list_methods_return_empty_when_cache_is_missing(
         "CNPJ_8",
         "INSTITUICAO",
     ]
-    assert explorer.list_reports() == []
+    assert explorer.list_relatorios() == []
 
 
 def test_cosif_list_methods_return_empty_when_cache_is_missing(
@@ -60,15 +60,20 @@ def test_cosif_list_methods_return_empty_when_cache_is_missing(
 ) -> None:
     explorer = COSIFExplorer(query_engine=query_engine)
 
-    accounts = explorer.list_accounts()
-    institutions = explorer.list_institutions()
-    scoped_accounts = explorer.list_accounts(escopo="individual")
-    scoped_institutions = explorer.list_institutions(escopo="prudencial")
+    accounts = explorer.list_contas()
+    institutions = explorer.list_instituicoes()
+    scoped_accounts = explorer.list_contas(escopo="individual")
+    scoped_institutions = explorer.list_instituicoes(escopo="prudencial")
 
     assert accounts.empty
-    assert list(accounts.columns) == ["COD_CONTA", "CONTA", "ESCOPO"]
+    assert list(accounts.columns) == ["COD_CONTA", "CONTA", "ESCOPOS"]
     assert institutions.empty
-    assert list(institutions.columns) == ["CNPJ_8", "INSTITUICAO", "ESCOPO"]
+    assert list(institutions.columns) == [
+        "CNPJ_8",
+        "INSTITUICAO",
+        "TEM_INDIVIDUAL",
+        "TEM_PRUDENCIAL",
+    ]
     assert scoped_accounts.empty
     assert list(scoped_accounts.columns) == ["COD_CONTA", "CONTA"]
     assert scoped_institutions.empty

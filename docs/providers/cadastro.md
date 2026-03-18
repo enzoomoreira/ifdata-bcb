@@ -374,6 +374,7 @@ Mapeamento para colunas de apresentacao:
 | Uf | UF |
 | Municipio | MUNICIPIO |
 | Sr | SR |
+| CnpjInstituicaoLider | CNPJ_LIDER_8 (normalizado durante coleta) |
 | DataInicioAtividade | DATA_INICIO_ATIVIDADE |
 
 ## Tratamento de Erros

@@ -91,3 +91,19 @@ class DataProcessingError(BacenAnalysisError):
 
 class IncompatibleEraWarning(UserWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
+
+
+class PartialDataWarning(UserWarning):
+    """Resultado incompleto - alguns periodos/entidades sem dados."""
+
+
+class ScopeUnavailableWarning(UserWarning):
+    """Escopo indisponivel para entidade em parte do range temporal."""
+
+
+class NullValuesWarning(UserWarning):
+    """Entidade presente nos dados mas com todos os valores financeiros NULL."""
+
+
+class EmptyFilterWarning(UserWarning):
+    """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""

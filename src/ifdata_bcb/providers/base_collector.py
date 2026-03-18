@@ -161,7 +161,7 @@ class BaseCollector(ABC):
 
     def _get_missing_periods(self, start: str, end: str) -> list[int]:
         all_periods = self._generate_periods(start, end)
-        existing = self.dm.get_available_periods(
+        existing = self.dm.get_periodos_disponiveis(
             self._get_file_prefix(), self._get_subdir()
         )
         existing_ints = {y * 100 + m for y, m in existing}
@@ -338,7 +338,7 @@ class BaseCollector(ABC):
 
         return pd.DataFrame(status_data)
 
-    def available_periods(self) -> list[tuple[int, int]]:
-        return self.dm.get_available_periods(
+    def periodos_disponiveis(self) -> list[tuple[int, int]]:
+        return self.dm.get_periodos_disponiveis(
             self._get_file_prefix(), self._get_subdir()
         )

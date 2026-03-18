@@ -7,8 +7,10 @@ A camada de providers implementa coleta e leitura para cada fonte de dados do BC
 ```
 src/ifdata_bcb/providers/
 |-- __init__.py              # Exports publicos
+|-- base_explorer.py        # Classe base abstrata para explorers
 |-- base_collector.py       # Template para coleta
 |-- collector_models.py     # CollectStatus enum
+|-- enrichment.py           # Enriquecimento cadastral inline
 |-- cosif/                   # COSIF (mensal)
 |   |-- __init__.py
 |   |-- collector.py        # COSIFCollector
@@ -16,8 +18,10 @@ src/ifdata_bcb/providers/
 +-- ifdata/                  # IFDATA (trimestral)
     |-- __init__.py
     |-- collector.py        # IFDATAValoresCollector, IFDATACadastroCollector
-    |-- explorer.py         # IFDATAExplorer
-    +-- cadastro_explorer.py # CadastroExplorer
+    |-- valores_explorer.py # IFDATAExplorer
+    |-- cadastro_explorer.py # CadastroExplorer
+    |-- scope.py            # resolve_ifdata_escopo()
+    +-- temporal.py         # TemporalResolver (resolucao temporal por periodo)
 ```
 
 ---
@@ -248,7 +252,7 @@ class COSIFExplorer(BaseExplorer):
     def _get_sources(self):
         return self._ESCOPOS
 
-    def _apply_canonical_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """Substitui aliases do COSIF por nomes canônicos do cadastro."""
 
     def read(
@@ -342,7 +346,7 @@ class IFDATACadastroCollector(BaseCollector):
 
 ---
 
-## ifdata/explorer.py (IFDATAExplorer)
+## ifdata/valores_explorer.py (IFDATAExplorer)
 
 ### Especificidades
 
@@ -390,34 +394,38 @@ class IFDATAExplorer(BaseExplorer):
 ### Resolucao de Escopo
 
 ```python
+from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
+
 def _resolve_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
     """
-    Usa EntityLookup para resolver CNPJ -> codigo IFDATA.
+    Usa resolve_ifdata_escopo() para resolver CNPJ -> codigo IFDATA.
 
     individual: CNPJ direto, TipoInstituicao=3
     prudencial: CodConglomeradoPrudencial, TipoInstituicao=1
     financeiro: CodConglomeradoFinanceiro ou CNPJ direto, TipoInstituicao=2
     """
-    return self._resolver.resolve_ifdata_scope(cnpj_8, escopo)
+    return resolve_ifdata_escopo(self._resolver, cnpj_8, escopo)
 ```
 
 ### Mapeamento de Reporters
 
-O metodo `_resolve_reporter_mappings()` cruza dados do IFDATA com o cadastro para mapear
+O metodo `_resolve_mapeamento()` cruza dados do IFDATA com o cadastro para mapear
 chaves de reporte (COD_INST) para entidades analiticas (CNPJ_8):
 
 - **Individual**: COD_INST = CNPJ_8 direto
 - **Prudencial**: COD_INST pode ser CodConglomeradoPrudencial ou CNPJ direto
 - **Financeiro**: COD_INST pode ser CodConglomeradoFinanceiro ou CNPJ direto
 
-### list_institutions()
+### list_instituicoes()
 
-Retorna visao centrada em entidades com disponibilidade por escopo:
+Retorna visao centrada em entidades com disponibilidade por escopo.
+
+**IFDATA** (`bcb.ifdata.list_instituicoes()`):
 
 | Coluna | Descricao |
 |--------|-----------|
 | CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome canônico do cadastro |
+| INSTITUICAO | Nome canonico do cadastro |
 | TEM_INDIVIDUAL | bool |
 | TEM_PRUDENCIAL | bool |
 | TEM_FINANCEIRO | bool |
@@ -425,7 +433,16 @@ Retorna visao centrada em entidades com disponibilidade por escopo:
 | COD_INST_PRUDENCIAL | Codigo(s) de reporte |
 | COD_INST_FINANCEIRO | Codigo(s) de reporte |
 
-### list_reporters()
+**COSIF** (`bcb.cosif.list_instituicoes()`):
+
+| Coluna | Descricao |
+|--------|-----------|
+| CNPJ_8 | CNPJ de 8 digitos |
+| INSTITUICAO | Nome canonico do cadastro |
+| TEM_INDIVIDUAL | bool |
+| TEM_PRUDENCIAL | bool |
+
+### list_mapeamento()
 
 Lista chaves operacionais de reporte por entidade e escopo:
 
@@ -460,7 +477,7 @@ Lista chaves operacionais de reporte por entidade e escopo:
 ### Especificidades
 
 - **Fonte unica**: ifdata/cadastro
-- **Filtragem de entidades reais**: Todas as queries filtram aliases via `_real_entity_condition()`
+- **Filtragem de entidades reais**: Todas as queries filtram aliases via `real_entity_condition()`
 - **Drop de colunas internas**: `CodInst` removido do output
 - **Mapeamento extenso de colunas**
 
@@ -498,8 +515,8 @@ class CadastroExplorer(BaseExplorer):
             uf: Filtrar por UF
         """
 
-    def info(self, instituicao: str) -> dict:
-        """Retorna informacoes detalhadas de uma instituicao."""
+    def info(self, instituicao: str, start: str | None = None) -> dict | None:
+        """Retorna dict com info da instituicao. None se nao encontrar."""
 
     def list_segmentos(self) -> list[str]:
         """Lista segmentos disponiveis."""
@@ -507,8 +524,8 @@ class CadastroExplorer(BaseExplorer):
     def list_ufs(self) -> list[str]:
         """Lista UFs disponiveis."""
 
-    def get_conglomerate_members(self, cnpj_8: str) -> pd.DataFrame:
-        """Lista membros do conglomerado de uma instituicao."""
+    def get_conglomerate_members(self, cod_congl: str, start: str | None = None) -> pd.DataFrame:
+        """Retorna membros de um conglomerado prudencial."""
 ```
 
 ### Colunas Disponiveis
@@ -526,6 +543,88 @@ class CadastroExplorer(BaseExplorer):
 | ATIVIDADE | Tipo de atividade |
 | UF | Estado |
 | MUNICIPIO | Municipio |
+
+---
+
+## providers/enrichment.py
+
+### Responsabilidades
+
+Modulo de enriquecimento cadastral inline. Permite adicionar colunas cadastrais ao resultado de `cosif.read()` e `ifdata.read()` via parametro `cadastro=`.
+
+### validate_cadastro_columns()
+
+```python
+VALID_CADASTRO_COLUMNS = {
+    "SEGMENTO", "COD_CONGL_PRUD", "COD_CONGL_FIN", "SITUACAO",
+    "ATIVIDADE", "TCB", "TD", "TC", "UF", "MUNICIPIO", "SR",
+    "DATA_INICIO_ATIVIDADE",
+}
+
+def validate_cadastro_columns(columns: list[str] | None) -> None:
+    """Valida nomes de colunas cadastrais. Raises InvalidScopeError."""
+```
+
+### enrich_with_cadastro()
+
+```python
+def enrich_with_cadastro(
+    df: pd.DataFrame,
+    cadastro_columns: list[str],
+    query_engine: QueryEngine,
+    entity_lookup: EntityLookup,
+) -> pd.DataFrame:
+    """
+    Enriquece DataFrame financeiro com colunas cadastrais.
+
+    Usa merge temporal backward-looking: cada linha financeira recebe
+    os atributos cadastrais do trimestre mais recente <= sua data.
+
+    Para data unica: merge simples por CNPJ_8.
+    Para time-series: merge_asof para alinhamento temporal.
+    """
+```
+
+---
+
+## ifdata/scope.py
+
+### Responsabilidades
+
+Resolucao de escopo IFDATA a partir de CNPJ. Extraido do `EntityLookup` para modulo independente.
+
+### resolve_ifdata_escopo()
+
+```python
+def resolve_ifdata_escopo(
+    entity_lookup: EntityLookup,
+    cnpj_8: str,
+    escopo: str,
+) -> ScopeResolution:
+    """
+    Resolve CNPJ para codigo IFDATA baseado no escopo.
+
+    individual: CNPJ direto, TipoInstituicao=3
+    prudencial: CodConglomeradoPrudencial, TipoInstituicao=1
+    financeiro: Verifica CodConglomeradoFinanceiro e CNPJ direto, TipoInstituicao=2
+
+    Raises:
+        DataUnavailableError: Entidade nao tem dados para o escopo.
+        InvalidScopeError: Escopo invalido.
+    """
+```
+
+---
+
+## ifdata/temporal.py
+
+### Responsabilidades
+
+Resolucao temporal de CNPJs para codigos IFDATA por periodo. Trata o fato de que codigos de conglomerado podem mudar ao longo do tempo.
+
+### TemporalResolver
+
+Classe que agrupa periodos com mesmo `cod_inst` para um escopo, permitindo queries eficientes quando o codigo de reporte muda ao longo do range temporal.
 
 ---
 
@@ -566,7 +665,8 @@ class NovoCollector(BaseCollector):
 
 ```python
 # providers/novo/explorer.py
-from ifdata_bcb.core.base_explorer import BaseExplorer
+from ifdata_bcb.providers.base_explorer import BaseExplorer
+from ifdata_bcb.infra.sql import join_conditions
 
 class NovoExplorer(BaseExplorer):
     _COLUMN_MAP = {
@@ -591,7 +691,7 @@ class NovoExplorer(BaseExplorer):
         df = self._qe.read_glob(
             pattern=f"{self._get_file_prefix()}_*.parquet",
             subdir=self._get_subdir(),
-            where=self._join_conditions(conditions),
+            where=join_conditions(conditions),
         )
 
         return self._finalize_read(df)
@@ -634,16 +734,31 @@ def __getattr__(name):
 
 ```python
 # providers/__init__.py
+from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.providers.base_collector import BaseCollector
+from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.collector_models import CollectStatus
+from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.collector import (
+    IFDATACadastroCollector,
+    IFDATAValoresCollector,
+)
+from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
 
 __all__ = [
+    # Base
     "BaseCollector",
+    "BaseExplorer",
     "CollectStatus",
+    "PeriodUnavailableError",
+    # COSIF
+    "COSIFCollector",
     "COSIFExplorer",
+    # IFDATA
+    "IFDATAValoresCollector",
+    "IFDATACadastroCollector",
     "IFDATAExplorer",
     "CadastroExplorer",
 ]

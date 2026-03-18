@@ -74,8 +74,8 @@ info = bcb.cadastro.info('60872504', start='2024-12')
 df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
 
 # 4. Listar contas e instituicoes disponiveis
-bcb.cosif.list_accounts(escopo='prudencial')
-bcb.cosif.list_institutions(escopo='prudencial')
+bcb.cosif.list_contas(escopo='prudencial')
+bcb.cosif.list_instituicoes(escopo='prudencial')
 
 # 5. SQL direto com DuckDB (para analises avancadas)
 from ifdata_bcb.infra import QueryEngine
@@ -110,7 +110,7 @@ df = qe.sql("""
 ### Arquitetura Interna
 
 - **[architecture.md](docs/internals/architecture.md)** - Visao geral da arquitetura
-- **[core.md](docs/internals/core.md)** - BaseExplorer, EntityLookup, Constants
+- **[core.md](docs/internals/core.md)** - EntityLookup, Constants, Eras, BaseExplorer
 - **[domain.md](docs/internals/domain.md)** - Exceptions, Models, Types, Validation
 - **[infra.md](docs/internals/infra.md)** - Settings, QueryEngine, DataManager
 - **[providers.md](docs/internals/providers.md)** - BaseCollector, Explorers
@@ -165,21 +165,21 @@ Todos os explorers possuem:
 |--------|-----------|
 | `collect(start, end, ...)` | Coleta dados do BCB |
 | `read(instituicao, start, ...)` | Le dados com filtros |
-| `list_periods()` | Periodos disponiveis |
+| `list_periodos()` | Periodos disponiveis |
 | `has_data()` | Verifica se tem dados |
 
 Metodos especificos:
 
 | Explorer | Metodos Adicionais |
 |----------|-------------------|
-| `cosif` | `list_accounts()`, `list_institutions()` |
-| `ifdata` | `list_accounts()`, `list_institutions()`, `list_reporters()`, `list_reports()` |
+| `cosif` | `list_contas()`, `list_instituicoes()` |
+| `ifdata` | `list_contas()`, `list_instituicoes()`, `list_mapeamento()`, `list_relatorios()` |
 | `cadastro` | `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()` |
 
 ## Limitacoes Conhecidas
 
 - **Dependencia de APIs do BCB**: a coleta depende da disponibilidade dos endpoints publicos do Banco Central. Se a API estiver fora do ar ou mudar seu schema, a coleta pode falhar.
-- **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periods()` para verificar disponibilidade.
+- **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periodos()` para verificar disponibilidade.
 - **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz requisicoes HTTP sequenciais ao BCB.
 - **Cache sem invalidacao automatica**: dados coletados ficam em cache local indefinidamente. Para atualizar, colete novamente o periodo desejado.
 - **Sem suporte offline**: a coleta requer conexao com a internet. A leitura funciona offline se os dados ja estiverem em cache.

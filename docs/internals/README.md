@@ -7,7 +7,7 @@ Esta pasta contem a documentacao tecnica interna da biblioteca `ifdata-bcb`.
 | Documento | Descricao |
 |-----------|-----------|
 | [architecture.md](architecture.md) | Visao geral da arquitetura, camadas, design patterns, fluxos |
-| [core.md](core.md) | Modulo core: BaseExplorer, EntityLookup, constants |
+| [core.md](core.md) | Modulo core: EntityLookup, constants, eras, BaseExplorer |
 | [domain.md](domain.md) | Modelos, tipos e hierarquia de excecoes |
 | [infra.md](infra.md) | Infraestrutura: QueryEngine, DataManager, log, cache, resilience |
 | [providers.md](providers.md) | Providers: BaseCollector, COSIF, IFDATA, Cadastro |

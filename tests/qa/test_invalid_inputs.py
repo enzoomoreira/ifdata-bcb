@@ -103,6 +103,17 @@ class TestSearchResilience:
             except (UnicodeError, ValueError):
                 pass  # Erros de encoding sao aceitaveis
 
+    def test_search_with_quotes_in_term(self, qa_lookup: EntityLookup) -> None:
+        """Aspas no termo de busca nao crasheiam a query SQL."""
+        import pandas as pd
+
+        df = qa_lookup.search("BANCO 'ALFA'")
+        assert isinstance(df, pd.DataFrame)
+
+    def test_search_empty_term_returns_empty(self, qa_lookup: EntityLookup) -> None:
+        df = qa_lookup.search("")
+        assert df.empty
+
 
 class TestGracefulEmpty:
     def test_nonexistent_account(self, qa_cosif: COSIFExplorer) -> None:
@@ -111,6 +122,6 @@ class TestGracefulEmpty:
         )
         assert df.empty
 
-    def test_list_accounts_negative_limit(self, qa_cosif: COSIFExplorer) -> None:
+    def test_list_contas_negative_limit(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(Exception):
-            qa_cosif.list_accounts(limit=-1)
+            qa_cosif.list_contas(limit=-1)

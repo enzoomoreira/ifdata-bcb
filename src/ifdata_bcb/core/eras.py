@@ -8,13 +8,17 @@ O BCB mudou o formato dos dados COSIF ao longo do tempo:
 Eras 1-2 tem codigos de conta compativeis (strip leading zeros).
 Era 3 tem codigos incompativeis (novo plano contabil, Resolucao CMN 4.966).
 
-IFDATA Valores: mesma API OData, mas codigos Conta renumerados em 2025.
+IFDATA Valores:
+- 201203-202412: codigos de conta 78182-79665 (69-70 contas).
+- 202503+: codigos renumerados 140198-149619 (98 contas).
+  Nenhuma conta em comum com a era anterior.
+  Boundary: IFDATA_ERA_BOUNDARY = 202503.
 """
 
-import warnings
 from pathlib import Path
 
 from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
+from ifdata_bcb.infra.log import emit_user_warning
 
 # Primeiro periodo com codigos de conta incompativeis (novo plano contabil).
 COSIF_ERA_BOUNDARY: int = 202501
@@ -91,11 +95,11 @@ def check_era_boundary(
     min_date = min(dates)
     max_date = max(dates)
     if min_date < boundary <= max_date:
-        warnings.warn(
+        emit_user_warning(
             f"Query {source_name} abrange periodos antes e apos {boundary}. "
-            f"Codigos de conta foram renumerados nesta transicao (novo plano "
-            f"contabil COSIF 1.5 / Resolucao CMN 4.966) e nao sao compativeis "
-            f"entre si. Resultados podem misturar contas com codigos distintos.",
+            f"Codigos de conta foram renumerados nesta transicao "
+            f"(Resolucao CMN 4.966) e nao sao compativeis entre si. "
+            f"Resultados podem misturar contas com codigos distintos.",
             IncompatibleEraWarning,
             stacklevel=3,
         )

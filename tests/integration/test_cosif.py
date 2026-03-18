@@ -4,7 +4,7 @@ import pandas as pd
 
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 from tests.conftest import BANCO_A_CNPJ
 
 
@@ -38,7 +38,7 @@ class TestCOSIFRead:
         assert "ESCOPO" in df.columns
         assert "individual" in df["ESCOPO"].unique()
 
-    def test_read_single_scope(
+    def test_read_single_escopo(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(
@@ -99,10 +99,10 @@ class TestCOSIFRead:
 
 
 class TestCOSIFListMethods:
-    def test_list_periods(
+    def test_list_periodos(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        assert 202303 in explorers[0].list_periods()
+        assert 202303 in explorers[0].list_periodos()
 
     def test_has_data(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -117,23 +117,48 @@ class TestCOSIFListMethods:
         assert info["period_count"] >= 1
         assert "by_source" in info
 
-    def test_list_accounts(
+    def test_list_contas(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_accounts()
+        df = explorers[0].list_contas()
         assert not df.empty
         assert "COD_CONTA" in df.columns
+        assert "ESCOPOS" in df.columns
 
-    def test_list_accounts_with_filter(
+    def test_list_contas_with_filter(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_accounts(termo="ATIVO")
+        df = explorers[0].list_contas(termo="ATIVO")
         assert not df.empty
         assert all("ATIVO" in c.upper() for c in df["CONTA"])
 
-    def test_list_institutions(
+    def test_list_contas_limit_applies_to_total(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_institutions()
+        df = explorers[0].list_contas(limit=2)
+        assert len(df) <= 2
+
+    def test_list_contas_with_escopo_no_escopos_column(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].list_contas(escopo="individual")
+        assert not df.empty
+        assert "ESCOPOS" not in df.columns
+        assert list(df.columns) == ["COD_CONTA", "CONTA"]
+
+    def test_list_instituicoes(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].list_instituicoes()
         assert not df.empty
         assert "CNPJ_8" in df.columns
+        assert "TEM_INDIVIDUAL" in df.columns
+        assert "TEM_PRUDENCIAL" in df.columns
+        assert df["TEM_INDIVIDUAL"].dtype == bool
+
+    def test_list_instituicoes_with_escopo_no_tem_columns(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].list_instituicoes(escopo="individual")
+        assert not df.empty
+        assert list(df.columns) == ["CNPJ_8", "INSTITUICAO"]

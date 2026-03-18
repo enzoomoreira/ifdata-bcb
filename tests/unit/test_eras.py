@@ -227,3 +227,13 @@ class TestCheckEraBoundary:
             warnings.simplefilter("always")
             check_era_boundary([202412, 202501], COSIF_ERA_BOUNDARY, "X")
             assert "202501" in str(w[0].message)
+
+    def test_era_boundary_message_is_source_aware(self) -> None:
+        """Warning message deve usar o source_name fornecido, nao hardcoded."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_era_boundary([202412, 202503], IFDATA_ERA_BOUNDARY, "IFDATA")
+            msg = str(w[0].message)
+            assert "IFDATA" in msg
+            # Nao deve mencionar COSIF quando o source e IFDATA
+            assert "COSIF" not in msg

@@ -10,6 +10,7 @@ src/ifdata_bcb/infra/
 |-- config.py            # Settings (pydantic-settings)
 |-- paths.py             # ensure_dir, temp_dir
 |-- query.py             # QueryEngine (DuckDB)
+|-- sql.py               # Funcoes de construcao SQL
 |-- storage.py           # DataManager (Parquet)
 |-- log.py               # Logging (Loguru)
 |-- cache.py             # Cache LRU com registro global
@@ -162,6 +163,8 @@ df = qe.read_glob(
 
 **union_by_name**: A leitura usa `read_parquet(..., union_by_name=true)` para compatibilidade com parquets que tenham schemas ligeiramente diferentes (ex: eras distintas de formato COSIF).
 
+**Tratamento de erros**: Se a query falhar (ex: incompatibilidade de schema entre parquets), `read_glob` emite `PartialDataWarning` e retorna DataFrame vazio em vez de levantar excecao.
+
 **Predicate Pushdown**:
 
 O DuckDB aplica filtros durante leitura do Parquet, evitando carregar dados desnecessarios:
@@ -195,6 +198,110 @@ df = qe.sql("""
     ORDER BY total DESC
     LIMIT 10
 """)
+```
+
+---
+
+## sql.py
+
+### Responsabilidades
+
+Funcoes puras para construcao de condicoes SQL compativeis com DuckDB. Usadas pelo `BaseExplorer` e `EntityLookup`.
+
+### build_string_condition()
+
+```python
+def build_string_condition(
+    column: str,
+    values: list[str],
+    case_insensitive: bool = False,
+    accent_insensitive: bool = False,
+) -> str:
+    """
+    Constroi clausula WHERE para strings.
+
+    Exemplos:
+    - ["valor"] -> "COLUNA = 'valor'"
+    - ["a", "b"] -> "COLUNA IN ('a', 'b')"
+    - case_insensitive=True -> "UPPER(COLUNA) IN ('A', 'B')"
+    - accent_insensitive=True -> "strip_accents(COLUNA) = 'valor'"
+    """
+```
+
+### build_int_condition()
+
+```python
+def build_int_condition(column: str, values: list[int]) -> str:
+    """
+    Constroi clausula WHERE para inteiros.
+
+    Exemplos:
+    - [202412] -> "DATA = 202412"
+    - [202412, 202501] -> "DATA IN (202412, 202501)"
+    """
+```
+
+### build_account_condition()
+
+```python
+def build_account_condition(
+    name_col: str,
+    code_col: str,
+    values: list[str],
+) -> str:
+    """
+    Match por nome (accent/case insensitive) OU por codigo.
+
+    Permite filtrar contas por nome textual ou codigo numerico
+    na mesma chamada.
+    """
+```
+
+### build_like_condition()
+
+```python
+def build_like_condition(
+    column: str,
+    term: str,
+    case_insensitive: bool = True,
+    accent_insensitive: bool = True,
+) -> str:
+    """
+    Constroi condicao LIKE para busca textual parcial.
+
+    Escapa metacaracteres LIKE (%, _) automaticamente.
+    """
+```
+
+### join_conditions()
+
+```python
+def join_conditions(conditions: list[str | None]) -> str | None:
+    """
+    Junta condicoes com AND, ignorando None e strings vazias.
+
+    Exemplo:
+    ["DATA = 202412", None, "CNPJ_8 = '12345678'"]
+    -> "DATA = 202412 AND CNPJ_8 = '12345678'"
+    """
+```
+
+### build_in_clause()
+
+```python
+def build_in_clause(values: list[str], escape: bool = True) -> str:
+    """
+    Constroi lista SQL IN sem parenteses: 'a', 'b', 'c'.
+
+    Usado internamente pelo EntityLookup para montar queries.
+    """
+```
+
+### escape_sql_string()
+
+```python
+def escape_sql_string(value: str) -> str:
+    """Escapa aspas simples para uso em SQL."""
 ```
 
 ---
@@ -255,10 +362,10 @@ def get_metadata(self, filename: str, subdir: str) -> dict | None:
     """Retorna {arquivo, subdir, registros, colunas, status} ou None."""
 ```
 
-### get_available_periods()
+### get_periodos_disponiveis()
 
 ```python
-def get_available_periods(
+def get_periodos_disponiveis(
     self,
     prefix: str,
     subdir: str
@@ -347,6 +454,19 @@ def set_log_level(level: str):
 ```python
 def get_log_path() -> Path:
 ```
+
+### emit_user_warning()
+
+```python
+def emit_user_warning(
+    message: str,
+    category: type[Warning] = UserWarning,
+    stacklevel: int = 2,
+) -> None:
+    """Emite warning para o usuario E registra no log interno."""
+```
+
+Dual output: chama `warnings.warn()` para o usuario e registra no logger interno. Usado por `BaseExplorer._diagnose_empty_result()` e `QueryEngine.read_glob()` para comunicar problemas sem levantar excecao.
 
 ---
 
@@ -540,7 +660,7 @@ from ifdata_bcb.infra import DataManager
 dm = DataManager()
 
 # Verificar periodos
-periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
 
 # Salvar DataFrame
 dm.save(df, 'meu_arquivo', 'meu_subdir')

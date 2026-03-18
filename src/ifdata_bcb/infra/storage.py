@@ -136,7 +136,7 @@ class DataManager:
     def get_metadata(self, filename: str, subdir: str) -> dict | None:
         return get_parquet_metadata(filename, subdir, self.cache_path)
 
-    def get_available_periods(
+    def get_periodos_disponiveis(
         self,
         prefix: str,
         subdir: str,

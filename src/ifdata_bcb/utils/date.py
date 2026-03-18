@@ -96,6 +96,13 @@ def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
     return quarters
 
 
+def align_to_quarter_end(yyyymm: int) -> int:
+    """Alinha YYYYMM para o fim do trimestre correspondente (03, 06, 09, 12)."""
+    year, month = divmod(yyyymm, 100)
+    quarter_month = ((month - 1) // 3 + 1) * 3
+    return year * 100 + quarter_month
+
+
 def yyyymm_to_datetime(value: int) -> pd.Timestamp:
     year, month = divmod(int(value), 100)
     last_day = monthrange(year, month)[1]

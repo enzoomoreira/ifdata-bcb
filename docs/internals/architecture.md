@@ -7,9 +7,9 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 ```mermaid
 graph TD
     API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro, search()<br/><i>lazy loading</i>"]
-    CORE["<b>CORE (core/)</b><br/>BaseExplorer<br/>EntityLookup<br/>constants<br/>api.search()"]
+    CORE["<b>CORE (core/)</b><br/>EntityLookup<br/>constants<br/>eras<br/>api.search()"]
     DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>ScopeResolution<br/>Type aliases<br/>Validation models"]
-    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseCollector | collector_models<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/ : IFDATACollector, IFDATAExplorer, CadastroExplorer"]
+    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector | collector_models<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/ : IFDATACollector, IFDATAExplorer, CadastroExplorer"]
     INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
     UTILS["<b>UTILS (utils/)</b><br/>text | date<br/>fuzzy | cnpj<br/>period"]
     UI["<b>UI (ui/)</b><br/>Display (Rich)"]
@@ -28,9 +28,9 @@ src/ifdata_bcb/
 |-- core/                     # Logica central compartilhada
 |   |-- __init__.py
 |   |-- api.py               # search() publica
-|   |-- base_explorer.py     # Classe base abstrata
 |   |-- entity_lookup.py     # Resolucao de entidades
-|   +-- constants.py         # Configuracoes centralizadas
+|   |-- constants.py         # Configuracoes centralizadas
+|   +-- eras.py              # Deteccao e tratamento de eras de formato BCB
 |-- domain/                   # Modelos e tipos
 |   |-- __init__.py
 |   |-- exceptions.py        # Hierarquia de excecoes
@@ -39,8 +39,10 @@ src/ifdata_bcb/
 |   +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 |-- providers/                # Implementacoes por fonte
 |   |-- __init__.py
+|   |-- base_explorer.py     # Classe base abstrata para explorers
 |   |-- base_collector.py    # Template para coleta
 |   |-- collector_models.py  # CollectStatus enum
+|   |-- enrichment.py        # Enriquecimento cadastral inline
 |   |-- cosif/               # COSIF (mensal)
 |   |   |-- __init__.py
 |   |   |-- collector.py     # COSIFCollector
@@ -48,13 +50,16 @@ src/ifdata_bcb/
 |   +-- ifdata/              # IFDATA (trimestral)
 |       |-- __init__.py
 |       |-- collector.py     # IFDATAValoresCollector, IFDATACadastroCollector
-|       |-- explorer.py      # IFDATAExplorer
-|       +-- cadastro_explorer.py  # CadastroExplorer
+|       |-- valores_explorer.py  # IFDATAExplorer
+|       |-- cadastro_explorer.py # CadastroExplorer
+|       |-- scope.py         # resolve_ifdata_escopo()
+|       +-- temporal.py      # TemporalResolver (resolucao temporal por periodo)
 |-- infra/                    # Infraestrutura tecnica
 |   |-- __init__.py
 |   |-- config.py            # Settings (pydantic-settings)
 |   |-- paths.py             # ensure_dir, temp_dir
 |   |-- query.py             # QueryEngine (DuckDB)
+|   |-- sql.py               # Funcoes de construcao SQL (build_string_condition, etc)
 |   |-- storage.py           # DataManager (Parquet)
 |   |-- log.py               # Logging (Loguru)
 |   |-- cache.py             # Cache LRU com registro global
@@ -82,9 +87,9 @@ src/ifdata_bcb/
 
 ### Core (`core/`)
 
-- **BaseExplorer**: Classe base abstrata com logica compartilhada de leitura
 - **EntityLookup**: Busca e resolucao de entidades (nome -> CNPJ)
 - **constants**: Mapeamentos centralizados (DATA_SOURCES, TIPO_INST_MAP)
+- **eras**: Deteccao e tratamento de eras de formato BCB
 - **api**: Funcao `search()` de alto nivel
 
 ### Domain (`domain/`)
@@ -96,7 +101,9 @@ src/ifdata_bcb/
 
 ### Providers (`providers/`)
 
+- **BaseExplorer**: Classe base abstrata com logica compartilhada de leitura
 - **BaseCollector**: Template Method para coleta paralela
+- **enrichment**: Enriquecimento cadastral inline (`cadastro=` parameter)
 - **COSIFExplorer/Collector**: Dados COSIF (mensal)
 - **IFDATAExplorer/Collector**: Dados IFDATA Valores (trimestral)
 - **CadastroExplorer**: Dados cadastrais IFDATA
@@ -106,8 +113,9 @@ src/ifdata_bcb/
 - **config**: Settings via pydantic-settings (BACEN_DATA_DIR)
 - **paths**: Gerenciamento de diretorios (`ensure_dir`, `temp_dir`)
 - **QueryEngine**: Motor DuckDB sobre Parquet
+- **sql**: Funcoes de construcao SQL (`build_string_condition`, `build_account_condition`, `build_like_condition`, `join_conditions`, etc)
 - **DataManager**: Persistencia em Parquet
-- **log**: Dual output (console WARNING+, arquivo DEBUG+)
+- **log**: Dual output (console WARNING+, arquivo DEBUG+), `emit_user_warning`
 - **cache**: Decorator `@cached` com registro global
 - **resilience**: `@retry` com exponential backoff
 
@@ -160,27 +168,29 @@ class BaseCollector(ABC):
     def collect(self, start, end):
         periods = self._generate_periods(start, end)  # Template
         for period in periods:
-            csv = self._download_period(period)        # Abstract
-            df = self._process_to_parquet(csv)         # Abstract
+            data = self._download_period(period)       # Abstract
+            df = self._process_to_parquet(data)        # Abstract
             self.dm.save(df, filename, subdir)         # Template
 
     @abstractmethod
     def _download_period(self, period): ...
     @abstractmethod
-    def _process_to_parquet(self, csv_path): ...
+    def _process_to_parquet(self, data_path): ...
 ```
 
 ### Builder Pattern (Condicoes SQL)
 
-Construcao incremental de clausulas WHERE:
+Construcao incremental de clausulas WHERE (funcoes em `infra.sql`):
 
 ```python
+from ifdata_bcb.infra.sql import build_string_condition, join_conditions
+
 conditions = [
     self._build_cnpj_condition(instituicao),     # Pode ser None
     self._build_date_condition(start, end),      # Pode ser None
-    self._build_string_condition(conta),         # Pode ser None
+    build_string_condition(col, conta),          # Pode ser None
 ]
-where = self._join_conditions(conditions)        # Filtra Nones, junta com AND
+where = join_conditions(conditions)              # Filtra Nones, junta com AND
 ```
 
 ### Dependency Injection
@@ -252,7 +262,7 @@ COSIFCollector.collect()
         +-- Worker 0: staggered_delay(0) --> 0s
         |   +-- temp_dir() as work_dir
         |   +-- _download_period(202401, work_dir)
-        |   +-- _process_to_parquet(csv_path)
+        |   +-- _process_to_parquet(data_path)
         |   +-- dm.save(df, 'cosif_ind_202401', 'cosif/individual')
         |   +-- work_dir cleanup automatico
         |
@@ -276,7 +286,7 @@ COSIFExplorer.read()
     |
     +-- _validate_required_params(instituicao, start)
     |
-    +-- _normalize_institutions('60872504')
+    +-- _normalize_instituicoes('60872504')
     |   +-- InstitutionList (Pydantic) --> Valida regex [0-9]{8}
     |
     +-- _resolve_date_range('2024-01', '2024-12')
@@ -285,7 +295,7 @@ COSIFExplorer.read()
     +-- Construir condicoes SQL:
     |   +-- _build_cnpj_condition() --> "CNPJ_8 = '60872504'"
     |   +-- _build_date_condition() --> "DATA_BASE IN (202401, ...)"
-    |   +-- _join_conditions() --> "... AND ..."
+    |   +-- join_conditions() --> "... AND ..."
     |
     +-- QueryEngine.read_glob(
     |       pattern='cosif_ind_*.parquet',
@@ -295,9 +305,12 @@ COSIFExplorer.read()
     |   +-- DuckDB executa glob SELECT com predicate pushdown
     |
     +-- _finalize_read(df)
+        +-- Drop colunas internas (_DROP_COLUMNS)
         +-- _apply_column_mapping() --> DATA_BASE -> DATA
-        +-- Converter DATA int -> datetime
+        +-- drop_duplicates()
+        +-- Converter DATA int -> datetime via pd.to_datetime + MonthEnd
         +-- Sort por DATA
+        +-- Reordenar colunas (_COLUMN_ORDER)
     |
     v
 Retorna: pd.DataFrame
@@ -351,11 +364,11 @@ graph LR
     init["__init__.py"]
 
     cosif_exp["COSIFExplorer<br/><i>cosif/explorer.py</i>"]
-    ifdata_exp["IFDATAExplorer<br/><i>ifdata/explorer.py</i>"]
+    ifdata_exp["IFDATAExplorer<br/><i>ifdata/valores_explorer.py</i>"]
     cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro_explorer.py</i>"]
     api["search()<br/><i>core/api.py</i>"]
 
-    base_exp["BaseExplorer<br/><i>core/base_explorer.py</i>"]
+    base_exp["BaseExplorer<br/><i>providers/base_explorer.py</i>"]
     entity["EntityLookup<br/><i>core/entity_lookup.py</i>"]
     query["QueryEngine<br/><i>infra/query.py</i>"]
     exceptions["exceptions<br/><i>domain/exceptions.py</i>"]

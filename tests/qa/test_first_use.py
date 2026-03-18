@@ -69,12 +69,12 @@ class TestConfiguration:
 
 
 class TestEmptyCacheExperience:
-    def test_list_periods_empty(self, tmp_cache_dir: Path) -> None:
+    def test_list_periodos_empty(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)
         cosif = COSIFExplorer(
             query_engine=qe, entity_lookup=EntityLookup(query_engine=qe)
         )
-        assert cosif.list_periods() == []
+        assert cosif.list_periodos() == []
 
     def test_has_data_false(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)

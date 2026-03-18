@@ -60,7 +60,7 @@ def __getattr__(name: str) -> Any:
 
     if name == "ifdata":
         if _ifdata is None:
-            from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+            from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 
             _ifdata = IFDATAExplorer()
         return _ifdata

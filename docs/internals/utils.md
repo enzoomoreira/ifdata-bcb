@@ -131,6 +131,22 @@ def yyyymm_to_datetime(value: int) -> pd.Timestamp:
     """
 ```
 
+### align_to_quarter_end()
+
+Alinha YYYYMM para o fim do trimestre correspondente:
+
+```python
+def align_to_quarter_end(yyyymm: int) -> int:
+    """
+    Alinha para fim do trimestre (03, 06, 09, 12).
+
+    Exemplos:
+        align_to_quarter_end(202401) -> 202403
+        align_to_quarter_end(202405) -> 202406
+        align_to_quarter_end(202412) -> 202412
+    """
+```
+
 ---
 
 ## fuzzy.py
@@ -141,14 +157,9 @@ Classe para busca fuzzy usando `thefuzz`:
 
 ```python
 class FuzzyMatcher:
-    def __init__(
-        self,
-        threshold_auto: int = 85,
-        threshold_suggest: int = 70,
-    ):
+    def __init__(self, threshold_suggest: int = 78):
         """
         Args:
-            threshold_auto: Score >= para aceitar automaticamente
             threshold_suggest: Score >= para incluir em sugestoes
         """
 ```
@@ -177,7 +188,7 @@ def search(
 **Exemplo**:
 
 ```python
-matcher = FuzzyMatcher(threshold_auto=85, threshold_suggest=70)
+matcher = FuzzyMatcher(threshold_suggest=78)
 
 choices = {
     "33000167": "BANCO DO BRASIL S.A.",
@@ -341,6 +352,7 @@ from ifdata_bcb.utils.date import (
     generate_quarter_range,
     normalize_date_to_int,
     yyyymm_to_datetime,
+    align_to_quarter_end,
 )
 from ifdata_bcb.utils.period import (
     parse_period_from_filename,
@@ -361,6 +373,7 @@ __all__ = [
     "generate_quarter_range",
     "normalize_date_to_int",
     "yyyymm_to_datetime",
+    "align_to_quarter_end",
     # period
     "parse_period_from_filename",
     "extract_periods_from_files",

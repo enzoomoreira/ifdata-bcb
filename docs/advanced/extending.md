@@ -19,9 +19,9 @@ Cada provider e composto por dois componentes principais:
 src/ifdata_bcb/
   core/
     constants.py       # Registro de fontes de dados
-    base_explorer.py   # Classe base dos explorers
   providers/
     base_collector.py  # Classe base dos collectors
+    base_explorer.py   # Classe base dos explorers
     novo_provider/
       __init__.py
       collector.py     # NovoCollector (herda BaseCollector)
@@ -87,15 +87,10 @@ class NovoCollector(BaseCollector):
         """Subdiretorio dentro de cache/."""
         return get_subdir("novo_dados")
 
-    @retry(delay=2.0)
-    def _download_single(self, url: str, output_path: Path, period: int) -> bool:
-        """Download com retry automatico."""
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
-        if response.status_code == 404:
-            raise PeriodUnavailableError(period)
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        return True
+    # _download_single e herdado do BaseCollector:
+    # @retry(delay=2.0)
+    # def _download_single(self, url: str, output_path: Path) -> bool:
+    #     """Baixa um arquivo da URL e salva em output_path."""
 
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """
@@ -172,10 +167,11 @@ O Explorer fornece a interface de consulta.
 
 import pandas as pd
 
-from ifdata_bcb.core.base_explorer import BaseExplorer
+from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.infra.sql import build_string_condition, join_conditions
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.providers.novo.collector import NovoCollector
 
@@ -264,10 +260,10 @@ class NovoExplorer(BaseExplorer):
         ]
 
         if conta:
-            contas = self._normalize_accounts(conta)
+            contas = self._normalize_contas(conta)
             if contas:
                 conditions.append(
-                    self._build_string_condition(
+                    build_string_condition(
                         self._storage_col("CONTA"), contas,
                         case_insensitive=True, accent_insensitive=True,
                     )
@@ -277,7 +273,7 @@ class NovoExplorer(BaseExplorer):
             pattern=self._get_pattern(),
             subdir=self._get_subdir(),
             columns=columns,
-            where=self._join_conditions(conditions),
+            where=join_conditions(conditions),
         )
 
         if df.empty:
@@ -376,12 +372,12 @@ def _download_period(self, period: int, work_dir: Path) -> Path | None:
         PeriodUnavailableError: Se o periodo nao esta disponivel (404)
     """
 
-def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
+def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
     """
-    Processa CSV bruto em DataFrame normalizado.
+    Processa dados em DataFrame normalizado.
 
     Args:
-        csv_path: Caminho ao arquivo CSV
+        data_path: Caminho do arquivo ou diretorio de dados
         period: Periodo dos dados
 
     Returns:
@@ -417,7 +413,7 @@ def _warning(self, message: str) -> None
 
 ### BaseExplorer
 
-**Localizacao:** `src/ifdata_bcb/core/base_explorer.py`
+**Localizacao:** `src/ifdata_bcb/providers/base_explorer.py`
 
 Fornece infraestrutura para leitura e consulta de dados.
 
@@ -434,27 +430,34 @@ def _get_file_prefix(self) -> str:
 #### Atributos de Classe
 
 ```python
-_COLUMN_MAP: dict[str, str] = {}  # Mapeamento storage -> apresentacao
+_COLUMN_MAP: dict[str, str] = {}      # Mapeamento storage -> apresentacao
+_DERIVED_COLUMNS: set[str] = set()     # Colunas adicionadas pos-query por Python
+_DROP_COLUMNS: list[str] = []          # Colunas a remover antes do mapeamento
+_COLUMN_ORDER: list[str] = []          # Ordem desejada das colunas no output
+_VALID_ESCOPOS: list[str] = []         # Escopos validos para _validate_escopo
 ```
 
 #### Metodos Auxiliares Fornecidos
 
 ```python
 # Normalizacao de entrada
-def _normalize_dates(self, datas: DateInput) -> list[int]
-def _normalize_accounts(self, contas: AccountInput | None) -> list[str] | None
-def _normalize_institutions(self, instituicoes: InstitutionInput | None) -> list[str] | None
-def _resolve_entity(self, identificador: str) -> str  # Valida CNPJ
+def _normalize_datas(self, datas: DateInput) -> list[int]
+def _normalize_contas(self, contas: AccountInput | None) -> list[str] | None
+def _normalize_instituicoes(self, instituicoes: InstitutionInput | None) -> list[str] | None
+def _resolve_entidade(self, identificador: str) -> str  # Valida CNPJ
 
 # Resolucao de ranges
 def _resolve_date_range(self, start, end, trimestral=False) -> list[int] | None
 
-# Construcao de queries SQL
-def _build_string_condition(self, column, values, case_insensitive=False, accent_insensitive=False) -> str
-def _build_int_condition(self, column, values) -> str
+# Construcao de queries SQL (funcoes em infra.sql)
+# from ifdata_bcb.infra.sql import build_string_condition, build_int_condition, join_conditions
+build_string_condition(column, values, case_insensitive=False, accent_insensitive=False) -> str
+build_int_condition(column, values) -> str
+join_conditions(conditions: list) -> str | None
+
+# Metodos na classe base
 def _build_date_condition(self, start, end, trimestral=False) -> str | None
 def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> str | None
-def _join_conditions(self, conditions: list) -> str | None
 
 # Mapeamento de colunas
 def _storage_col(self, presentation_col: str) -> str  # Traduz nome
@@ -462,7 +465,7 @@ def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame
 def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame  # Aplica mapeamento + converte DATA
 
 # Descoberta
-def list_periods(self, source: str | None = None) -> list[int]
+def list_periodos(self, source: str | None = None) -> list[int]
 def has_data(self, source: str | None = None) -> bool
 def describe(self, source: str | None = None) -> dict
 
@@ -504,13 +507,10 @@ explorer = COSIFExplorer(query_engine=qe)
 
 ```python
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 
-# Lookup com thresholds ajustados
-lookup = EntityLookup(
-    fuzzy_threshold_auto=90,    # Mais restritivo
-    fuzzy_threshold_suggest=80
-)
+# Lookup com threshold ajustado
+lookup = EntityLookup(fuzzy_threshold_suggest=80)
 
 explorer = IFDATAExplorer(entity_lookup=lookup)
 ```
@@ -598,7 +598,7 @@ InstitutionInput = str | list[str]
 - [ ] (Opcional) Adicionar ao `__all__` em `__init__.py` raiz
 - [ ] Testar coleta: `collector.collect(start, end)`
 - [ ] Testar leitura: `explorer.read(instituicao, start)`
-- [ ] Testar listagem: `explorer.list_periods()`, `explorer.has_data()`
+- [ ] Testar listagem: `explorer.list_periodos()`, `explorer.has_data()`
 
 ## Padroes Utilizados
 

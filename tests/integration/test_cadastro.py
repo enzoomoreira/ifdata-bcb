@@ -2,7 +2,7 @@
 
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
 from tests.conftest import BANCO_A_CNPJ
 
 
@@ -59,3 +59,19 @@ class TestCadastroRead:
         df = explorers[2].read(start="2023-06", situacao="A")
         assert not df.empty
         assert "I" not in df["SITUACAO"].values
+
+    def test_get_conglomerate_members(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """Retorna membros do conglomerado prudencial 40."""
+        df = explorers[2].get_conglomerate_members("40", start="2023-03")
+        assert not df.empty
+        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+
+    def test_read_all_institutions_without_filter(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """read() sem instituicao= retorna todas as entidades."""
+        df = explorers[2].read(start="2023-03")
+        assert not df.empty
+        assert len(df["CNPJ_8"].unique()) > 1

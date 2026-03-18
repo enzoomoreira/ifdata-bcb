@@ -1,15 +1,20 @@
+"""Explorer para dados COSIF (mensais)."""
+
 from typing import Literal, cast
 
 import pandas as pd
 
-from ifdata_bcb.core.base_explorer import BaseExplorer
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.utils.text import normalize_accents
+from ifdata_bcb.infra.sql import build_int_condition, build_like_condition
+from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
+from ifdata_bcb.providers.enrichment import (
+    enrich_with_cadastro,
+    validate_cadastro_columns,
+)
 from ifdata_bcb.ui.display import get_display
 
 
@@ -26,9 +31,14 @@ _EMPTY_COLUMNS = [
     "VALOR",
 ]
 _EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
-_EMPTY_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPO"]
+_EMPTY_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPOS"]
 _EMPTY_INSTITUTION_COLUMNS = ["CNPJ_8", "INSTITUICAO"]
-_EMPTY_INSTITUTION_COLUMNS_ALL = ["CNPJ_8", "INSTITUICAO", "ESCOPO"]
+_EMPTY_INSTITUTION_COLUMNS_ALL = [
+    "CNPJ_8",
+    "INSTITUICAO",
+    "TEM_INDIVIDUAL",
+    "TEM_PRUDENCIAL",
+]
 
 
 class COSIFExplorer(BaseExplorer):
@@ -46,7 +56,7 @@ class COSIFExplorer(BaseExplorer):
         "SALDO": "VALOR",
     }
 
-    _DROP_COLUMNS: list[str] = []
+    _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
 
     _COLUMN_ORDER = [
         "DATA",
@@ -58,6 +68,8 @@ class COSIFExplorer(BaseExplorer):
         "DOCUMENTO",
         "VALOR",
     ]
+
+    _VALID_ESCOPOS = ["individual", "prudencial"]
 
     _ESCOPOS: dict[str, dict[str, str]] = {
         "individual": {
@@ -89,41 +101,10 @@ class COSIFExplorer(BaseExplorer):
     def _get_escopo_config(self, escopo: EscopoCOSIF) -> dict[str, str]:
         return self._ESCOPOS[escopo]
 
-    def _get_pattern(self, escopo: EscopoCOSIF) -> str:
+    def _get_pattern_for_escopo(self, escopo: EscopoCOSIF) -> str:
         return f"{self._get_escopo_config(escopo)['prefix']}_*.parquet"
 
-    def _validate_escopo(self, escopo: str) -> EscopoCOSIF:
-        escopo_lower = escopo.lower()
-        if escopo_lower not in self._ESCOPOS:
-            raise InvalidScopeError("escopo", escopo, list(self._ESCOPOS.keys()))
-        return escopo_lower  # type: ignore
-
-    def _reorder_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        existing = [c for c in self._COLUMN_ORDER if c in df.columns]
-        remaining = [c for c in df.columns if c not in existing]
-        return df[existing + remaining]
-
-    def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = super()._finalize_read(df)
-        return self._reorder_columns(df)
-
-    def _apply_canonical_institution_names(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Substitui aliases do COSIF por nomes canônicos do cadastro."""
-        if df.empty or "CNPJ_8" not in df.columns or "INSTITUICAO" not in df.columns:
-            return df
-
-        cnpjs = df["CNPJ_8"].dropna().astype(str).unique().tolist()
-        if not cnpjs:
-            return df
-
-        nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
-        df = df.copy()
-        canonical = df["CNPJ_8"].astype(str).map(nomes)
-        mask = canonical.notna() & (canonical != "")
-        df.loc[mask, "INSTITUICAO"] = canonical[mask]
-        return df
-
-    def _read_single_scope(
+    def _read_single_escopo(
         self,
         escopo: EscopoCOSIF,
         instituicao: InstitutionInput,
@@ -133,7 +114,9 @@ class COSIFExplorer(BaseExplorer):
         columns: list[str] | None,
         documento: str | list[str] | None = None,
     ) -> pd.DataFrame:
-        contas = self._normalize_accounts(conta) if conta else None
+        from ifdata_bcb.infra.sql import build_account_condition
+
+        contas = self._normalize_contas(conta) if conta else None
 
         conditions = [
             self._build_cnpj_condition(instituicao),
@@ -142,7 +125,7 @@ class COSIFExplorer(BaseExplorer):
 
         if contas:
             conditions.append(
-                self._build_account_condition(
+                build_account_condition(
                     self._storage_col("CONTA"),
                     self._storage_col("COD_CONTA"),
                     contas,
@@ -152,13 +135,15 @@ class COSIFExplorer(BaseExplorer):
         if documento:
             docs = [documento] if isinstance(documento, str) else documento
             docs_int = [int(d) for d in docs]
-            conditions.append(self._build_int_condition("DOCUMENTO", docs_int))
+            conditions.append(build_int_condition("DOCUMENTO", docs_int))
+
+        from ifdata_bcb.infra.sql import join_conditions as jc
 
         return self._qe.read_glob(
-            pattern=self._get_pattern(escopo),
+            pattern=self._get_pattern_for_escopo(escopo),
             subdir=self._get_escopo_config(escopo)["subdir"],
-            columns=self._translate_columns(columns),
-            where=self._join_conditions(conditions),
+            columns=self._storage_columns_for_query(columns),
+            where=jc(conditions),
         )
 
     def collect(
@@ -171,7 +156,7 @@ class COSIFExplorer(BaseExplorer):
     ) -> None:
         """Coleta dados COSIF do BCB. Se escopo=None, coleta ambos."""
         if escopo is not None:
-            escopo = self._validate_escopo(escopo)
+            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
             COSIFCollector(escopo).collect(start, end, force=force, verbose=verbose)
         else:
             self._collect_all_escopos(start, end, force=force, verbose=verbose)
@@ -260,7 +245,8 @@ class COSIFExplorer(BaseExplorer):
             InvalidDateRangeError: Se start > end.
         """
         self._validate_required_params(instituicao, start)
-        self._validate_cadastro_columns(cadastro)
+        columns = self._validate_columns(columns)
+        validate_cadastro_columns(cadastro)
 
         from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY, check_era_boundary
 
@@ -270,14 +256,14 @@ class COSIFExplorer(BaseExplorer):
         self._logger.debug(f"COSIF read: escopo={escopo}, instituicao={instituicao}")
 
         escopos: list[EscopoCOSIF] = (
-            [self._validate_escopo(escopo)]
+            [self._validate_escopo(escopo)]  # type: ignore[misc]
             if escopo
             else cast(list[EscopoCOSIF], list(self._ESCOPOS.keys()))
         )
 
         results = []
         for esc in escopos:
-            df = self._read_single_scope(
+            df = self._read_single_escopo(
                 esc, instituicao, start, end, conta, columns, documento
             )
             if not df.empty:
@@ -286,22 +272,34 @@ class COSIFExplorer(BaseExplorer):
                 results.append(df)
 
         if not results:
+            self._diagnose_empty_result(
+                source_name="COSIF",
+                has_files=any(
+                    self._qe.has_glob(f"{cfg['prefix']}_*.parquet", cfg["subdir"])
+                    for cfg in self._get_sources().values()
+                ),
+                had_conta_filter=conta is not None,
+            )
             return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
         df = pd.concat(results, ignore_index=True)
         self._logger.debug(f"COSIF result: {len(df)} rows")
         df = self._finalize_read(df)
-        df = self._apply_canonical_institution_names(df)
+        self._check_null_value_instituicoes(df)
+        df = self._apply_canonical_names(df)
 
         if cadastro is not None:
-            df = self._enrich_with_cadastro(df, cadastro)
+            df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
 
+        df = self._filter_columns(df, columns)
         return df
 
-    def list_accounts(
+    def list_contas(
         self,
         termo: str | None = None,
         escopo: EscopoCOSIF | None = None,
+        start: str | None = None,
+        end: str | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """
@@ -310,47 +308,71 @@ class COSIFExplorer(BaseExplorer):
         Args:
             termo: Filtro por nome (case-insensitive, sem acentos).
             escopo: Filtro por escopo. Se None, busca em ambos.
+            start: Periodo inicial (filtra contas que existem no periodo).
+            end: Periodo final. Se None com start, filtra data unica.
             limit: Maximo de resultados.
         """
+        datas = self._resolve_date_range(start, end, trimestral=False)
+
         if escopo is not None:
-            escopo = self._validate_escopo(escopo)
-            return self._list_accounts_single(escopo, termo, limit)
+            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
+            return self._list_contas_single(escopo, termo, datas, limit)
 
         dfs = []
         for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):
-            df = self._list_accounts_single(esc, termo, limit)
+            df = self._list_contas_single(esc, termo, datas, limit=None)
             if df.empty:
                 continue
-            df["ESCOPO"] = esc
+            df["_escopo"] = esc
             dfs.append(df)
         if not dfs:
             return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS_ALL)
-        return pd.concat(dfs, ignore_index=True)
 
-    def _list_accounts_single(
-        self, escopo: EscopoCOSIF, termo: str | None, limit: int
+        combined = pd.concat(dfs, ignore_index=True)
+        result = (
+            combined.groupby(["COD_CONTA", "CONTA"], sort=False)
+            .agg(ESCOPOS=("_escopo", lambda x: ", ".join(sorted(x.unique()))))
+            .reset_index()
+            .sort_values(["CONTA", "COD_CONTA"])
+            .reset_index(drop=True)
+        )
+        if limit is not None:
+            result = result.head(limit)
+        return result
+
+    def _list_contas_single(
+        self,
+        escopo: EscopoCOSIF,
+        termo: str | None,
+        datas: list[int] | None,
+        limit: int | None,
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
-        if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):
+        pattern = self._get_pattern_for_escopo(escopo)
+        if not self._qe.has_glob(pattern, cfg["subdir"]):
             return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS)
 
-        path = self._qe.cache_path / cfg["subdir"] / self._get_pattern(escopo)
+        path = self._qe.cache_path / cfg["subdir"] / pattern
 
-        where = ""
+        conditions: list[str] = []
         if termo:
-            termo_clean = normalize_accents(termo.strip().replace("'", "''")).upper()
-            where = f"WHERE strip_accents(UPPER(NOME_CONTA)) LIKE '%{termo_clean}%'"
+            conditions.append(build_like_condition("NOME_CONTA", termo))
+        if datas:
+            conditions.append(build_int_condition("DATA_BASE", datas))
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        limit_clause = f"LIMIT {limit}" if limit is not None else ""
 
         query = f"""
             SELECT DISTINCT CONTA as COD_CONTA, NOME_CONTA as CONTA
             FROM '{path}'
             {where}
-            ORDER BY CONTA
-            LIMIT {limit}
+            ORDER BY CONTA, COD_CONTA
+            {limit_clause}
         """
         return self._qe.sql(query)
 
-    def list_institutions(
+    def list_instituicoes(
         self,
         start: str | None = None,
         end: str | None = None,
@@ -358,36 +380,54 @@ class COSIFExplorer(BaseExplorer):
     ) -> pd.DataFrame:
         """Lista instituicoes disponiveis."""
         if escopo is not None:
-            escopo = self._validate_escopo(escopo)
-            return self._list_institutions_single(escopo, start, end)
+            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
+            return self._list_instituicoes_single(escopo, start, end)
 
         dfs = []
         for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):
-            df = self._list_institutions_single(esc, start, end)
+            df = self._list_instituicoes_single(esc, start, end)
             if df.empty:
                 continue
-            df["ESCOPO"] = esc
+            df["_escopo"] = esc
             dfs.append(df)
         if not dfs:
             return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS_ALL)
-        return pd.concat(dfs, ignore_index=True)
 
-    def _list_institutions_single(
+        combined = pd.concat(dfs, ignore_index=True)
+        rows = []
+        for cnpj, group in combined.groupby("CNPJ_8", sort=True):
+            escopos_presentes = set(group["_escopo"])
+            rows.append(
+                {
+                    "CNPJ_8": cnpj,
+                    "INSTITUICAO": group["INSTITUICAO"].iloc[0],
+                    "TEM_INDIVIDUAL": "individual" in escopos_presentes,
+                    "TEM_PRUDENCIAL": "prudencial" in escopos_presentes,
+                }
+            )
+        return (
+            pd.DataFrame(rows)
+            .sort_values(["INSTITUICAO", "CNPJ_8"])
+            .reset_index(drop=True)
+        )
+
+    def _list_instituicoes_single(
         self,
         escopo: EscopoCOSIF,
         start: str | None = None,
         end: str | None = None,
     ) -> pd.DataFrame:
         cfg = self._get_escopo_config(escopo)
-        if not self._qe.has_glob(self._get_pattern(escopo), cfg["subdir"]):
+        pattern = self._get_pattern_for_escopo(escopo)
+        if not self._qe.has_glob(pattern, cfg["subdir"]):
             return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS)
 
-        path = self._qe.cache_path / cfg["subdir"] / self._get_pattern(escopo)
+        path = self._qe.cache_path / cfg["subdir"] / pattern
 
         where = ""
         datas = self._resolve_date_range(start, end, trimestral=False)
         if datas:
-            cond = self._build_int_condition("DATA_BASE", datas)
+            cond = build_int_condition("DATA_BASE", datas)
             where = f"WHERE {cond}"
 
         query = f"""
@@ -397,4 +437,4 @@ class COSIFExplorer(BaseExplorer):
             ORDER BY INSTITUICAO
         """
         df = self._qe.sql(query)
-        return self._apply_canonical_institution_names(df)
+        return self._apply_canonical_names(df)

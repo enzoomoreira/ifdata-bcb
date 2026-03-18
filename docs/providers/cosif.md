@@ -119,7 +119,7 @@ bcb.cosif.read(
 - `start` + `end`: gera range mensal automatico
 
 **Raises**:
-- `TypeError`: Se `instituicao` ou `start` nao fornecidos (argumentos posicionais obrigatorios).
+- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
 - `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
@@ -173,66 +173,68 @@ df = bcb.cosif.read(
 )
 ```
 
-### list_accounts()
+### list_contas()
 
 Lista contas disponiveis nos dados.
 
 ```python
-bcb.cosif.list_accounts(
+bcb.cosif.list_contas(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
     escopo: str | None = None,     # 'individual', 'prudencial', ou None (ambos)
+    start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
+    end: str | None = None,        # Periodo final. Se None com start, filtra data unica
     limit: int = 100               # Numero maximo de contas
 ) -> pd.DataFrame
 ```
 
-**Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA` e `ESCOPO` (quando escopo=None).
+**Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA` e `ESCOPOS` (quando escopo=None, string com escopos separados por virgula).
 
 **Exemplos**:
 
 ```python
 # Listar todas as contas (ambos escopos)
-contas = bcb.cosif.list_accounts()
+contas = bcb.cosif.list_contas()
 
 # Buscar contas que contenham "deposito"
-contas = bcb.cosif.list_accounts(termo='deposito')
+contas = bcb.cosif.list_contas(termo='deposito')
 
 # Listar contas do prudencial apenas
-contas = bcb.cosif.list_accounts(escopo='prudencial', limit=50)
+contas = bcb.cosif.list_contas(escopo='prudencial', limit=50)
 ```
 
-### list_institutions()
+### list_instituicoes()
 
 Lista instituicoes disponiveis nos dados.
 
 ```python
-bcb.cosif.list_institutions(
+bcb.cosif.list_instituicoes(
     start: str | None = None,      # Data inicial ou unica
     end: str | None = None,        # Data final para range
     escopo: str | None = None      # 'individual', 'prudencial', ou None (ambos)
 ) -> pd.DataFrame
 ```
 
-**Retorna**: DataFrame com colunas `CNPJ_8`, `INSTITUICAO` e `ESCOPO` (quando escopo=None).
+**Retorna**: Quando escopo=None, DataFrame com colunas `CNPJ_8`, `INSTITUICAO`, `TEM_INDIVIDUAL` (bool) e `TEM_PRUDENCIAL` (bool). Quando escopo especificado, retorna `CNPJ_8` e `INSTITUICAO`.
 
 **Exemplos**:
 
 ```python
 # Listar instituicoes de dezembro/2024
-inst = bcb.cosif.list_institutions(start='2024-12')
+inst = bcb.cosif.list_instituicoes(start='2024-12')
 
 # Listar apenas do prudencial
-inst = bcb.cosif.list_institutions(start='2024-12', escopo='prudencial')
+inst = bcb.cosif.list_instituicoes(start='2024-12', escopo='prudencial')
 
 # Listar de um range de periodos
-inst = bcb.cosif.list_institutions(start='2024-01', end='2024-12')
+inst = bcb.cosif.list_instituicoes(start='2024-01', end='2024-12')
 ```
 
-### list_periods()
+### list_periodos()
 
 Lista periodos disponiveis (herdado de BaseExplorer).
 
 ```python
-periodos = bcb.cosif.list_periods()  # Retorna [202401, 202402, ...]
+periodos = bcb.cosif.list_periodos()  # Retorna [202401, 202402, ...]
 ```
 
 ### describe()
@@ -435,10 +437,10 @@ from ifdata_bcb.domain.exceptions import (
     InvalidScopeError,
 )
 
-# Erro: parametro obrigatorio ausente (start e argumento posicional)
+# Erro: parametro obrigatorio ausente
 try:
     df = bcb.cosif.read(instituicao='60872504')  # Falta start!
-except TypeError as e:
+except MissingRequiredParameterError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido

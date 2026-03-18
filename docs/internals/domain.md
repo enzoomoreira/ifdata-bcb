@@ -34,6 +34,10 @@ Exception
     |       +-- DataProcessingError
     +-- UserWarning
             +-- IncompatibleEraWarning
+            +-- PartialDataWarning
+            +-- ScopeUnavailableWarning
+            +-- NullValuesWarning
+            +-- EmptyFilterWarning
 ```
 
 ### BacenAnalysisError
@@ -236,6 +240,42 @@ with warnings.catch_warnings(record=True) as w:
         print("Cuidado: codigos de conta podem ser incompativeis")
 ```
 
+### PartialDataWarning
+
+Warning emitido quando o resultado pode estar incompleto -- por exemplo, quando alguns periodos ou entidades nao retornaram dados, ou quando uma query de leitura falha por incompatibilidade de schema:
+
+```python
+class PartialDataWarning(UserWarning):
+    """Resultado incompleto - alguns periodos/entidades sem dados."""
+```
+
+### ScopeUnavailableWarning
+
+Warning emitido quando um escopo nao esta disponivel para uma entidade em parte do range temporal solicitado:
+
+```python
+class ScopeUnavailableWarning(UserWarning):
+    """Escopo indisponivel para entidade em parte do range temporal."""
+```
+
+### NullValuesWarning
+
+Warning emitido quando uma entidade esta presente nos dados mas com todos os valores financeiros (VALOR) NULL. Ocorre quando o BCB registra a entidade no periodo mas nao fornece valores:
+
+```python
+class NullValuesWarning(UserWarning):
+    """Entidade presente nos dados mas com todos os valores financeiros NULL."""
+```
+
+### EmptyFilterWarning
+
+Warning emitido quando um filtro vazio e passado a um parametro (ex: `columns=[]`):
+
+```python
+class EmptyFilterWarning(UserWarning):
+    """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
+```
+
 ---
 
 ## validation.py
@@ -317,9 +357,10 @@ Uso:
 
 ```python
 from ifdata_bcb.core import EntityLookup
+from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
 
 lookup = EntityLookup()
-resolution = lookup.resolve_ifdata_scope("60872504", "prudencial")
+resolution = resolve_ifdata_escopo(lookup, "60872504", "prudencial")
 
 print(resolution.cod_inst)      # "C0080099" (codigo conglomerado)
 print(resolution.tipo_inst)     # 1
@@ -418,13 +459,13 @@ def read(self, instituicao, start, end=None, escopo=None):
 
     # 2. Validar range de datas
     if end is not None:
-        start_int = self._normalize_dates(start)[0]
-        end_int = self._normalize_dates(end)[0]
+        start_int = self._normalize_datas(start)[0]
+        end_int = self._normalize_datas(end)[0]
         if start_int > end_int:
             raise InvalidDateRangeError(start, end)
 
     # 3. Validar CNPJ
-    cnpj = self._resolve_entity(instituicao)  # Levanta InvalidIdentifierError
+    cnpj = self._resolve_entidade(instituicao)  # Levanta InvalidIdentifierError
 
     # 4. Validar escopo (em IFDATAExplorer)
     if escopo not in ["individual", "prudencial", "financeiro"]:

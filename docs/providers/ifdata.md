@@ -90,7 +90,7 @@ bcb.ifdata.read(
 - `start` + `end`: gera range trimestral automatico
 
 **Raises**:
-- `TypeError`: Se `instituicao` ou `start` nao fornecidos (argumentos posicionais obrigatorios).
+- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
 - `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
@@ -121,15 +121,17 @@ df = bcb.ifdata.read(
 )
 ```
 
-### list_accounts()
+### list_contas()
 
 Lista contas disponiveis nos dados.
 
 ```python
-bcb.ifdata.list_accounts(
+bcb.ifdata.list_contas(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
     escopo: str | None = None,     # 'individual', 'prudencial', 'financeiro'
     relatorio: str | None = None,  # Filtro por relatorio (case/accent-insensitive)
+    start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
+    end: str | None = None,        # Periodo final. Se None com start, filtra data unica
     limit: int = 100               # Numero maximo de contas
 ) -> pd.DataFrame
 ```
@@ -140,24 +142,24 @@ bcb.ifdata.list_accounts(
 
 ```python
 # Listar todas as contas
-contas = bcb.ifdata.list_accounts()
+contas = bcb.ifdata.list_contas()
 
 # Buscar contas que contenham "lucro"
-contas = bcb.ifdata.list_accounts(termo='lucro')
+contas = bcb.ifdata.list_contas(termo='lucro')
 
 # Listar contas do escopo individual
-contas = bcb.ifdata.list_accounts(escopo='individual', limit=50)
+contas = bcb.ifdata.list_contas(escopo='individual', limit=50)
 
 # Filtrar contas por relatorio
-contas = bcb.ifdata.list_accounts(relatorio='Resumo')
+contas = bcb.ifdata.list_contas(relatorio='Resumo')
 ```
 
-### list_institutions()
+### list_instituicoes()
 
 Lista entidades analiticas com disponibilidade por escopo.
 
 ```python
-bcb.ifdata.list_institutions(
+bcb.ifdata.list_instituicoes(
     start: str | None = None,      # Data inicial ou unica
     end: str | None = None         # Data final para range
 ) -> pd.DataFrame
@@ -177,7 +179,7 @@ bcb.ifdata.list_institutions(
 
 ```python
 # Listar entidades de dezembro/2024
-inst = bcb.ifdata.list_institutions(start='2024-12')
+inst = bcb.ifdata.list_instituicoes(start='2024-12')
 
 # Filtrar entidades com dados prudenciais
 prud = inst[inst['TEM_PRUDENCIAL']]
@@ -188,12 +190,12 @@ print(f"Individual: {row['COD_INST_INDIVIDUAL']}")
 print(f"Prudencial: {row['COD_INST_PRUDENCIAL']}")
 ```
 
-### list_reporters()
+### list_mapeamento()
 
 Lista chaves operacionais de reporte do IFDATA por entidade e escopo.
 
 ```python
-bcb.ifdata.list_reporters(
+bcb.ifdata.list_mapeamento(
     start: str | None = None,      # Data inicial ou unica
     end: str | None = None         # Data final para range
 ) -> pd.DataFrame
@@ -211,16 +213,16 @@ bcb.ifdata.list_reporters(
 
 ```python
 # Ver mapeamento completo de reporters
-reporters = bcb.ifdata.list_reporters(start='2024-12')
+reporters = bcb.ifdata.list_mapeamento(start='2024-12')
 print(reporters[reporters['CNPJ_8'] == '60872504'])
 ```
 
-### list_reports()
+### list_relatorios()
 
 Lista relatorios disponiveis nos dados.
 
 ```python
-bcb.ifdata.list_reports(
+bcb.ifdata.list_relatorios(
     start: str | None = None,      # Data inicial ou unica
     end: str | None = None         # Data final para range
 ) -> list[str]
@@ -232,19 +234,19 @@ bcb.ifdata.list_reports(
 
 ```python
 # Listar relatorios disponiveis
-relatorios = bcb.ifdata.list_reports()
+relatorios = bcb.ifdata.list_relatorios()
 # ['Ativo', 'Passivo', 'DRE', 'Resumo', ...]
 
 # Relatorios de um periodo especifico
-relatorios = bcb.ifdata.list_reports(start='2024-12')
+relatorios = bcb.ifdata.list_relatorios(start='2024-12')
 ```
 
-### list_periods()
+### list_periodos()
 
 Lista periodos disponiveis (herdado de BaseExplorer).
 
 ```python
-periodos = bcb.ifdata.list_periods()  # Retorna [202403, 202406, ...]
+periodos = bcb.ifdata.list_periodos()  # Retorna [202403, 202406, ...]
 ```
 
 ### describe()
@@ -428,10 +430,10 @@ from ifdata_bcb.domain.exceptions import (
     InvalidDateRangeError,
 )
 
-# Erro: parametro obrigatorio ausente (start e argumento posicional)
+# Erro: parametro obrigatorio ausente
 try:
     df = bcb.ifdata.read(instituicao='60872504')  # Falta start!
-except TypeError as e:
+except MissingRequiredParameterError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido
