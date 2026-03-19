@@ -17,6 +17,14 @@ src/ifdata_bcb/core/
 
 ## constants.py
 
+### IFDATA_API_BASE
+
+URL base da API IFDATA (OData), centralizada para uso pelos collectors:
+
+```python
+IFDATA_API_BASE = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
+```
+
 ### TIPO_INST_MAP
 
 Mapeamento entre escopo e codigo TipoInstituicao do IFDATA:
@@ -690,50 +698,6 @@ def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
     """
 ```
 
-### resolve_ifdata_escopo() (providers.ifdata.scope)
-
-A resolucao de escopo IFDATA foi extraida para funcao de modulo em `providers.ifdata.scope`:
-
-```python
-from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
-
-resolve_ifdata_escopo(entity_lookup, cnpj_8, escopo) -> ScopeResolution
-```
-
-```python
-def resolve_ifdata_escopo(
-    entity_lookup: EntityLookup,
-    cnpj_8: str,
-    escopo: str,
-) -> ScopeResolution:
-    """
-    Resolve CNPJ para codigo IFDATA baseado no escopo.
-
-    Args:
-        entity_lookup: Instancia de EntityLookup
-        cnpj_8: CNPJ de 8 digitos
-        escopo: "individual", "prudencial", ou "financeiro"
-
-    Retorna ScopeResolution:
-    {
-        "cod_inst": str,      # Codigo para filtrar IFDATA
-        "tipo_inst": int,     # 1, 2, ou 3
-        "cnpj_original": str,
-        "escopo": str,
-    }
-
-    Logica:
-    - individual: CNPJ direto, tipo=3
-    - prudencial: CodConglomeradoPrudencial, tipo=1
-    - financeiro: Verifica CodConglomeradoFinanceiro e CNPJ direto
-                  como candidatos nos dados IFDATA, tipo=2
-
-    Raises:
-        InvalidScopeError: Escopo invalido
-        DataUnavailableError: CNPJ nao tem dados para escopo
-    """
-```
-
 ### get_canonical_names_for_cnpjs()
 
 ```python
@@ -880,13 +844,12 @@ class COSIFExplorer(BaseExplorer):
 ### EntityLookup usa Constants
 
 ```python
-from ifdata_bcb.core.constants import DATA_SOURCES, get_pattern, get_subdir
+from ifdata_bcb.core.constants import get_pattern, get_subdir
 
 class EntityLookup:
-    def _get_source_path(self, source: str) -> str:
-        subdir = get_subdir(source)
-        pattern = get_pattern(source)
-        return f"{self._cache_path}/{subdir}/{pattern}"
+    def _source_path(self, source_key: str) -> str:
+        """Retorna path completo para glob de arquivos de uma fonte."""
+        return f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
 ```
 
 ---

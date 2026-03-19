@@ -7,7 +7,7 @@ import pandas as pd
 
 from ifdata_bcb.domain.exceptions import DataProcessingError, PeriodUnavailableError
 from ifdata_bcb.providers.base_collector import BaseCollector
-from ifdata_bcb.providers.collector_models import CollectStatus
+from ifdata_bcb.providers.base_collector import CollectStatus
 
 
 class StubCollector(BaseCollector):

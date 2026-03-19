@@ -24,24 +24,6 @@ class DataUnavailableError(BacenAnalysisError):
         super().__init__(msg)
 
 
-class EntityNotFoundError(BacenAnalysisError):
-    def __init__(self, identifier: str):
-        self.identifier = identifier
-        super().__init__(f"Entidade nao encontrada: '{identifier}'.")
-
-
-class AmbiguousIdentifierError(BacenAnalysisError):
-    def __init__(self, identifier: str, matches: list[str]):
-        self.identifier = identifier
-        self.matches = matches
-        matches_str = ", ".join(repr(m) for m in matches[:5])
-        if len(matches) > 5:
-            matches_str += f" (e mais {len(matches) - 5})"
-        super().__init__(
-            f"Identificador '{identifier}' ambiguo. Encontrados: {matches_str}."
-        )
-
-
 class InvalidIdentifierError(BacenAnalysisError):
     def __init__(self, identificador: str):
         self.identificador = identificador

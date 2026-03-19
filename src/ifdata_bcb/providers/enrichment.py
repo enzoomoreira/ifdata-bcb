@@ -11,7 +11,7 @@ from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.infra.query import QueryEngine
 
 if TYPE_CHECKING:
-    from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
+    from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 
 VALID_CADASTRO_COLUMNS = {
     "SEGMENTO",
@@ -119,7 +119,7 @@ def enrich_with_cadastro(
     if df.empty:
         return df
 
-    from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
+    from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 
     if query_engine is None:
         query_engine = QueryEngine()

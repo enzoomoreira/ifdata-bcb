@@ -114,7 +114,7 @@ df = qe.sql("""
 
 - **[architecture.md](docs/internals/architecture.md)** - Visao geral da arquitetura
 - **[core.md](docs/internals/core.md)** - EntityLookup, Constants, Eras, BaseExplorer
-- **[domain.md](docs/internals/domain.md)** - Exceptions, Models, Types, Validation
+- **[domain.md](docs/internals/domain.md)** - Exceptions, Types, Validation
 - **[infra.md](docs/internals/infra.md)** - Settings, QueryEngine, DataManager
 - **[providers.md](docs/internals/providers.md)** - BaseCollector, Explorers
 

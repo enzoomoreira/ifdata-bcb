@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
 
     @property
-    def cache_path(self) -> Path: ...   # data_dir com mkdir
+    def cache_path(self) -> Path: ...   # data_dir (sem mkdir -- nao cria diretorios como side-effect)
 
     @property
     def logs_path(self) -> Path: ...    # data_dir.parent / "Logs" com mkdir
@@ -745,10 +745,10 @@ logger.info("Mensagem")
 # infra/__init__.py
 from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
 from ifdata_bcb.infra.config import Settings, get_settings
-from ifdata_bcb.infra.log import configure_logging, get_log_path, get_logger, set_log_level
+from ifdata_bcb.infra.log import configure_logging, emit_user_warning, get_log_path, get_logger, set_log_level
 from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.resilience import retry
+from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
 from ifdata_bcb.infra.storage import (
     DataManager,
     get_parquet_metadata,

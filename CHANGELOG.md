@@ -1,5 +1,35 @@
 # Project Changelog
 
+## [2026-03-19 18:37]
+
+### Changed
+- Provider IFDATA decomposto em sub-packages: `ifdata/cadastro/` e `ifdata/valores/` com modulos `collector.py`, `explorer.py` e `temporal.py` dedicados (antes eram arquivos monoliticos em `ifdata/`)
+- `CollectStatus` enum movido de `collector_models.py` para `base_collector.py` (colocation com `BaseCollector`)
+- `ScopeResolution` dataclass movida de `domain/models.py` para `providers/ifdata/valores/scope.py` (colocation com logica de resolucao de escopo)
+- `IFDATA_API_BASE` URL centralizada em `core/constants.py` (antes duplicada nos collectors)
+- `EntityLookup` refatorado: metodo monolitico `_get_data_sources_for_cnpjs` decomposto em 3 metodos privados (`_check_cosif_sources`, `_check_ifdata_individual_sources`, `_check_ifdata_conglomerate_sources`); metodo `search` decomposto em `_build_search_corpus`, `_search_exact_cnpj`, `_assemble_search_results`
+- `EntityLookup._latest_cadastro_sql()`: template SQL reutilizavel para queries de "linha mais recente por CNPJ" (ROW_NUMBER), eliminando duplicacao em `_get_latest_situacao`, `search` e `get_canonical_names_for_cnpjs`
+- `EntityLookup._source_path()` unifica `_get_source_path()` (antes recebia subdir+pattern separados, agora recebe source_key)
+- `InstitutionList.normalize_and_validate()` reutiliza `ValidatedCnpj8` em vez de duplicar regex
+- `FuzzyMatcher.search()` simplificado: remove copia desnecessaria da lista de matches
+- `format_entity_labels()` extraido de `BaseExplorer` e `IFDATAExplorer` para `utils/text.py` (reuso entre warning formatters)
+- `Settings.cache_path` nao cria mais diretorios como side-effect; `_resolve_base_path()` extraido em `storage.py`
+- `infra/__init__.py` exporta `emit_user_warning`, `DEFAULT_REQUEST_TIMEOUT`, `staggered_delay` (antes importados diretamente dos sub-modulos)
+- Imports atualizados em todos os testes de integracao/unit/qa para refletir nova estrutura de packages
+
+### Removed
+- `domain/models.py` (conteudo movido para `providers/ifdata/valores/scope.py`)
+- `providers/collector_models.py` (conteudo movido para `base_collector.py`)
+- `providers/ifdata/collector.py` (dividido em `cadastro/collector.py` e `valores/collector.py`)
+- `providers/ifdata/valores_explorer.py` (movido para `valores/explorer.py`)
+- `providers/ifdata/cadastro_explorer.py` (movido para `cadastro/explorer.py`)
+- `providers/ifdata/scope.py` (movido para `valores/scope.py`)
+- `providers/ifdata/temporal.py` (movido para `valores/temporal.py`)
+- Excecoes `EntityNotFoundError` e `AmbiguousIdentifierError` removidas da hierarquia (nao tinham call sites restantes)
+- Testes de `resolve_ifdata_escopo` em `test_entity_lookup.py` (movidos junto com o modulo para sub-package valores)
+- Testes de `AmbiguousIdentifierError` e `EntityNotFoundError` em `test_exceptions.py`
+- Parametro `**_kwargs` de `EntityLookup.real_entity_condition()`
+
 ## [2026-03-19 14:03]
 
 ### Added

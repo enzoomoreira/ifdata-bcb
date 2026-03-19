@@ -1,5 +1,8 @@
 """Constantes centralizadas para fontes de dados."""
 
+# URL base da API IFDATA (OData)
+IFDATA_API_BASE = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
+
 # Mapeamento escopo -> TipoInstituicao (IFDATA)
 TIPO_INST_MAP: dict[str, int] = {
     "individual": 3,

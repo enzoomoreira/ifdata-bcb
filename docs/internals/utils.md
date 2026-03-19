@@ -40,6 +40,31 @@ def normalize_accents(text: str) -> str:
 1. Aplica normalizacao Unicode NFKD (separa base de modificadores)
 2. Filtra caracteres nao-combinadores (`unicodedata.combining()`)
 
+### format_entity_labels()
+
+Formata lista de CNPJs com nomes canonicos para mensagens de warning:
+
+```python
+def format_entity_labels(
+    cnpjs: list[str],
+    nomes: dict[str, str],
+    limit: int = 5,
+) -> str:
+    """
+    Se count <= limit, retorna labels separados por virgula.
+    Caso contrario, retorna '{count} entidades'.
+
+    Exemplos:
+        format_entity_labels(["60872504"], {"60872504": "ITAU UNIBANCO S.A."})
+        -> "60872504 (ITAU UNIBANCO S.A.)"
+
+        format_entity_labels(["60872504"], {})
+        -> "60872504"
+    """
+```
+
+Extraido de `BaseExplorer` e `IFDATAExplorer` para reuso entre warning formatters.
+
 ### normalize_text()
 
 Normaliza whitespace:

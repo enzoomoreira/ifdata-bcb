@@ -27,6 +27,7 @@ from ifdata_bcb.infra.sql import (
     build_string_condition,
 )
 from ifdata_bcb.infra.storage import list_parquet_files
+from ifdata_bcb.utils.text import format_entity_labels
 
 
 class BaseExplorer(ABC):
@@ -383,16 +384,7 @@ class BaseExplorer(ABC):
             return
 
         nomes = self._resolver.get_canonical_names_for_cnpjs(all_null_cnpjs)
-        entities = []
-        for cnpj in all_null_cnpjs:
-            nome = nomes.get(cnpj, "")
-            label = f"{cnpj} ({nome})" if nome else cnpj
-            entities.append(label)
-
-        if len(entities) <= 5:
-            entity_str = ", ".join(entities)
-        else:
-            entity_str = f"{len(entities)} entidades"
+        entity_str = format_entity_labels(all_null_cnpjs, nomes)
         emit_user_warning(
             NullValuesWarning(
                 f"Dados com VALOR inteiramente NULL para {entity_str}. "

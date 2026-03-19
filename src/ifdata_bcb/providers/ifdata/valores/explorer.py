@@ -26,8 +26,9 @@ from ifdata_bcb.providers.enrichment import (
     enrich_with_cadastro,
     validate_cadastro_columns,
 )
-from ifdata_bcb.providers.ifdata.collector import IFDATAValoresCollector
-from ifdata_bcb.providers.ifdata.temporal import TemporalResolver
+from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
+from ifdata_bcb.providers.ifdata.valores.temporal import TemporalResolver
+from ifdata_bcb.utils.text import format_entity_labels
 
 
 EscopoIFDATA = Literal["individual", "prudencial", "financeiro"]
@@ -129,21 +130,13 @@ class IFDATAExplorer(BaseExplorer):
     ) -> None:
         """Emite warning consolidado para entidades sem escopo."""
         nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
-        entities_labels = []
-        for cnpj in cnpjs:
-            nome = nomes.get(cnpj, "")
-            label = f"{cnpj} ({nome})" if nome else cnpj
-            entities_labels.append(label)
+        entity_str = format_entity_labels(cnpjs, nomes)
 
         period_range = (
             f"{min(periodos)}-{max(periodos)}"
             if len(periodos) > 1
             else str(periodos[0])
         )
-        if len(entities_labels) <= 5:
-            entity_str = ", ".join(entities_labels)
-        else:
-            entity_str = f"{len(entities_labels)} entidades"
         emit_user_warning(
             ScopeUnavailableWarning(
                 f"Escopo {escopo} indisponivel para {entity_str} "
@@ -154,73 +147,6 @@ class IFDATAExplorer(BaseExplorer):
             ),
             stacklevel=4,
         )
-
-    def _read_single_escopo(
-        self,
-        instituicao: InstitutionInput,
-        escopo: str,
-        start: str,
-        end: str | None,
-        conta: AccountInput | None,
-        relatorio: str | None,
-        grupo: str | None,
-        columns: list[str] | None,
-    ) -> pd.DataFrame | None:
-        """Le dados de um escopo especifico com resolucao temporal."""
-        if isinstance(instituicao, str):
-            instituicao = [instituicao]
-
-        cnpjs = [self._resolve_entidade(i) for i in instituicao]
-        periodos = self._resolve_date_range(start, end, trimestral=True) or []
-
-        if not periodos:
-            return None
-
-        groups, unavailable = self._temporal.resolve(cnpjs, escopo, periodos)
-        if unavailable:
-            self._warn_escopo_unavailable(unavailable, escopo, periodos)
-        if not groups:
-            return None
-
-        extra_conditions = self._build_common_conditions(conta, relatorio, grupo)
-
-        storage_columns = self._storage_columns_for_query(columns, required=["CodInst"])
-
-        frames: list[pd.DataFrame] = []
-        tipo_inst = TIPO_INST_MAP[escopo]
-
-        for group in groups:
-            if escopo == "individual":
-                codes = cnpjs
-            else:
-                codes = [group.cod_inst]
-
-            conditions = [
-                build_string_condition("CodInst", codes),
-                build_int_condition("TipoInstituicao", [tipo_inst]),
-                build_int_condition("AnoMes", group.periodos),
-            ] + extra_conditions
-
-            where = join_conditions(conditions)
-
-            df = self._read_glob(
-                pattern=self._get_pattern(),
-                subdir=self._get_subdir(),
-                columns=storage_columns,
-                where=where,
-            )
-            if df.empty:
-                continue
-
-            df = df.copy()
-            df["ESCOPO"] = escopo
-            df = TemporalResolver.add_cnpj_mapping(df, group.cnpj_map)
-            frames.append(df)
-
-        if not frames:
-            return None
-
-        return pd.concat(frames, ignore_index=True)
 
     def collect(
         self, start: str, end: str, force: bool = False, verbose: bool = True
@@ -234,7 +160,7 @@ class IFDATAExplorer(BaseExplorer):
         relatorio: str | None,
         grupo: str | None,
     ) -> list[str]:
-        """Condicoes SQL compartilhadas entre read com instituicao e bulk."""
+        """Condicoes SQL para filtros de conta, relatorio e grupo."""
         conditions: list[str] = []
         if conta:
             contas = self._normalize_contas(conta)
@@ -266,87 +192,76 @@ class IFDATAExplorer(BaseExplorer):
             )
         return conditions
 
-    def _read_bulk(
+    def _collect_frames(
         self,
-        start: str,
-        end: str | None,
-        escopo: EscopoIFDATA | None,
+        escopos: list[str],
+        periodos: list[int],
+        instituicao: InstitutionInput | None,
         conta: AccountInput | None,
         relatorio: str | None,
         grupo: str | None,
         columns: list[str] | None,
-        cadastro: list[str] | None,
-    ) -> pd.DataFrame:
-        """Le dados IFDATA sem resolucao de entidade (acesso direto ao parquet)."""
-        from ifdata_bcb.domain.exceptions import PartialDataWarning
-
-        periodos = self._resolve_date_range(start, end, trimestral=True)
-        if not periodos:
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
-
-        escopos = (
-            [self._validate_escopo(escopo)]
-            if escopo
-            else ["individual", "prudencial", "financeiro"]
-        )
-
+    ) -> list[pd.DataFrame]:
+        """Coleta frames por escopo. Resolve temporal se instituicao fornecida."""
         extra_conditions = self._build_common_conditions(conta, relatorio, grupo)
         storage_columns = self._storage_columns_for_query(columns, required=["CodInst"])
-
         frames: list[pd.DataFrame] = []
+
+        cnpjs: list[str] | None = None
+        if instituicao is not None:
+            if isinstance(instituicao, str):
+                instituicao = [instituicao]
+            cnpjs = [self._resolve_entidade(i) for i in instituicao]
+
         for esc in escopos:
             tipo_inst = TIPO_INST_MAP[esc]
-            conditions = [
-                build_int_condition("TipoInstituicao", [tipo_inst]),
-                build_int_condition("AnoMes", periodos),
-            ] + extra_conditions
 
-            where = join_conditions(conditions)
+            if cnpjs is not None:
+                groups, unavailable = self._temporal.resolve(cnpjs, esc, periodos)
+                if unavailable:
+                    self._warn_escopo_unavailable(unavailable, esc, periodos)
 
-            df = self._read_glob(
-                pattern=self._get_pattern(),
-                subdir=self._get_subdir(),
-                columns=storage_columns,
-                where=where,
-            )
-            if df.empty:
-                continue
+                for group in groups:
+                    codes = cnpjs if esc == "individual" else [group.cod_inst]
+                    conditions = [
+                        build_string_condition("CodInst", codes),
+                        build_int_condition("TipoInstituicao", [tipo_inst]),
+                        build_int_condition("AnoMes", group.periodos),
+                    ] + extra_conditions
 
-            df = df.copy()
-            df["ESCOPO"] = esc
-            if esc == "individual":
-                df["CNPJ_8"] = df["CodInst"]
-            frames.append(df)
-
-        if not frames:
-            self._diagnose_empty_result(
-                source_name="IFDATA",
-                has_files=self._ensure_data_exists(),
-                had_conta_filter=conta is not None,
-                had_institution_filter=False,
-            )
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
-
-        df = pd.concat(frames, ignore_index=True)
-        df = self._apply_canonical_names(df)
-        df = self._finalize_read(df)
-        self._check_null_value_instituicoes(df)
-
-        if cadastro is not None:
-            if "CNPJ_8" in df.columns and df["CNPJ_8"].notna().any():
-                df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
+                    df = self._read_glob(
+                        pattern=self._get_pattern(),
+                        subdir=self._get_subdir(),
+                        columns=storage_columns,
+                        where=join_conditions(conditions),
+                    )
+                    if df.empty:
+                        continue
+                    df = df.copy()
+                    df["ESCOPO"] = esc
+                    df = TemporalResolver.add_cnpj_mapping(df, group.cnpj_map)
+                    frames.append(df)
             else:
-                emit_user_warning(
-                    PartialDataWarning(
-                        "Enrichment cadastral nao disponivel para bulk "
-                        "prudencial/financeiro (sem CNPJ_8 no resultado). "
-                        "Use instituicao= ou escopo='individual' para ativar.",
-                        reason="no_cnpj_for_enrichment",
-                    ),
-                    stacklevel=2,
-                )
+                conditions = [
+                    build_int_condition("TipoInstituicao", [tipo_inst]),
+                    build_int_condition("AnoMes", periodos),
+                ] + extra_conditions
 
-        return self._filter_columns(df, columns)
+                df = self._read_glob(
+                    pattern=self._get_pattern(),
+                    subdir=self._get_subdir(),
+                    columns=storage_columns,
+                    where=join_conditions(conditions),
+                )
+                if df.empty:
+                    continue
+                df = df.copy()
+                df["ESCOPO"] = esc
+                if esc == "individual":
+                    df["CNPJ_8"] = df["CodInst"]
+                frames.append(df)
+
+        return frames
 
     def read(
         self,
@@ -392,44 +307,51 @@ class IFDATAExplorer(BaseExplorer):
         )
         self._logger.debug(f"IFDATA read: instituicao={instituicao}, escopo={escopo}")
 
-        if instituicao is None:
-            return self._read_bulk(
-                start, end, escopo, conta, relatorio, grupo, columns, cadastro
-            )
-
         escopos = (
             [self._validate_escopo(escopo)]
             if escopo
             else ["individual", "prudencial", "financeiro"]
         )
-        results = []
+        periodos = self._resolve_date_range(start, end, trimestral=True)
+        if not periodos:
+            return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
-        for esc in escopos:
-            df = self._read_single_escopo(
-                instituicao, esc, start, end, conta, relatorio, grupo, columns
-            )
-            if df is not None:
-                results.append(df)
+        frames = self._collect_frames(
+            escopos, periodos, instituicao, conta, relatorio, grupo, columns
+        )
 
-        if not results:
+        if not frames:
             self._diagnose_empty_result(
                 source_name="IFDATA",
                 has_files=self._ensure_data_exists(),
                 had_conta_filter=conta is not None,
+                had_institution_filter=instituicao is not None,
             )
             return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
-        df = pd.concat(results, ignore_index=True)
+        df = pd.concat(frames, ignore_index=True)
         df = self._apply_canonical_names(df)
-        self._logger.debug(f"IFDATA result: {len(df)} rows")
         df = self._finalize_read(df)
         self._check_null_value_instituicoes(df)
 
         if cadastro is not None:
-            df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
+            from ifdata_bcb.domain.exceptions import PartialDataWarning
 
-        df = self._filter_columns(df, columns)
-        return df
+            has_cnpj = "CNPJ_8" in df.columns and df["CNPJ_8"].notna().any()
+            if has_cnpj:
+                df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
+            elif instituicao is None:
+                emit_user_warning(
+                    PartialDataWarning(
+                        "Enrichment cadastral nao disponivel para bulk "
+                        "prudencial/financeiro (sem CNPJ_8 no resultado). "
+                        "Use instituicao= ou escopo='individual' para ativar.",
+                        reason="no_cnpj_for_enrichment",
+                    ),
+                    stacklevel=2,
+                )
+
+        return self._filter_columns(df, columns)
 
     def list_contas(
         self,

@@ -5,9 +5,7 @@ from pathlib import Path
 import pytest
 
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.exceptions import DataUnavailableError, InvalidScopeError
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
 from tests.conftest import (
     BANCO_A_CNPJ,
     BANCO_B_CNPJ,
@@ -89,68 +87,6 @@ class TestGetEntityIdentifiers:
         # Deve funcionar novamente apos clear
         info = lookup.get_entity_identifiers(BANCO_A_CNPJ)
         assert info["nome_entidade"] == "BANCO ALFA S.A."
-
-
-# =========================================================================
-# resolve_ifdata_escopo
-# =========================================================================
-
-
-class TestResolveIfdataScope:
-    def test_individual_returns_cnpj_directly(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = resolve_ifdata_escopo(lookup, BANCO_A_CNPJ, "individual")
-
-        assert result.cod_inst == BANCO_A_CNPJ
-        assert result.tipo_inst == 3
-        assert result.escopo == "individual"
-
-    def test_prudencial_resolves_to_conglomerate(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = resolve_ifdata_escopo(lookup, BANCO_A_CNPJ, "prudencial")
-
-        assert result.cod_inst == COD_CONGL_PRUD
-        assert result.tipo_inst == 1
-        assert result.escopo == "prudencial"
-
-    def test_prudencial_raises_for_entity_without_conglomerate(
-        self, populated_cache: Path
-    ) -> None:
-        lookup = _make_lookup(populated_cache)
-        with pytest.raises(DataUnavailableError) as exc_info:
-            resolve_ifdata_escopo(lookup, BANCO_B_CNPJ, "prudencial")
-        assert "prudencial" in str(exc_info.value)
-
-    def test_prudencial_suggests_cadastro_when_entity_unknown(
-        self, tmp_cache_dir: Path
-    ) -> None:
-        """Sem cadastro coletado, mensagem sugere executar cadastro.collect()."""
-        lookup = _make_lookup(tmp_cache_dir)
-        with pytest.raises(DataUnavailableError, match="cadastro.collect"):
-            resolve_ifdata_escopo(lookup, "60872504", "prudencial")
-
-    def test_invalid_scope_raises(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        with pytest.raises(InvalidScopeError):
-            resolve_ifdata_escopo(lookup, BANCO_A_CNPJ, "inexistente")
-
-    def test_scope_case_insensitive(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = resolve_ifdata_escopo(lookup, BANCO_A_CNPJ, "INDIVIDUAL")
-        assert result.escopo == "individual"
-
-    def test_financeiro_resolves_to_conglomerate(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = resolve_ifdata_escopo(lookup, BANCO_A_CNPJ, "financeiro")
-        assert result.escopo == "financeiro"
-        assert result.tipo_inst == 2
-
-    def test_financeiro_raises_for_entity_without_congl(
-        self, populated_cache: Path
-    ) -> None:
-        lookup = _make_lookup(populated_cache)
-        with pytest.raises(DataUnavailableError, match="financeiro"):
-            resolve_ifdata_escopo(lookup, BANCO_B_CNPJ, "financeiro")
 
 
 # =========================================================================

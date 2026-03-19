@@ -3,10 +3,8 @@
 import pytest
 
 from ifdata_bcb.domain.exceptions import (
-    AmbiguousIdentifierError,
     BacenAnalysisError,
     DataUnavailableError,
-    EntityNotFoundError,
     InvalidDateFormatError,
     InvalidDateRangeError,
     InvalidIdentifierError,
@@ -24,8 +22,6 @@ class TestExceptionHierarchy:
         [
             InvalidScopeError,
             DataUnavailableError,
-            EntityNotFoundError,
-            AmbiguousIdentifierError,
             InvalidIdentifierError,
             MissingRequiredParameterError,
             InvalidDateRangeError,
@@ -62,22 +58,6 @@ class TestDataUnavailableError:
         err = DataUnavailableError("12345678", "cosif")
         assert "12345678" in str(err)
         assert "cosif" in str(err)
-
-
-class TestAmbiguousIdentifierError:
-    def test_shows_up_to_5_matches(self) -> None:
-        matches = ["A", "B", "C", "D", "E", "F", "G"]
-        err = AmbiguousIdentifierError("test", matches)
-        assert "A" in str(err)
-        assert "E" in str(err)
-        assert "e mais 2" in str(err)
-
-    def test_few_matches_no_truncation(self) -> None:
-        err = AmbiguousIdentifierError("test", ["A", "B"])
-        msg = str(err)
-        assert "A" in msg
-        assert "B" in msg
-        assert "e mais" not in msg
 
 
 class TestInvalidDateFormatError:

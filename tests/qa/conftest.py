@@ -8,8 +8,8 @@ import pytest
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 QA_CNPJ = "60872504"
 QA_CNPJ_B = "90400888"

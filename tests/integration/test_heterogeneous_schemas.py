@@ -1,8 +1,8 @@
 """Testes de integracao -- schemas heterogeneos entre periodos (union_by_name)."""
 
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 from tests.conftest import BANCO_A_CNPJ, COD_CONGL_PRUD
 
 

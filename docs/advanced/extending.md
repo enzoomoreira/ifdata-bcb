@@ -252,7 +252,7 @@ class NovoExplorer(BaseExplorer):
         Returns:
             DataFrame com os dados filtrados.
         """
-        self._validate_required_params(instituicao, start)
+        self._validate_required_params(start)
 
         conditions = [
             self._build_cnpj_condition(instituicao),
@@ -470,7 +470,7 @@ def has_data(self, source: str | None = None) -> bool
 def describe(self, source: str | None = None) -> dict
 
 # Validacao
-def _validate_required_params(self, instituicao, start) -> None
+def _validate_required_params(self, start) -> None
 ```
 
 #### Multi-Source Pattern
@@ -507,7 +507,7 @@ explorer = COSIFExplorer(query_engine=qe)
 
 ```python
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 # Lookup com threshold ajustado
 lookup = EntityLookup(fuzzy_threshold_suggest=80)
@@ -533,8 +533,6 @@ collector = COSIFCollector("individual", data_manager=dm)
 BacenAnalysisError (base)
   InvalidScopeError        # Escopo invalido
   DataUnavailableError     # Dados nao disponiveis
-  EntityNotFoundError      # CNPJ nao encontrado
-  AmbiguousIdentifierError # Multiplos matches
   InvalidIdentifierError   # CNPJ invalido (nao tem 8 digitos)
   MissingRequiredParameterError  # Param obrigatorio faltando
   InvalidDateRangeError    # start > end

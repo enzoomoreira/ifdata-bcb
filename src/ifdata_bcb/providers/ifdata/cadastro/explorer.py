@@ -13,7 +13,7 @@ from ifdata_bcb.infra.sql import (
     join_conditions,
 )
 from ifdata_bcb.providers.base_explorer import BaseExplorer
-from ifdata_bcb.providers.ifdata.collector import IFDATACadastroCollector
+from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
 
 
 class CadastroExplorer(BaseExplorer):

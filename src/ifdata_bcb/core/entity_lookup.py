@@ -20,6 +20,14 @@ class EntityLookup:
     necessario (fuzzy matching).
     """
 
+    _SEARCH_RESULT_COLUMNS: list[str] = [
+        "CNPJ_8",
+        "INSTITUICAO",
+        "SITUACAO",
+        "FONTES",
+        "SCORE",
+    ]
+
     def __init__(
         self,
         query_engine: QueryEngine | None = None,
@@ -34,15 +42,16 @@ class EntityLookup:
         """QueryEngine usada para consultas."""
         return self._qe
 
-    def _get_source_path(self, subdir: str, pattern: str) -> str:
-        """Retorna path completo para glob de arquivos."""
-        return f"{self._qe.cache_path}/{subdir}/{pattern}"
+    def _source_path(self, source_key: str) -> str:
+        """Retorna path completo para glob de arquivos de uma fonte."""
+        return (
+            f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
+        )
 
     @staticmethod
     def real_entity_condition(
         cnpj_col: str = "CNPJ_8",
         cod_inst_col: str = "CodInst",
-        **_kwargs: str,
     ) -> str:
         """Filtra apenas linhas que representam entidades reais.
 
@@ -71,6 +80,28 @@ class EntityLookup:
             f"ELSE COALESCE({cnpj_lider_col}, {cnpj_col}) END"
         )
 
+    def _latest_cadastro_sql(
+        self,
+        inner_cols: str,
+        outer_cols: str,
+        extra_where: str = "",
+    ) -> str:
+        """SQL para linha mais recente por CNPJ do cadastro (ROW_NUMBER)."""
+        cadastro = self._source_path("cadastro")
+        where = self.real_entity_condition()
+        if extra_where:
+            where += f" AND {extra_where}"
+        return f"""
+        SELECT {outer_cols}
+        FROM (
+            SELECT {inner_cols},
+                ROW_NUMBER() OVER (PARTITION BY CNPJ_8 ORDER BY Data DESC) as rn
+            FROM read_parquet('{cadastro}', union_by_name=true)
+            WHERE {where}
+        )
+        WHERE rn = 1
+        """
+
     def _get_data_sources_for_cnpjs(self, cnpjs: list[str]) -> dict[str, set[str]]:
         """
         Verifica quais fontes de dados estao disponiveis para cada CNPJ.
@@ -78,16 +109,16 @@ class EntityLookup:
         Retorna dict {cnpj: {fontes}} onde fontes pode ser 'cosif' e/ou 'ifdata'.
         """
         result: dict[str, set[str]] = {cnpj: set() for cnpj in cnpjs}
-
-        cosif_ind_path = self._get_source_path(
-            get_subdir("cosif_individual"), get_pattern("cosif_individual")
-        )
-        cosif_prud_path = self._get_source_path(
-            get_subdir("cosif_prudencial"), get_pattern("cosif_prudencial")
-        )
-
         cnpjs_str = build_in_clause(cnpjs)
-        sql_cosif = f"""
+        self._check_cosif_sources(cnpjs_str, result)
+        self._check_ifdata_individual_sources(cnpjs_str, result)
+        self._check_ifdata_conglomerate_sources(cnpjs, cnpjs_str, result)
+        return result
+
+    def _check_cosif_sources(self, cnpjs_str: str, result: dict[str, set[str]]) -> None:
+        cosif_ind_path = self._source_path("cosif_individual")
+        cosif_prud_path = self._source_path("cosif_prudencial")
+        sql = f"""
         SELECT DISTINCT CNPJ_8 FROM (
             SELECT CNPJ_8 FROM '{cosif_ind_path}' WHERE CNPJ_8 IN ({cnpjs_str})
             UNION
@@ -95,31 +126,36 @@ class EntityLookup:
         )
         """
         try:
-            df_cosif = self._qe.sql(sql_cosif)
-            for cnpj in df_cosif["CNPJ_8"].astype(str):
+            df = self._qe.sql(sql)
+            for cnpj in df["CNPJ_8"].astype(str):
                 result[cnpj].add("cosif")
         except Exception as e:
             self._logger.warning(f"Data source check failed (cosif): {e}")
 
-        ifdata_path = self._get_source_path(
-            get_subdir("ifdata_valores"), get_pattern("ifdata_valores")
-        )
-
-        sql_ifdata_ind = f"""
+    def _check_ifdata_individual_sources(
+        self, cnpjs_str: str, result: dict[str, set[str]]
+    ) -> None:
+        ifdata_path = self._source_path("ifdata_valores")
+        sql = f"""
         SELECT DISTINCT CodInst FROM '{ifdata_path}'
         WHERE TipoInstituicao = {TIPO_INST_MAP["individual"]} AND CodInst IN ({cnpjs_str})
         """
         try:
-            df_ifdata = self._qe.sql(sql_ifdata_ind)
-            for cnpj in df_ifdata["CodInst"].astype(str):
+            df = self._qe.sql(sql)
+            for cnpj in df["CodInst"].astype(str):
                 result[cnpj].add("ifdata")
         except Exception as e:
             self._logger.warning(f"Data source check failed (ifdata): {e}")
 
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
-        )
-        sql_congl = f"""
+    def _check_ifdata_conglomerate_sources(
+        self,
+        cnpjs: list[str],
+        cnpjs_str: str,
+        result: dict[str, set[str]],
+    ) -> None:
+        cadastro_path = self._source_path("cadastro")
+        ifdata_path = self._source_path("ifdata_valores")
+        sql = f"""
         SELECT DISTINCT
             CNPJ_8,
             CodConglomeradoPrudencial as cod_prud,
@@ -131,7 +167,7 @@ class EntityLookup:
                OR CodConglomeradoFinanceiro IS NOT NULL)
         """
         try:
-            df_congl = self._qe.sql(sql_congl)
+            df_congl = self._qe.sql(sql)
             if not df_congl.empty:
                 cod_to_cnpjs: dict[str, list[str]] = {}
                 cnpjs_col = df_congl["CNPJ_8"].astype(str).values
@@ -144,41 +180,28 @@ class EntityLookup:
 
                 if cod_to_cnpjs:
                     cods_str = build_in_clause(list(cod_to_cnpjs.keys()))
-                    sql_ifdata_congl = f"""
+                    sql_ifdata = f"""
                     SELECT DISTINCT CodInst FROM '{ifdata_path}'
                     WHERE CodInst IN ({cods_str})
                     """
-                    df_ifdata_congl = self._qe.sql(sql_ifdata_congl)
-                    for cod in df_ifdata_congl["CodInst"].astype(str):
+                    df_ifdata = self._qe.sql(sql_ifdata)
+                    for cod in df_ifdata["CodInst"].astype(str):
                         for cnpj in cod_to_cnpjs.get(cod, []):
                             result[cnpj].add("ifdata")
         except Exception as e:
             self._logger.warning(f"Data source check failed (conglomerate): {e}")
-
-        return result
 
     def _get_latest_situacao(self, cnpjs: list[str]) -> dict[str, str]:
         """Retorna situacao mais recente de cada CNPJ (A=Ativa, I=Inativa)."""
         if not cnpjs:
             return {}
 
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
-        )
         cnpjs_str = build_in_clause(cnpjs)
-
-        sql = f"""
-        SELECT CNPJ_8, Situacao
-        FROM (
-            SELECT CNPJ_8, Situacao, ROW_NUMBER() OVER (
-                PARTITION BY CNPJ_8 ORDER BY Data DESC
-            ) as rn
-            FROM read_parquet('{cadastro_path}', union_by_name=true)
-            WHERE CNPJ_8 IN ({cnpjs_str})
-              AND {self.real_entity_condition()}
+        sql = self._latest_cadastro_sql(
+            inner_cols="CNPJ_8, Situacao",
+            outer_cols="CNPJ_8, Situacao",
+            extra_where=f"CNPJ_8 IN ({cnpjs_str})",
         )
-        WHERE rn = 1
-        """
 
         try:
             df = self._qe.sql(sql)
@@ -200,39 +223,48 @@ class EntityLookup:
         Ordenado por ativas primeiro, depois por score.
         FONTES indica onde ha dados disponiveis: 'cosif', 'ifdata'.
         """
-        _RESULT_COLUMNS = [
-            "CNPJ_8",
-            "INSTITUICAO",
-            "SITUACAO",
-            "FONTES",
-            "SCORE",
-        ]
-
         if limit <= 0:
             raise ValueError(f"limit deve ser > 0, recebido: {limit}")
 
         termo_norm = normalize_accents(termo.strip().upper())
+        empty = pd.DataFrame(columns=self._SEARCH_RESULT_COLUMNS)
 
         if not termo_norm:
-            return pd.DataFrame(columns=_RESULT_COLUMNS)
+            return empty
 
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
+        corpus = self._build_search_corpus()
+        if corpus is None:
+            return empty
+        cnpj_data, nome_to_cnpj = corpus
+
+        exact = self._search_exact_cnpj(termo_norm, cnpj_data)
+        if exact is not None:
+            return exact
+
+        matches = self._fuzzy.search(
+            query=termo_norm,
+            choices=nome_to_cnpj,
+            score_cutoff=self._fuzzy.threshold_suggest,
         )
-        sql_entities = f"""
-        SELECT CNPJ_8, NOME, strip_accents(UPPER(NOME)) AS NOME_NORM
-        FROM (
-            SELECT
-                CNPJ_8,
-                NomeInstituicao AS NOME,
-                ROW_NUMBER() OVER (PARTITION BY CNPJ_8 ORDER BY Data DESC) as rn
-            FROM read_parquet('{cadastro_path}', union_by_name=true)
-            WHERE NomeInstituicao IS NOT NULL
-              AND {self.real_entity_condition()}
-        )
-        WHERE rn = 1
+        if not matches:
+            return empty
+
+        return self._assemble_search_results(matches, nome_to_cnpj, cnpj_data, limit)
+
+    def _build_search_corpus(
+        self,
+    ) -> tuple[dict[str, dict], dict[str, str]] | None:
+        """Constroi corpus de busca: cnpj_data e nome_to_cnpj.
+
+        Retorna None se query falhar ou cadastro vazio.
         """
+        sql_entities = self._latest_cadastro_sql(
+            inner_cols="CNPJ_8, NomeInstituicao AS NOME",
+            outer_cols="CNPJ_8, NOME, strip_accents(UPPER(NOME)) AS NOME_NORM",
+            extra_where="NomeInstituicao IS NOT NULL",
+        )
 
+        cadastro_path = self._source_path("cadastro")
         resolved_cnpj = self.resolved_entity_cnpj_expr()
         sql_aliases = f"""
         SELECT DISTINCT
@@ -244,19 +276,15 @@ class EntityLookup:
           AND {resolved_cnpj} IS NOT NULL
         """
 
-        empty_df = pd.DataFrame(
-            columns=["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
-        )
-
         try:
             df_entities = self._qe.sql(sql_entities)
             df_aliases = self._qe.sql(sql_aliases)
         except Exception as e:
             self._logger.warning(f"Search query failed: {e}")
-            return empty_df
+            return None
 
         if df_entities.empty:
-            return empty_df
+            return None
 
         cnpj_data: dict[str, dict] = {}
         cnpjs_arr = df_entities["CNPJ_8"].astype(str).values
@@ -273,39 +301,44 @@ class EntityLookup:
             if cnpj in cnpj_data and nome_norm not in nome_to_cnpj:
                 nome_to_cnpj[nome_norm] = cnpj
 
-        # Exact match por CNPJ de 8 digitos
-        if len(termo_norm) == 8 and termo_norm.isdigit():
-            if termo_norm in cnpj_data:
-                cnpj_sources = self._get_data_sources_for_cnpjs([termo_norm])
-                cnpj_situacao = self._get_latest_situacao([termo_norm])
-                data = cnpj_data[termo_norm]
-                fontes = cnpj_sources.get(termo_norm, set())
-                situacao = cnpj_situacao.get(termo_norm, "")
-                result = pd.DataFrame(
-                    [
-                        {
-                            "CNPJ_8": termo_norm,
-                            "INSTITUICAO": data["nome"],
-                            "SITUACAO": situacao,
-                            "FONTES": ",".join(sorted(fontes)) if fontes else "",
-                            "SCORE": 100,
-                        }
-                    ]
-                )
-                if (result["FONTES"] != "").any():
-                    result = result[result["FONTES"] != ""].copy()
-                return result.reset_index(drop=True)
+        return cnpj_data, nome_to_cnpj
 
-        # Fuzzy search
-        matches = self._fuzzy.search(
-            query=termo_norm,
-            choices=nome_to_cnpj,
-            score_cutoff=self._fuzzy.threshold_suggest,
+    def _search_exact_cnpj(
+        self, termo_norm: str, cnpj_data: dict[str, dict]
+    ) -> pd.DataFrame | None:
+        """Match exato por CNPJ de 8 digitos. Retorna None se nao aplicavel."""
+        if len(termo_norm) != 8 or not termo_norm.isdigit():
+            return None
+        if termo_norm not in cnpj_data:
+            return None
+
+        cnpj_sources = self._get_data_sources_for_cnpjs([termo_norm])
+        fontes = cnpj_sources.get(termo_norm, set())
+        if not fontes:
+            return pd.DataFrame(columns=self._SEARCH_RESULT_COLUMNS)
+
+        cnpj_situacao = self._get_latest_situacao([termo_norm])
+        data = cnpj_data[termo_norm]
+        return pd.DataFrame(
+            [
+                {
+                    "CNPJ_8": termo_norm,
+                    "INSTITUICAO": data["nome"],
+                    "SITUACAO": cnpj_situacao.get(termo_norm, ""),
+                    "FONTES": ",".join(sorted(fontes)),
+                    "SCORE": 100,
+                }
+            ]
         )
 
-        if not matches:
-            return empty_df
-
+    def _assemble_search_results(
+        self,
+        matches: list[tuple[str, int]],
+        nome_to_cnpj: dict[str, str],
+        cnpj_data: dict[str, dict],
+        limit: int,
+    ) -> pd.DataFrame:
+        """Dedup, enriquecimento (sources/situacao), filtragem e sort."""
         matched_cnpjs: list[str] = []
         seen_cnpjs: set[str] = set()
         for nome_norm, _ in matches:
@@ -348,9 +381,7 @@ class EntityLookup:
             ascending=[True, False, True],
         ).reset_index(drop=True)
 
-        return result_df.head(limit)[
-            ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
-        ].reset_index(drop=True)
+        return result_df.head(limit)[self._SEARCH_RESULT_COLUMNS].reset_index(drop=True)
 
     @cached(maxsize=256)
     def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
@@ -369,9 +400,7 @@ class EntityLookup:
                 "nome_entidade": None,
             }
 
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
-        )
+        cadastro_path = self._source_path("cadastro")
         cnpj_condition = build_string_condition("CNPJ_8", [cnpj_8])
 
         sql = f"""
@@ -443,7 +472,8 @@ class EntityLookup:
                         cnpj_reporte = str(lider)
             except Exception as e:
                 self._logger.warning(
-                    f"CNPJ_LIDER lookup failed for cod_prud={cod_prud}: {e}"
+                    f"CNPJ_LIDER lookup failed for cod_prud={cod_prud}, "
+                    f"using cnpj_8={cnpj_8} as cnpj_reporte_cosif: {e}"
                 )
 
         return {
@@ -465,27 +495,11 @@ class EntityLookup:
             return {}
 
         cnpjs_str = build_in_clause(cnpjs)
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
+        sql = self._latest_cadastro_sql(
+            inner_cols="CNPJ_8, NomeInstituicao AS NOME",
+            outer_cols="CNPJ_8, NOME",
+            extra_where=f"NomeInstituicao IS NOT NULL AND CNPJ_8 IN ({cnpjs_str})",
         )
-
-        sql = f"""
-        SELECT CNPJ_8, NOME
-        FROM (
-            SELECT
-                CNPJ_8,
-                NomeInstituicao AS NOME,
-                ROW_NUMBER() OVER (
-                    PARTITION BY CNPJ_8
-                    ORDER BY Data DESC
-                ) as rn
-            FROM read_parquet('{cadastro_path}', union_by_name=true)
-            WHERE NomeInstituicao IS NOT NULL
-              AND CNPJ_8 IN ({cnpjs_str})
-              AND {self.real_entity_condition()}
-        )
-        WHERE rn = 1
-        """
 
         try:
             df = self._qe.sql(sql)

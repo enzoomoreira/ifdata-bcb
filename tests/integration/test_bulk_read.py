@@ -15,7 +15,7 @@ from ifdata_bcb.domain.exceptions import (
     PartialDataWarning,
 )
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 BANCO_A_CNPJ = "60872504"
 BANCO_B_CNPJ = "90400888"

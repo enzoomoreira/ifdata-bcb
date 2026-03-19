@@ -8,7 +8,6 @@ A camada de dominio contem modelos de dados, tipos e excecoes da biblioteca.
 src/ifdata_bcb/domain/
 |-- __init__.py           # Exports publicos
 |-- exceptions.py        # Hierarquia de excecoes
-|-- models.py            # Dataclasses (ScopeResolution)
 |-- types.py             # Type aliases
 +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 ```
@@ -24,8 +23,6 @@ Exception
     +-- BacenAnalysisError (base)
     |       +-- InvalidScopeError
     |       +-- DataUnavailableError
-    |       +-- EntityNotFoundError
-    |       +-- AmbiguousIdentifierError
     |       +-- InvalidIdentifierError
     |       +-- MissingRequiredParameterError
     |       +-- InvalidDateRangeError
@@ -39,6 +36,8 @@ Exception
             +-- NullValuesWarning
             +-- EmptyFilterWarning
 ```
+
+> **Nota:** `EntityNotFoundError` e `AmbiguousIdentifierError` foram removidas da hierarquia por nao terem call sites restantes.
 
 ### BacenAnalysisError
 
@@ -95,38 +94,6 @@ raise DataUnavailableError(
     reason="Instituicao nao possui dados de conglomerado financeiro",
 )
 # Mensagem: "Dados indisponiveis para '60872504' no escopo 'financeiro'. ..."
-```
-
-### EntityNotFoundError
-
-Entidade nao encontrada:
-
-```python
-class EntityNotFoundError(BacenAnalysisError):
-    def __init__(self, identifier: str):
-        self.identifier = identifier
-
-# Uso
-raise EntityNotFoundError(identifier="Banco Inexistente")
-# Mensagem: "Entidade nao encontrada: 'Banco Inexistente'."
-```
-
-### AmbiguousIdentifierError
-
-Identificador com multiplas correspondencias:
-
-```python
-class AmbiguousIdentifierError(BacenAnalysisError):
-    def __init__(self, identifier: str, matches: list[str]):
-        self.identifier = identifier
-        self.matches = matches
-
-# Uso
-raise AmbiguousIdentifierError(
-    identifier="Itau",
-    matches=["ITAU UNIBANCO S.A.", "BANCO ITAU BBA S.A."],
-)
-# Mensagem: "Identificador 'Itau' ambiguo. Encontrados: 'ITAU UNIBANCO S.A.', 'BANCO ITAU BBA S.A.'."
 ```
 
 ### InvalidIdentifierError
@@ -353,38 +320,6 @@ AccountList(values="TOTAL DO ATIVO").values  # ["TOTAL DO ATIVO"]
 
 ---
 
-## models.py
-
-### ScopeResolution
-
-Dataclass imutavel para resultado de resolucao de escopo IFDATA:
-
-```python
-@dataclass(frozen=True)
-class ScopeResolution:
-    cod_inst: str         # Codigo para filtrar IFDATA (CNPJ ou CodConglomerado)
-    tipo_inst: int        # TipoInstituicao: 1=prudencial, 2=financeiro, 3=individual
-    cnpj_original: str    # CNPJ de 8 digitos original
-    escopo: str           # "individual", "prudencial", ou "financeiro"
-```
-
-Uso:
-
-```python
-from ifdata_bcb.core import EntityLookup
-from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
-
-lookup = EntityLookup()
-resolution = resolve_ifdata_escopo(lookup, "60872504", "prudencial")
-
-print(resolution.cod_inst)      # "C0080099" (codigo conglomerado)
-print(resolution.tipo_inst)     # 1
-print(resolution.escopo)        # "prudencial"
-print(resolution.cnpj_original) # "60872504"
-```
-
----
-
 ## types.py
 
 ### DateInput
@@ -500,9 +435,7 @@ O `domain/__init__.py` e um namespace leve (sem re-exports). Importe diretamente
 # Imports diretos (nao passam pelo __init__.py do domain)
 from ifdata_bcb.domain.exceptions import BacenAnalysisError, InvalidScopeError
 from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
-from ifdata_bcb.domain.models import ScopeResolution
 from ifdata_bcb.domain.validation import ValidatedCnpj8, NormalizedDates
-
 ```
 
 Re-export no `__init__.py` raiz (lazy, apenas as mais comuns):

@@ -1,6 +1,7 @@
 import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum, auto
 from pathlib import Path
 
 import duckdb
@@ -12,10 +13,15 @@ from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
 from ifdata_bcb.infra.storage import DataManager
-from ifdata_bcb.providers.collector_models import CollectStatus
 from ifdata_bcb.ui.display import get_display
 from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
 from ifdata_bcb.utils.text import normalize_text
+
+
+class CollectStatus(Enum):
+    SUCCESS = auto()
+    UNAVAILABLE = auto()
+    FAILED = auto()
 
 
 class BaseCollector(ABC):

@@ -8,8 +8,7 @@ A camada de providers implementa coleta e leitura para cada fonte de dados do BC
 src/ifdata_bcb/providers/
 |-- __init__.py              # Exports publicos
 |-- base_explorer.py        # Classe base abstrata para explorers
-|-- base_collector.py       # Template para coleta
-|-- collector_models.py     # CollectStatus enum
+|-- base_collector.py       # Template para coleta + CollectStatus enum
 |-- enrichment.py           # Enriquecimento cadastral inline
 |-- cosif/                   # COSIF (mensal)
 |   |-- __init__.py
@@ -17,11 +16,15 @@ src/ifdata_bcb/providers/
 |   +-- explorer.py         # COSIFExplorer
 +-- ifdata/                  # IFDATA (trimestral)
     |-- __init__.py
-    |-- collector.py        # IFDATAValoresCollector, IFDATACadastroCollector
-    |-- valores_explorer.py # IFDATAExplorer
-    |-- cadastro_explorer.py # CadastroExplorer
-    |-- scope.py            # resolve_ifdata_escopo()
-    +-- temporal.py         # TemporalResolver (resolucao temporal por periodo)
+    |-- cadastro/            # Dados cadastrais
+    |   |-- __init__.py
+    |   |-- collector.py    # IFDATACadastroCollector
+    |   +-- explorer.py     # CadastroExplorer
+    +-- valores/             # Dados financeiros (valores)
+        |-- __init__.py
+        |-- collector.py    # IFDATAValoresCollector
+        |-- explorer.py     # IFDATAExplorer
+        +-- temporal.py     # TemporalResolver (resolucao temporal por periodo)
 ```
 
 ---
@@ -165,7 +168,7 @@ def _end(self, verbose=True, periodos=None, falhas=None):
 Enum para status de coleta:
 
 ```python
-# collector_models.py
+# base_collector.py
 class CollectStatus(Enum):
     SUCCESS = auto()      # Arquivo salvo
     UNAVAILABLE = auto()  # Periodo nao disponivel no BCB
@@ -305,7 +308,7 @@ class COSIFExplorer(BaseExplorer):
 
 ---
 
-## ifdata/collector.py
+## ifdata/valores/collector.py
 
 ### IFDATAValoresCollector
 
@@ -331,6 +334,8 @@ class IFDATAValoresCollector(BaseCollector):
         """
 ```
 
+## ifdata/cadastro/collector.py
+
 ### IFDATACadastroCollector
 
 - **Periodicidade**: Trimestral
@@ -350,7 +355,7 @@ class IFDATACadastroCollector(BaseCollector):
 
 ---
 
-## ifdata/valores_explorer.py (IFDATAExplorer)
+## ifdata/valores/explorer.py (IFDATAExplorer)
 
 ### Especificidades
 
@@ -401,23 +406,15 @@ class IFDATAExplorer(BaseExplorer):
 
 ### Resolucao de Escopo
 
-```python
-from ifdata_bcb.providers.ifdata.scope import resolve_ifdata_escopo
+A resolucao de escopo e feita internamente pelo `TemporalResolver` (em `valores/temporal.py`), que resolve CNPJs para codigos IFDATA por periodo:
 
-def _resolve_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
-    """
-    Usa resolve_ifdata_escopo() para resolver CNPJ -> codigo IFDATA.
-
-    individual: CNPJ direto, TipoInstituicao=3
-    prudencial: CodConglomeradoPrudencial, TipoInstituicao=1
-    financeiro: CodConglomeradoFinanceiro ou CNPJ direto, TipoInstituicao=2
-    """
-    return resolve_ifdata_escopo(self._resolver, cnpj_8, escopo)
-```
+- **individual**: CNPJ direto, TipoInstituicao=3
+- **prudencial**: CodConglomeradoPrudencial, TipoInstituicao=1
+- **financeiro**: CodConglomeradoFinanceiro ou CNPJ direto, TipoInstituicao=2
 
 ### Mapeamento de Reporters
 
-O metodo `_resolve_mapeamento()` cruza dados do IFDATA com o cadastro para mapear
+O `TemporalResolver` cruza dados do IFDATA com o cadastro para mapear
 chaves de reporte (COD_INST) para entidades analiticas (CNPJ_8):
 
 - **Individual**: COD_INST = CNPJ_8 direto
@@ -480,7 +477,7 @@ Lista chaves operacionais de reporte por entidade e escopo:
 
 ---
 
-## ifdata/cadastro_explorer.py (CadastroExplorer)
+## ifdata/cadastro/explorer.py (CadastroExplorer)
 
 ### Especificidades
 
@@ -608,36 +605,7 @@ def enrich_with_cadastro(
 
 ---
 
-## ifdata/scope.py
-
-### Responsabilidades
-
-Resolucao de escopo IFDATA a partir de CNPJ. Extraido do `EntityLookup` para modulo independente.
-
-### resolve_ifdata_escopo()
-
-```python
-def resolve_ifdata_escopo(
-    entity_lookup: EntityLookup,
-    cnpj_8: str,
-    escopo: str,
-) -> ScopeResolution:
-    """
-    Resolve CNPJ para codigo IFDATA baseado no escopo.
-
-    individual: CNPJ direto, TipoInstituicao=3
-    prudencial: CodConglomeradoPrudencial, TipoInstituicao=1
-    financeiro: Verifica CodConglomeradoFinanceiro e CNPJ direto, TipoInstituicao=2
-
-    Raises:
-        DataUnavailableError: Entidade nao tem dados para o escopo.
-        InvalidScopeError: Escopo invalido.
-    """
-```
-
----
-
-## ifdata/temporal.py
+## ifdata/valores/temporal.py
 
 ### Responsabilidades
 
@@ -701,8 +669,8 @@ class NovoExplorer(BaseExplorer):
     def _get_file_prefix(self):
         return "novo"
 
-    def read(self, instituicao, start, end=None, **kwargs):
-        self._validate_required_params(instituicao, start)
+    def read(self, start, end=None, *, instituicao=None, **kwargs):
+        self._validate_required_params(start)
 
         conditions = [
             self._build_cnpj_condition(instituicao),
@@ -756,17 +724,14 @@ def __getattr__(name):
 ```python
 # providers/__init__.py
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
-from ifdata_bcb.providers.base_collector import BaseCollector
+from ifdata_bcb.providers.base_collector import BaseCollector, CollectStatus
 from ifdata_bcb.providers.base_explorer import BaseExplorer
-from ifdata_bcb.providers.collector_models import CollectStatus
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.collector import (
-    IFDATACadastroCollector,
-    IFDATAValoresCollector,
-)
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
-from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
+from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 
 __all__ = [
     # Base

@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from ifdata_bcb.providers.ifdata.temporal import TemporalResolver
+from ifdata_bcb.providers.ifdata.valores.temporal import TemporalResolver
 
 
 class TestAddCnpjMapping:

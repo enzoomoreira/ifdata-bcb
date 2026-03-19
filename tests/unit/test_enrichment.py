@@ -63,7 +63,7 @@ class TestEnrichWithCadastroEdgeCases:
             }
         )
 
-        import ifdata_bcb.providers.ifdata.cadastro_explorer as cad_mod
+        import ifdata_bcb.providers.ifdata.cadastro.explorer as cad_mod
 
         class FakeCadastro:
             def __init__(self, **kw):
@@ -101,7 +101,7 @@ class TestEnrichWithCadastroEdgeCases:
             }
         )
 
-        import ifdata_bcb.providers.ifdata.cadastro_explorer as cad_mod
+        import ifdata_bcb.providers.ifdata.cadastro.explorer as cad_mod
 
         class FakeCadastro:
             def __init__(self, **kw):

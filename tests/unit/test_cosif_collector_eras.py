@@ -205,7 +205,7 @@ class TestDownloadSingleInheritance:
 
     def test_ifdata_valores_inherits_download_single(self) -> None:
         from ifdata_bcb.providers.base_collector import BaseCollector
-        from ifdata_bcb.providers.ifdata.collector import IFDATAValoresCollector
+        from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
 
         collector = IFDATAValoresCollector(data_manager=MagicMock())
         # Deve usar o metodo da base, nao ter override proprio
@@ -213,7 +213,9 @@ class TestDownloadSingleInheritance:
 
     def test_ifdata_cadastro_inherits_download_single(self) -> None:
         from ifdata_bcb.providers.base_collector import BaseCollector
-        from ifdata_bcb.providers.ifdata.collector import IFDATACadastroCollector
+        from ifdata_bcb.providers.ifdata.cadastro.collector import (
+            IFDATACadastroCollector,
+        )
 
         collector = IFDATACadastroCollector(data_manager=MagicMock())
         assert type(collector)._download_single is BaseCollector._download_single

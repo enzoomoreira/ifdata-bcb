@@ -8,8 +8,8 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 graph TD
     API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro, search()<br/><i>lazy loading</i>"]
     CORE["<b>CORE (core/)</b><br/>EntityLookup<br/>constants<br/>eras<br/>api.search()"]
-    DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>ScopeResolution<br/>Type aliases<br/>Validation models"]
-    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector | collector_models<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/ : IFDATACollector, IFDATAExplorer, CadastroExplorer"]
+    DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>Type aliases<br/>Validation models"]
+    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/valores/: IFDATAValoresCollector, IFDATAExplorer<br/>ifdata/cadastro/: IFDATACadastroCollector, CadastroExplorer"]
     INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
     UTILS["<b>UTILS (utils/)</b><br/>text | date<br/>fuzzy | cnpj<br/>period"]
     UI["<b>UI (ui/)</b><br/>Display (Rich)"]
@@ -34,14 +34,12 @@ src/ifdata_bcb/
 |-- domain/                   # Modelos e tipos
 |   |-- __init__.py
 |   |-- exceptions.py        # Hierarquia de excecoes
-|   |-- models.py            # ScopeResolution
 |   |-- types.py             # DateInput, AccountInput, etc
 |   +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 |-- providers/                # Implementacoes por fonte
 |   |-- __init__.py
 |   |-- base_explorer.py     # Classe base abstrata para explorers
-|   |-- base_collector.py    # Template para coleta
-|   |-- collector_models.py  # CollectStatus enum
+|   |-- base_collector.py    # Template para coleta + CollectStatus enum
 |   |-- enrichment.py        # Enriquecimento cadastral inline
 |   |-- cosif/               # COSIF (mensal)
 |   |   |-- __init__.py
@@ -49,11 +47,15 @@ src/ifdata_bcb/
 |   |   +-- explorer.py      # COSIFExplorer
 |   +-- ifdata/              # IFDATA (trimestral)
 |       |-- __init__.py
-|       |-- collector.py     # IFDATAValoresCollector, IFDATACadastroCollector
-|       |-- valores_explorer.py  # IFDATAExplorer
-|       |-- cadastro_explorer.py # CadastroExplorer
-|       |-- scope.py         # resolve_ifdata_escopo()
-|       +-- temporal.py      # TemporalResolver (resolucao temporal por periodo)
+|       |-- cadastro/        # Dados cadastrais
+|       |   |-- __init__.py
+|       |   |-- collector.py # IFDATACadastroCollector
+|       |   +-- explorer.py  # CadastroExplorer
+|       +-- valores/         # Dados financeiros (valores)
+|           |-- __init__.py
+|           |-- collector.py # IFDATAValoresCollector
+|           |-- explorer.py  # IFDATAExplorer
+|           +-- temporal.py  # TemporalResolver (resolucao temporal por periodo)
 |-- infra/                    # Infraestrutura tecnica
 |   |-- __init__.py
 |   |-- config.py            # Settings (pydantic-settings)
@@ -95,7 +97,6 @@ src/ifdata_bcb/
 ### Domain (`domain/`)
 
 - **exceptions**: Hierarquia de 9 excecoes customizadas
-- **models**: `ScopeResolution` dataclass para resolucao IFDATA
 - **types**: Type aliases para parametros flexiveis
 - **validation**: Pydantic models para normalizacao/validacao de inputs
 
@@ -360,8 +361,8 @@ graph LR
     init["__init__.py"]
 
     cosif_exp["COSIFExplorer<br/><i>cosif/explorer.py</i>"]
-    ifdata_exp["IFDATAExplorer<br/><i>ifdata/valores_explorer.py</i>"]
-    cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro_explorer.py</i>"]
+    ifdata_exp["IFDATAExplorer<br/><i>ifdata/valores/explorer.py</i>"]
+    cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro/explorer.py</i>"]
     api["search()<br/><i>core/api.py</i>"]
 
     base_exp["BaseExplorer<br/><i>providers/base_explorer.py</i>"]

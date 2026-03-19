@@ -8,8 +8,8 @@ import pytest
 
 from ifdata_bcb.domain.exceptions import MissingRequiredParameterError
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.valores_explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 BANCO_A_CNPJ = "60872504"
 
