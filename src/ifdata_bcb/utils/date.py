@@ -1,7 +1,4 @@
-from calendar import monthrange
 from datetime import date, datetime
-
-import pandas as pd
 
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
 
@@ -101,9 +98,3 @@ def align_to_quarter_end(yyyymm: int) -> int:
     year, month = divmod(yyyymm, 100)
     quarter_month = ((month - 1) // 3 + 1) * 3
     return year * 100 + quarter_month
-
-
-def yyyymm_to_datetime(value: int) -> pd.Timestamp:
-    year, month = divmod(int(value), 100)
-    last_day = monthrange(year, month)[1]
-    return pd.Timestamp(year=year, month=month, day=last_day)

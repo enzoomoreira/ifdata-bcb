@@ -69,7 +69,7 @@ class TestEnrichWithCadastroEdgeCases:
             def __init__(self, **kw):
                 pass
 
-            def read(self, **kw):
+            def read(self, *args, **kw):
                 return pd.DataFrame()
 
         monkeypatch.setattr(cad_mod, "CadastroExplorer", FakeCadastro)
@@ -107,7 +107,7 @@ class TestEnrichWithCadastroEdgeCases:
             def __init__(self, **kw):
                 pass
 
-            def read(self, **kw):
+            def read(self, *args, **kw):
                 return cad_df
 
         monkeypatch.setattr(cad_mod, "CadastroExplorer", FakeCadastro)

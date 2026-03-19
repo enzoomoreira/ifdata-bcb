@@ -92,18 +92,48 @@ class DataProcessingError(BacenAnalysisError):
 class IncompatibleEraWarning(UserWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
 
+    def __init__(self, message: str, boundary: int, source: str):
+        self.boundary = boundary
+        self.source = source
+        super().__init__(message)
+
 
 class PartialDataWarning(UserWarning):
     """Resultado incompleto - alguns periodos/entidades sem dados."""
+
+    def __init__(self, message: str, reason: str = "", detail: dict | None = None):
+        self.reason = reason
+        self.detail = detail
+        super().__init__(message)
 
 
 class ScopeUnavailableWarning(UserWarning):
     """Escopo indisponivel para entidade em parte do range temporal."""
 
+    def __init__(
+        self,
+        message: str,
+        entities: list[str],
+        escopo: str,
+        periodos: list[int],
+    ):
+        self.entities = entities
+        self.escopo = escopo
+        self.periodos = periodos
+        super().__init__(message)
+
 
 class NullValuesWarning(UserWarning):
     """Entidade presente nos dados mas com todos os valores financeiros NULL."""
 
+    def __init__(self, message: str, entities: list[str]):
+        self.entities = entities
+        super().__init__(message)
+
 
 class EmptyFilterWarning(UserWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
+
+    def __init__(self, message: str, parameter: str):
+        self.parameter = parameter
+        super().__init__(message)

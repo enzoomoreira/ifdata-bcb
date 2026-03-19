@@ -96,10 +96,13 @@ def check_era_boundary(
     max_date = max(dates)
     if min_date < boundary <= max_date:
         emit_user_warning(
-            f"Query {source_name} abrange periodos antes e apos {boundary}. "
-            f"Codigos de conta foram renumerados nesta transicao "
-            f"(Resolucao CMN 4.966) e nao sao compativeis entre si. "
-            f"Resultados podem misturar contas com codigos distintos.",
-            IncompatibleEraWarning,
+            IncompatibleEraWarning(
+                f"Query {source_name} abrange periodos antes e apos {boundary}. "
+                f"Codigos de conta foram renumerados nesta transicao "
+                f"(Resolucao CMN 4.966) e nao sao compativeis entre si. "
+                f"Resultados podem misturar contas com codigos distintos.",
+                boundary=boundary,
+                source=source_name,
+            ),
             stacklevel=3,
         )

@@ -53,6 +53,7 @@ class BaseExplorer(ABC):
     Configuracao por class attributes:
     - _COLUMN_MAP: Mapeamento de colunas storage -> apresentacao
     - _DERIVED_COLUMNS: Colunas adicionadas pos-query por Python
+    - _PASSTHROUGH_COLUMNS: Colunas nativas do parquet sem rename (passam direto)
     - _DROP_COLUMNS: Colunas a remover antes do mapeamento
     - _COLUMN_ORDER: Ordem desejada das colunas no output
     - _VALID_ESCOPOS: Lista de escopos validos para _validate_escopo
@@ -60,9 +61,11 @@ class BaseExplorer(ABC):
 
     _COLUMN_MAP: dict[str, str] = {}
     _DERIVED_COLUMNS: set[str] = set()
+    _PASSTHROUGH_COLUMNS: set[str] = set()
     _DROP_COLUMNS: list[str] = []
     _COLUMN_ORDER: list[str] = []
     _VALID_ESCOPOS: list[str] = []
+    _DATE_COLUMN: str | None = None
 
     def __init__(
         self,
@@ -90,6 +93,29 @@ class BaseExplorer(ABC):
             return df
         rename_map = {k: v for k, v in self._COLUMN_MAP.items() if k in df.columns}
         return df.rename(columns=rename_map) if rename_map else df
+
+    def _read_glob(
+        self,
+        pattern: str,
+        subdir: str,
+        columns: list[str] | None = None,
+        where: str | None = None,
+    ) -> pd.DataFrame:
+        """Le parquets via DuckDB com dedup, datetime e exclude automaticos."""
+        date_alias = "DATA"
+        if self._DATE_COLUMN and self._DATE_COLUMN in self._COLUMN_MAP:
+            date_alias = self._COLUMN_MAP[self._DATE_COLUMN]
+
+        return self._qe.read_glob(
+            pattern=pattern,
+            subdir=subdir,
+            columns=columns,
+            where=where,
+            distinct=True,
+            date_column=self._DATE_COLUMN,
+            date_alias=date_alias,
+            exclude_columns=self._DROP_COLUMNS if not columns else None,
+        )
 
     @abstractmethod
     def _get_subdir(self) -> str: ...
@@ -197,11 +223,8 @@ class BaseExplorer(ABC):
 
     def _validate_required_params(
         self,
-        instituicao: InstitutionInput | None,
         start: str | None,
     ) -> None:
-        if instituicao is None:
-            raise MissingRequiredParameterError("instituicao")
         if start is None:
             raise MissingRequiredParameterError("start")
 
@@ -249,9 +272,11 @@ class BaseExplorer(ABC):
             return None
         if not columns:
             emit_user_warning(
-                "columns=[] passado como filtro vazio. "
-                "Use columns=None para retornar todas as colunas.",
-                EmptyFilterWarning,
+                EmptyFilterWarning(
+                    "columns=[] passado como filtro vazio. "
+                    "Use columns=None para retornar todas as colunas.",
+                    parameter="columns",
+                ),
                 stacklevel=3,
             )
             return None
@@ -259,6 +284,7 @@ class BaseExplorer(ABC):
             set(self._COLUMN_MAP.keys())
             | set(self._COLUMN_MAP.values())
             | self._DERIVED_COLUMNS
+            | self._PASSTHROUGH_COLUMNS
         )
         unknown = set(columns) - all_known
         if unknown:
@@ -316,26 +342,24 @@ class BaseExplorer(ABC):
         return build_string_condition(column, cnpjs)
 
     def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Pipeline completo: drop -> rename -> dedup -> datetime -> sort -> reorder."""
-        # 1. Drop colunas internas
+        """Post-DuckDB: rename -> sort -> reorder.
+
+        Dedup e datetime conversion sao feitos pelo DuckDB via _read_glob.
+        Drop de colunas internas e feito via EXCLUDE no SQL.
+        """
+        # 1. Drop colunas internas (fallback para colunas que passaram pelo SQL)
         drop_cols = [c for c in self._DROP_COLUMNS if c in df.columns]
         if drop_cols:
             df = df.drop(columns=drop_cols)
 
-        # 2. Mapeamento de colunas
+        # 2. Mapeamento de colunas (rename storage -> canonico)
         df = self._apply_column_mapping(df)
 
         if df.empty:
             return df
 
-        df = df.copy()
-        df = df.drop_duplicates()
-
-        # 3. Conversao DATA -> datetime
+        # 3. Sort por DATA (pandas e 40x mais rapido que DuckDB ORDER BY)
         if "DATA" in df.columns:
-            df["DATA"] = pd.to_datetime(
-                df["DATA"].astype(str), format="%Y%m"
-            ) + pd.offsets.MonthEnd(0)
             df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
 
         # 4. Reordenar colunas (se _COLUMN_ORDER definido)
@@ -351,8 +375,10 @@ class BaseExplorer(ABC):
         if df.empty or "VALOR" not in df.columns or "CNPJ_8" not in df.columns:
             return
 
-        null_mask = df.groupby("CNPJ_8")["VALOR"].apply(lambda s: s.isna().all())
-        all_null_cnpjs = sorted(null_mask[null_mask].index.astype(str).tolist())
+        has_value = set(df.loc[df["VALOR"].notna(), "CNPJ_8"].unique())
+        all_null_cnpjs = sorted(
+            str(c) for c in df["CNPJ_8"].unique() if c not in has_value
+        )
         if not all_null_cnpjs:
             return
 
@@ -363,24 +389,31 @@ class BaseExplorer(ABC):
             label = f"{cnpj} ({nome})" if nome else cnpj
             entities.append(label)
 
-        if len(entities) <= 3:
+        if len(entities) <= 5:
             entity_str = ", ".join(entities)
         else:
-            entity_str = f"{len(entities)} entidades: {', '.join(entities[:3])}, ..."
+            entity_str = f"{len(entities)} entidades"
         emit_user_warning(
-            f"Dados com VALOR inteiramente NULL para {entity_str}. "
-            f"O BCB registrou a entidade mas nao forneceu valores financeiros.",
-            NullValuesWarning,
+            NullValuesWarning(
+                f"Dados com VALOR inteiramente NULL para {entity_str}. "
+                f"O BCB registrou a entidade mas nao forneceu valores financeiros.",
+                entities=all_null_cnpjs,
+            ),
             stacklevel=4,
         )
 
     def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica nomes canonicos do cadastro a coluna INSTITUICAO.
 
-        Se INSTITUICAO ja existe, substitui apenas onde o canonico nao eh vazio.
-        Se nao existe, cria a coluna.
+        So atua quando INSTITUICAO nao existe no DataFrame (ex: IFDATA bulk
+        individual onde CNPJ_8 vem de CodInst e nao ha nome no parquet).
+        Quando INSTITUICAO ja existe (ex: COSIF tem NOME_INSTITUICAO), pula
+        o lookup pois o parquet ja tem os nomes corretos.
         """
         if df.empty or "CNPJ_8" not in df.columns:
+            return df
+
+        if "INSTITUICAO" in df.columns:
             return df
 
         cnpjs = df["CNPJ_8"].dropna().astype(str).unique().tolist()
@@ -388,14 +421,7 @@ class BaseExplorer(ABC):
             return df
 
         nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
-
-        if "INSTITUICAO" not in df.columns:
-            df["INSTITUICAO"] = df["CNPJ_8"].astype(str).map(nomes)
-        else:
-            df = df.copy()
-            canonical = df["CNPJ_8"].astype(str).map(nomes)
-            mask = canonical.notna() & (canonical != "")
-            df.loc[mask, "INSTITUICAO"] = canonical[mask]
+        df["INSTITUICAO"] = df["CNPJ_8"].astype(str).map(nomes)
 
         return df
 
@@ -492,31 +518,45 @@ class BaseExplorer(ABC):
         source_name: str,
         has_files: bool,
         had_conta_filter: bool,
+        had_institution_filter: bool = True,
     ) -> None:
         """Cascata de diagnostico quando read() retorna vazio."""
         if not has_files:
             emit_user_warning(
-                f"Nenhum arquivo {source_name} encontrado no cache. "
-                f"Execute {source_name.lower()}.collect() para baixar os dados.",
-                PartialDataWarning,
+                PartialDataWarning(
+                    f"Nenhum arquivo {source_name} encontrado no cache. "
+                    f"Execute {source_name.lower()}.collect() para baixar os dados.",
+                    reason="no_files",
+                ),
                 stacklevel=3,
             )
             return
 
         if had_conta_filter:
             emit_user_warning(
-                f"Filtro de conta nao encontrou resultados em {source_name}. "
-                f"Verifique se o codigo/nome da conta corresponde ao periodo "
-                f"solicitado (codigos mudam entre eras do BCB).",
-                PartialDataWarning,
+                PartialDataWarning(
+                    f"Filtro de conta nao encontrou resultados em {source_name}. "
+                    f"Verifique se o codigo/nome da conta corresponde ao periodo "
+                    f"solicitado (codigos mudam entre eras do BCB).",
+                    reason="conta_not_found",
+                ),
                 stacklevel=3,
             )
             return
 
+        if had_institution_filter:
+            msg = (
+                f"Nenhum dado {source_name} encontrado para os parametros "
+                f"solicitados. Verifique se os dados foram coletados e se "
+                f"os filtros (periodo, instituicao) estao corretos."
+            )
+        else:
+            msg = (
+                f"Nenhum dado {source_name} encontrado para os filtros "
+                f"solicitados (periodo, escopo, conta, etc)."
+            )
+
         emit_user_warning(
-            f"Nenhum dado {source_name} encontrado para os parametros "
-            f"solicitados. Verifique se os dados foram coletados e se "
-            f"os filtros (periodo, instituicao) estao corretos.",
-            PartialDataWarning,
+            PartialDataWarning(msg, reason="empty_result"),
             stacklevel=3,
         )

@@ -54,45 +54,58 @@ Le dados cadastrais com filtros.
 
 ```python
 bcb.cadastro.read(
+    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: str | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos (opcional)
-    start: str | None = None,               # Data inicial ou unica. Se None, usa ultimo periodo
-    end: str | None = None,                 # Data final para range
     segmento: str | None = None,            # Segmento para filtrar (accent-insensitive)
     uf: str | None = None,                  # UF para filtrar
     situacao: str | None = None,            # Situacao para filtrar ('A'=Ativo, 'I'=Inativo)
+    atividade: str | None = None,           # Atividade para filtrar
+    tcb: str | None = None,                 # TCB para filtrar
+    td: str | None = None,                  # TD para filtrar
+    tc: str | int | None = None,            # TC para filtrar (aceita str ou int)
+    sr: str | None = None,                  # SR para filtrar
+    municipio: str | None = None,           # Municipio para filtrar
     columns: list[str] | None = None        # Colunas especificas (aceita nomes de apresentacao)
 ) -> pd.DataFrame
 ```
 
+**Parametro Obrigatorio**: `start`.
+
 **API de Datas**:
-- `start=None`: usa ultimo periodo disponivel
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
 
-**Filtros de texto** (`segmento`, `uf`, `situacao`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
+**Filtros de texto** (`segmento`, `uf`, `situacao`, `atividade`, `tcb`, `td`, `tc`, `sr`, `municipio`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
+
+**Raises**:
+- `MissingRequiredParameterError`: Se `start` nao fornecido.
+- `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
 
 ```python
-# Dados de uma instituicao no ultimo periodo disponivel
-df = bcb.cadastro.read(instituicao='60872504')
-
 # Dados de uma instituicao em um periodo especifico
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12')
+df = bcb.cadastro.read('2024-12', instituicao='60872504')
 
 # Filtrar por segmento (accent-insensitive)
-df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
 
 # Filtrar por UF
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12', uf='SP')
+df = bcb.cadastro.read('2024-12', instituicao='60872504', uf='SP')
 
 # Filtrar apenas instituicoes ativas
-df = bcb.cadastro.read(start='2024-12', situacao='A')
+df = bcb.cadastro.read('2024-12', situacao='A')
+
+# Novos filtros: atividade, tcb, td, tc, sr, municipio
+df = bcb.cadastro.read('2024-12', tcb='B1', sr='S1')
+df = bcb.cadastro.read('2024-12', municipio='Sao Paulo', uf='SP')
 
 # Combinar filtros
 df = bcb.cadastro.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     segmento='Banco Multiplo',
     uf='SP',
     situacao='A'
@@ -243,7 +256,7 @@ membros = bcb.cadastro.get_conglomerate_members('C0080099', start='2024-12')
 
 ```python
 # Bancos do Segmento S1 (maiores)
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12')
+df = bcb.cadastro.read('2024-12', instituicao='60872504')
 if df['SR'].iloc[0] == 'S1':
     print("Banco sistemicamente importante")
 ```
@@ -385,8 +398,10 @@ info = bcb.cadastro.info('99999999')
 if info is None:
     print("Instituicao nao encontrada no cadastro")
 
-# start=None funciona (usa ultimo periodo disponivel)
-df = bcb.cadastro.read(instituicao='60872504')  # OK!
+# start e obrigatorio em read()
+df = bcb.cadastro.read('2024-12', instituicao='60872504')  # OK!
+
+# info() e get_conglomerate_members(): start=None usa ultimo periodo disponivel
 info = bcb.cadastro.info('60872504')             # OK!
 membros = bcb.cadastro.get_conglomerate_members('C0080099')  # OK!
 ```

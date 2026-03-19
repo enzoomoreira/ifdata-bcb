@@ -222,9 +222,12 @@ Warning emitido quando uma query abrange periodos com codigos de conta incompati
 ```python
 class IncompatibleEraWarning(UserWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
+    def __init__(self, message: str, boundary: int, source: str):
+        self.boundary = boundary  # Periodo fronteira (ex: 202501)
+        self.source = source      # Fonte (ex: "COSIF")
 
 # Emitido automaticamente por check_era_boundary() em core/eras.py
-# Exemplo: cosif.read(start='2024-12', end='2025-01') emite este warning
+# Exemplo: cosif.read('2024-12', '2025-01') emite este warning
 ```
 
 Nao herda de `BacenAnalysisError` -- e um `UserWarning` capturavel via `warnings.catch_warnings()`:
@@ -235,9 +238,10 @@ from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always")
-    df = bcb.cosif.read(instituicao='60872504', start='2024-12', end='2025-01')
+    df = bcb.cosif.read('2024-12', '2025-01', instituicao='60872504')
     if w and issubclass(w[0].category, IncompatibleEraWarning):
-        print("Cuidado: codigos de conta podem ser incompativeis")
+        era_warning = w[0].message
+        print(f"Boundary: {era_warning.boundary}, Source: {era_warning.source}")
 ```
 
 ### PartialDataWarning
@@ -247,6 +251,9 @@ Warning emitido quando o resultado pode estar incompleto -- por exemplo, quando 
 ```python
 class PartialDataWarning(UserWarning):
     """Resultado incompleto - alguns periodos/entidades sem dados."""
+    def __init__(self, message: str, reason: str = "", detail: dict | None = None):
+        self.reason = reason    # Ex: "query_failed", "no_cnpj_for_enrichment"
+        self.detail = detail
 ```
 
 ### ScopeUnavailableWarning
@@ -256,6 +263,10 @@ Warning emitido quando um escopo nao esta disponivel para uma entidade em parte 
 ```python
 class ScopeUnavailableWarning(UserWarning):
     """Escopo indisponivel para entidade em parte do range temporal."""
+    def __init__(self, message: str, entities: list[str], escopo: str, periodos: list[int]):
+        self.entities = entities  # CNPJs afetados
+        self.escopo = escopo      # Escopo indisponivel
+        self.periodos = periodos  # Periodos afetados
 ```
 
 ### NullValuesWarning
@@ -265,6 +276,8 @@ Warning emitido quando uma entidade esta presente nos dados mas com todos os val
 ```python
 class NullValuesWarning(UserWarning):
     """Entidade presente nos dados mas com todos os valores financeiros NULL."""
+    def __init__(self, message: str, entities: list[str]):
+        self.entities = entities  # CNPJs com valores NULL
 ```
 
 ### EmptyFilterWarning
@@ -274,6 +287,8 @@ Warning emitido quando um filtro vazio e passado a um parametro (ex: `columns=[]
 ```python
 class EmptyFilterWarning(UserWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
+    def __init__(self, message: str, parameter: str):
+        self.parameter = parameter  # Nome do parametro vazio
 ```
 
 ---
@@ -420,7 +435,7 @@ Aceita:
 from ifdata_bcb import BacenAnalysisError
 
 try:
-    df = bcb.cosif.read(instituicao='60872504', start='2024-12')
+    df = bcb.cosif.read('2024-12', instituicao='60872504')
 except BacenAnalysisError as e:
     print(f"Erro: {e}")
 ```
@@ -436,7 +451,7 @@ from ifdata_bcb.domain.exceptions import (
 )
 
 try:
-    df = bcb.ifdata.read(instituicao='Itau', start='2024-12', escopo='prudencial')
+    df = bcb.ifdata.read('2024-12', instituicao='Itau', escopo='prudencial')
 except InvalidIdentifierError as e:
     print(f"CNPJ invalido: {e.identificador}")
 except MissingRequiredParameterError as e:
@@ -450,10 +465,8 @@ except DataUnavailableError as e:
 ### Padroes de Validacao em Explorers
 
 ```python
-def read(self, instituicao, start, end=None, escopo=None):
-    # 1. Parametros obrigatorios
-    if instituicao is None:
-        raise MissingRequiredParameterError("instituicao")
+def read(self, start, end=None, *, instituicao=None, escopo=None):
+    # 1. Parametro obrigatorio (apenas start)
     if start is None:
         raise MissingRequiredParameterError("start")
 
@@ -464,11 +477,12 @@ def read(self, instituicao, start, end=None, escopo=None):
         if start_int > end_int:
             raise InvalidDateRangeError(start, end)
 
-    # 3. Validar CNPJ
-    cnpj = self._resolve_entidade(instituicao)  # Levanta InvalidIdentifierError
+    # 3. Validar CNPJ (se fornecido)
+    if instituicao is not None:
+        cnpj = self._resolve_entidade(instituicao)  # Levanta InvalidIdentifierError
 
     # 4. Validar escopo (em IFDATAExplorer)
-    if escopo not in ["individual", "prudencial", "financeiro"]:
+    if escopo not in [None, "individual", "prudencial", "financeiro"]:
         raise InvalidScopeError(
             scope="escopo",
             value=escopo,

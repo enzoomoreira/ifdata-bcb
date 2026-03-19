@@ -31,7 +31,7 @@ Dados de cada instituicao financeira separadamente.
 bcb.cosif.collect('2024-01', '2024-12', escopo='individual')
 
 # Consultar dados individuais
-df = bcb.cosif.read(instituicao='60872504', start='2024-12', escopo='individual')
+df = bcb.cosif.read('2024-12', instituicao='60872504', escopo='individual')
 ```
 
 **Quando usar**:
@@ -48,7 +48,7 @@ Dados consolidados do conglomerado prudencial (grupo de empresas sob mesma gesta
 bcb.cosif.collect('2024-01', '2024-12', escopo='prudencial')
 
 # Consultar dados prudenciais
-df = bcb.cosif.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df = bcb.cosif.read('2024-12', instituicao='60872504', escopo='prudencial')
 ```
 
 **Quando usar**:
@@ -62,7 +62,7 @@ Quando `escopo=None` (padrao), a busca e feita em ambos os escopos e uma coluna 
 
 ```python
 # Buscar em TODOS os escopos
-df = bcb.cosif.read(instituicao='60872504', start='2024-12')
+df = bcb.cosif.read('2024-12', instituicao='60872504')
 # Resultado inclui coluna ESCOPO com valores 'individual' ou 'prudencial'
 ```
 
@@ -101,73 +101,80 @@ Le dados COSIF com filtros.
 
 ```python
 bcb.cosif.read(
-    instituicao: str | list[str],           # CNPJ(s) de 8 digitos. OBRIGATORIO
-    start: str,                             # Data inicial ou unica. OBRIGATORIO
-    end: str | None = None,                 # Data final para range
-    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
+    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: str | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
+    instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos. Se None, retorna todas (bulk)
     escopo: str | None = None,              # 'individual', 'prudencial', ou None (TODOS)
+    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
+    documento: str | list[str] | None = None,  # Tipo de documento (ex: balancete, semestral). Deve ser numerico
     columns: list[str] | None = None,       # Colunas especificas
-    documento: str | list[str] | None = None,  # Tipo de documento (ex: balancete, semestral)
     cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
 ```
 
-**Parametros Obrigatorios**: `instituicao` e `start`.
+**Parametro Obrigatorio**: `start`.
 
 **API de Datas**:
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range mensal automatico
 
+**Bulk read**: Quando `instituicao=None` (padrao), retorna dados de todas as instituicoes do periodo, sem necessidade de resolver entidade. Util para rankings e analises agregadas.
+
 **Raises**:
-- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
+- `MissingRequiredParameterError`: Se `start` nao fornecido.
 - `InvalidDateRangeError`: Se `start > end`.
+- `InvalidScopeError`: Se `documento` nao for numerico.
 
 **Exemplos**:
 
 ```python
 # Data unica em um escopo especifico
-df = bcb.cosif.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df = bcb.cosif.read('2024-12', instituicao='60872504', escopo='prudencial')
 
 # Buscar em TODOS os escopos
-df = bcb.cosif.read(instituicao='60872504', start='2024-12')
+df = bcb.cosif.read('2024-12', instituicao='60872504')
+
+# Bulk read: todas as instituicoes
+df = bcb.cosif.read('2024-12', escopo='prudencial')
 
 # Conta especifica (filtro case-insensitive)
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     conta='total geral do ativo',
     escopo='prudencial'
 )
 
 # Multiplas contas e range de datas
 df = bcb.cosif.read(
+    '2024-01',
+    '2024-12',
     instituicao='60872504',
-    start='2024-01',
-    end='2024-12',
     conta=['TOTAL GERAL DO ATIVO', 'PATRIMONIO LIQUIDO'],
     escopo='prudencial'
 )
 
 # Filtrar por codigo de conta (numerico)
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     conta='10100',
     escopo='prudencial'
 )
 
-# Filtrar por tipo de documento
+# Filtrar por tipo de documento (deve ser numerico)
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     escopo='prudencial',
     documento='4060'
 )
 
 # Apenas colunas especificas
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     escopo='prudencial',
     columns=['CNPJ_8', 'CONTA', 'VALOR', 'DATA']
 )
@@ -183,9 +190,11 @@ bcb.cosif.list_contas(
     escopo: str | None = None,     # 'individual', 'prudencial', ou None (ambos)
     start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
     end: str | None = None,        # Periodo final. Se None com start, filtra data unica
-    limit: int = 100               # Numero maximo de contas
+    limit: int = 100               # Numero maximo de contas. Deve ser > 0
 ) -> pd.DataFrame
 ```
+
+**Raises**: `ValueError` se `limit <= 0`.
 
 **Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA` e `ESCOPOS` (quando escopo=None, string com escopos separados por virgula).
 
@@ -277,16 +286,16 @@ O parametro `cadastro` permite adicionar colunas do cadastro diretamente no resu
 ```python
 # Adicionar segmento e UF a cada linha
 df = bcb.cosif.read(
+    '2024-01',
+    '2024-12',
     instituicao=['60872504', '60746948'],
-    start='2024-01',
-    end='2024-12',
     escopo='prudencial',
     cadastro=['SEGMENTO', 'UF', 'TCB']
 )
 # Resultado inclui colunas SEGMENTO, UF e TCB
 ```
 
-Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`.
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
 
 Para dados mensais (COSIF), o alinhamento temporal e automatico: cada mes recebe os atributos cadastrais do trimestre mais recente.
 
@@ -304,9 +313,9 @@ contas_balanco = [
 ]
 
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60746948',
     conta=contas_balanco,
-    start='2024-12',
     escopo='prudencial'
 )
 
@@ -324,9 +333,9 @@ pivot = df.pivot_table(
 ```python
 # Coletar dados de ambos escopos de uma vez
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
     conta=['TOTAL GERAL DO ATIVO'],
-    start='2024-12'
 )
 # escopo=None retorna ambos com coluna ESCOPO
 
@@ -339,10 +348,10 @@ print(df.pivot_table(values='VALOR', index='INSTITUICAO', columns='ESCOPO'))
 ```python
 # Serie temporal do Patrimonio Liquido
 df = bcb.cosif.read(
+    '2024-01',
+    '2024-12',
     instituicao='60746948',
     conta=['PATRIMONIO LIQUIDO'],
-    start='2024-01',
-    end='2024-12',
     escopo='prudencial'
 )
 
@@ -423,7 +432,7 @@ Ao consultar periodos que cruzam a fronteira Era 2/Era 3 (202501), um `Incompati
 
 ```python
 # Emite IncompatibleEraWarning: codigos de conta foram renumerados
-df = bcb.cosif.read(instituicao='60872504', start='2024-12', end='2025-01')
+df = bcb.cosif.read('2024-12', '2025-01', instituicao='60872504')
 ```
 
 O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
@@ -439,16 +448,16 @@ from ifdata_bcb.domain.exceptions import (
 
 # Erro: parametro obrigatorio ausente
 try:
-    df = bcb.cosif.read(instituicao='60872504')  # Falta start!
+    df = bcb.cosif.read(start=None)  # Falta start!
 except MissingRequiredParameterError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido
 try:
     df = bcb.cosif.read(
+        '2024-12',
+        '2024-01',  # start > end!
         instituicao='60872504',
-        start='2024-12',
-        end='2024-01'  # start > end!
     )
 except InvalidDateRangeError as e:
     print(f"Erro: {e}")
@@ -456,15 +465,15 @@ except InvalidDateRangeError as e:
 # Erro: escopo invalido
 try:
     df = bcb.cosif.read(
+        '2024-12',
         instituicao='60872504',
-        start='2024-12',
         escopo='invalido'
     )
 except InvalidScopeError as e:
     print(f"Erro: {e}")
 
 # Sem erro: retorna DataFrame vazio se nao encontrar dados
-df = bcb.cosif.read(instituicao='99999999', start='2024-12')
+df = bcb.cosif.read('2024-12', instituicao='99999999')
 if df.empty:
     print("Instituicao nao encontrada nos dados COSIF")
 ```

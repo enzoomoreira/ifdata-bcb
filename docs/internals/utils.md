@@ -117,20 +117,6 @@ def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
     """
 ```
 
-### yyyymm_to_datetime()
-
-Converte inteiro YYYYMM para pandas Timestamp:
-
-```python
-def yyyymm_to_datetime(value: int) -> pd.Timestamp:
-    """
-    Converte para Timestamp no ultimo dia do mes.
-
-    Exemplo:
-        yyyymm_to_datetime(202412) -> Timestamp('2024-12-31')
-    """
-```
-
 ### align_to_quarter_end()
 
 Alinha YYYYMM para o fim do trimestre correspondente:
@@ -305,7 +291,7 @@ class EntityLookup:
 ### BaseExplorer usa date.py
 
 ```python
-from ifdata_bcb.utils import generate_month_range, yyyymm_to_datetime
+from ifdata_bcb.utils import generate_month_range
 
 class BaseExplorer:
     def _resolve_date_range(self, start, end, trimestral=False):
@@ -313,10 +299,7 @@ class BaseExplorer:
             return generate_quarter_range(start, end)
         return generate_month_range(start, end)
 
-    def _finalize_read(self, df):
-        # Converter DATA int -> datetime
-        if "DATA" in df.columns:
-            df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
+    # Conversao DATA int -> datetime agora feita no DuckDB via _read_glob(date_column=...)
 ```
 
 ### BaseCollector usa period.py
@@ -351,8 +334,6 @@ from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
     normalize_date_to_int,
-    yyyymm_to_datetime,
-    align_to_quarter_end,
 )
 from ifdata_bcb.utils.period import (
     parse_period_from_filename,
@@ -372,8 +353,6 @@ __all__ = [
     "generate_month_range",
     "generate_quarter_range",
     "normalize_date_to_int",
-    "yyyymm_to_datetime",
-    "align_to_quarter_end",
     # period
     "parse_period_from_filename",
     "extract_periods_from_files",

@@ -6,6 +6,7 @@ import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import build_int_condition, build_like_condition
@@ -57,6 +58,9 @@ class COSIFExplorer(BaseExplorer):
     }
 
     _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
+    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+
+    _DATE_COLUMN = "DATA_BASE"
 
     _COLUMN_ORDER = [
         "DATA",
@@ -134,12 +138,17 @@ class COSIFExplorer(BaseExplorer):
 
         if documento:
             docs = [documento] if isinstance(documento, str) else documento
-            docs_int = [int(d) for d in docs]
+            try:
+                docs_int = [int(d) for d in docs]
+            except (ValueError, TypeError):
+                raise InvalidScopeError(
+                    "documento", str(documento), "valores numericos (ex: 4010, 4016)"
+                )
             conditions.append(build_int_condition("DOCUMENTO", docs_int))
 
         from ifdata_bcb.infra.sql import join_conditions as jc
 
-        return self._qe.read_glob(
+        return self._read_glob(
             pattern=self._get_pattern_for_escopo(escopo),
             subdir=self._get_escopo_config(escopo)["subdir"],
             columns=self._storage_columns_for_query(columns),
@@ -224,27 +233,34 @@ class COSIFExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: InstitutionInput,
         start: str,
         end: str | None = None,
-        conta: AccountInput | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
         escopo: EscopoCOSIF | None = None,
-        columns: list[str] | None = None,
+        conta: AccountInput | None = None,
         documento: str | list[str] | None = None,
+        columns: list[str] | None = None,
         cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados COSIF com filtros.
 
         Args:
-            cadastro: Colunas cadastrais para enriquecer o resultado
-                (ex: ["TCB", "SEGMENTO"]). Se None, nao enriquece.
+            start: Periodo inicial (obrigatorio). Formato: '2024-12' ou '202412'.
+            end: Periodo final. Se None, retorna apenas start.
+            instituicao: CNPJ de 8 digitos. Se None, retorna todas (bulk).
+            escopo: Filtro por escopo. Se None, busca em ambos.
+            conta: Filtro por conta (nome ou codigo).
+            documento: Filtro por documento COSIF.
+            columns: Colunas a retornar. Se None, retorna todas.
+            cadastro: Colunas cadastrais para enriquecer o resultado.
 
         Raises:
-            MissingRequiredParameterError: Se instituicao ou start nao fornecidos.
+            MissingRequiredParameterError: Se start nao fornecido.
             InvalidDateRangeError: Se start > end.
         """
-        self._validate_required_params(instituicao, start)
+        self._validate_required_params(start)
         columns = self._validate_columns(columns)
         validate_cadastro_columns(cadastro)
 
@@ -279,6 +295,7 @@ class COSIFExplorer(BaseExplorer):
                     for cfg in self._get_sources().values()
                 ),
                 had_conta_filter=conta is not None,
+                had_institution_filter=instituicao is not None,
             )
             return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
@@ -312,6 +329,8 @@ class COSIFExplorer(BaseExplorer):
             end: Periodo final. Se None com start, filtra data unica.
             limit: Maximo de resultados.
         """
+        if limit <= 0:
+            raise ValueError(f"limit deve ser > 0, recebido: {limit}")
         datas = self._resolve_date_range(start, end, trimestral=False)
 
         if escopo is not None:

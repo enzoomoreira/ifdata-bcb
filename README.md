@@ -39,30 +39,33 @@ bcb.search('Bradesco')
 # Quando possivel, prioriza resultados com dados disponiveis em FONTES.
 
 # 3. Ler dados usando CNPJ de 8 digitos
-# COSIF/IFDATA: instituicao e start sao OBRIGATORIOS
+# start e OBRIGATORIO (posicional); instituicao e keyword-only e opcional
 # start sozinho = data unica; start + end = range
 
 # COSIF (escopo=None busca em todos os escopos)
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     conta='TOTAL GERAL DO ATIVO',
     escopo='prudencial'
 )
 
 # IFDATA
 df = bcb.ifdata.read(
+    '2024-01',
+    '2024-12',
     instituicao='60872504',
-    start='2024-01',
-    end='2024-12',
     conta='Lucro Liquido'
 )
 
+# Bulk read: todas as instituicoes (sem instituicao)
+df = bcb.cosif.read('2024-12', escopo='prudencial')
+
 # Enriquecer com dados cadastrais inline
 df = bcb.ifdata.read(
+    '2024-01',
+    '2024-12',
     instituicao='60872504',
-    start='2024-01',
-    end='2024-12',
     escopo='prudencial',
     cadastro=['TCB', 'SEGMENTO']
 )
@@ -71,7 +74,7 @@ df = bcb.ifdata.read(
 info = bcb.cadastro.info('60872504', start='2024-12')
 
 # Cadastro tambem pode ser filtrado sem instituicao
-df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
 
 # 4. Listar contas e instituicoes disponiveis
 bcb.cosif.list_contas(escopo='prudencial')
@@ -164,7 +167,7 @@ Todos os explorers possuem:
 | Metodo | Descricao |
 |--------|-----------|
 | `collect(start, end, ...)` | Coleta dados do BCB |
-| `read(instituicao, start, ...)` | Le dados com filtros |
+| `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only) |
 | `list_periodos()` | Periodos disponiveis |
 | `has_data()` | Verifica se tem dados |
 

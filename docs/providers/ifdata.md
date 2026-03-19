@@ -31,10 +31,10 @@ O IFDATA suporta tres escopos que determinam a visao dos dados:
 
 ```python
 # Filtrar por escopo
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
 
 # Buscar em todos os escopos (escopo=None)
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12')
+df = bcb.ifdata.read('2024-12', instituicao='60872504')
 # Resultado inclui coluna ESCOPO
 ```
 
@@ -72,52 +72,66 @@ Le dados IFDATA Valores com filtros.
 
 ```python
 bcb.ifdata.read(
-    instituicao: str | list[str],           # CNPJ(s) de 8 digitos. OBRIGATORIO
-    start: str,                             # Data inicial ou unica. OBRIGATORIO
-    end: str | None = None,                 # Data final para range
-    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
-    columns: list[str] | None = None,       # Colunas especificas
+    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: str | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
+    instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos. Se None, retorna todas (bulk)
     escopo: str | None = None,              # 'individual', 'prudencial', 'financeiro', ou None
+    conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
     relatorio: str | None = None,           # Nome do relatorio para filtrar
+    grupo: str | None = None,               # Grupo de conta para filtrar
+    columns: list[str] | None = None,       # Colunas especificas
     cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
 ```
 
-**Parametros Obrigatorios**: `instituicao` e `start`.
+**Parametro Obrigatorio**: `start`.
 
 **API de Datas**:
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
 
+**Bulk read**: Quando `instituicao=None` (padrao), retorna dados de todas as instituicoes do periodo, sem necessidade de resolver entidade. Util para rankings e analises agregadas.
+
 **Raises**:
-- `MissingRequiredParameterError`: Se `instituicao` ou `start` nao fornecidos.
+- `MissingRequiredParameterError`: Se `start` nao fornecido.
 - `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
 
 ```python
 # Data unica em um escopo especifico
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
 
 # Buscar em TODOS os escopos
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12')
+df = bcb.ifdata.read('2024-12', instituicao='60872504')
+
+# Bulk read: todas as instituicoes
+df = bcb.ifdata.read('2024-12', escopo='prudencial')
 
 # Conta especifica (filtro case-insensitive)
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12', conta='lucro liquido')
+df = bcb.ifdata.read('2024-12', instituicao='60872504', conta='lucro liquido')
 
 # Multiplas contas com range de datas
 df = bcb.ifdata.read(
+    '2024-03',
+    '2024-12',
     instituicao='60872504',
-    start='2024-03',
-    end='2024-12',
     conta=['Lucro Liquido', 'Ativo Total']
 )
 
 # Filtrar por relatorio
 df = bcb.ifdata.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     relatorio='Resumo'
+)
+
+# Filtrar por grupo de conta
+df = bcb.ifdata.read(
+    '2024-12',
+    instituicao='60872504',
+    grupo='Resumo'
 )
 ```
 
@@ -132,9 +146,11 @@ bcb.ifdata.list_contas(
     relatorio: str | None = None,  # Filtro por relatorio (case/accent-insensitive)
     start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
     end: str | None = None,        # Periodo final. Se None com start, filtra data unica
-    limit: int = 100               # Numero maximo de contas
+    limit: int = 100               # Numero maximo de contas. Deve ser > 0
 ) -> pd.DataFrame
 ```
+
+**Raises**: `ValueError` se `limit <= 0`.
 
 **Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA`, `RELATORIO` e `GRUPO`, ordenado por RELATORIO, GRUPO, CONTA.
 
@@ -300,16 +316,16 @@ O parametro `cadastro` permite adicionar colunas do cadastro diretamente no resu
 ```python
 # Adicionar tipo de banco e segmento
 df = bcb.ifdata.read(
+    '2024-03',
+    '2024-12',
     instituicao=['60872504', '60746948'],
-    start='2024-03',
-    end='2024-12',
     escopo='prudencial',
     cadastro=['TCB', 'TC', 'SEGMENTO']
 )
 # Resultado inclui colunas TCB, TC e SEGMENTO
 ```
 
-Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`.
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
 
 ## Exemplos Avancados
 
@@ -317,11 +333,11 @@ Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `
 
 ```python
 # Apenas escopo prudencial (conglomerados)
-df_prud = bcb.ifdata.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df_prud = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
 print(f"Escopo: {df_prud['ESCOPO'].iloc[0]}")
 
 # Todos os escopos disponiveis
-df_todos = bcb.ifdata.read(instituicao='60872504', start='2024-12')
+df_todos = bcb.ifdata.read('2024-12', instituicao='60872504')
 print(f"Escopos: {df_todos['ESCOPO'].unique()}")
 ```
 
@@ -329,7 +345,7 @@ print(f"Escopos: {df_todos['ESCOPO'].unique()}")
 
 ```python
 # Listar grupos disponiveis
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12', escopo='prudencial')
+df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
 grupos = df['GRUPO'].unique()
 print(f"Grupos: {grupos}")
 ```
@@ -339,10 +355,10 @@ print(f"Grupos: {grupos}")
 ```python
 # Evolucao trimestral do Lucro Liquido
 df = bcb.ifdata.read(
+    '2023-01',
+    '2024-12',
     instituicao='60872504',
     conta=['Lucro Liquido'],
-    start='2023-01',
-    end='2024-12'
 )
 
 # Ordenar e plotar
@@ -407,7 +423,7 @@ A partir de 202503 (marco/2025), o BCB renumerou os codigos de conta no IFDATA. 
 
 ```python
 # Emite IncompatibleEraWarning: codigos de conta foram renumerados
-df = bcb.ifdata.read(instituicao='60872504', start='2024-12', end='2025-03')
+df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504')
 ```
 
 O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
@@ -432,22 +448,22 @@ from ifdata_bcb.domain.exceptions import (
 
 # Erro: parametro obrigatorio ausente
 try:
-    df = bcb.ifdata.read(instituicao='60872504')  # Falta start!
+    df = bcb.ifdata.read(start=None)  # Falta start!
 except MissingRequiredParameterError as e:
     print(f"Erro: {e}")
 
 # Erro: range de datas invalido
 try:
     df = bcb.ifdata.read(
+        '2024-12',
+        '2024-01',  # start > end!
         instituicao='60872504',
-        start='2024-12',
-        end='2024-01'  # start > end!
     )
 except InvalidDateRangeError as e:
     print(f"Erro: {e}")
 
 # Sem erro: retorna DataFrame vazio se nao encontrar dados
-df = bcb.ifdata.read(instituicao='99999999', start='2024-12')
+df = bcb.ifdata.read('2024-12', instituicao='99999999')
 if df.empty:
     print("Instituicao nao encontrada nos dados IFDATA")
 ```

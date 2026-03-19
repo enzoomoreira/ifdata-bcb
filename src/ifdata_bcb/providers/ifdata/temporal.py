@@ -26,8 +26,6 @@ class TemporalGroup:
     cnpj_map: dict[str, list[str]] = field(default_factory=dict)
 
 
-_TIPO_INST_REVERSE = {v: k for k, v in TIPO_INST_MAP.items()}
-
 _ESCOPO_TO_COD_COL: dict[str, str] = {
     "prudencial": "CodConglomeradoPrudencial",
     "financeiro": "CodConglomeradoFinanceiro",
@@ -123,10 +121,12 @@ class TemporalResolver:
             from ifdata_bcb.domain.exceptions import PartialDataWarning
 
             emit_user_warning(
-                "Cadastro nao encontrado no cache. "
-                "Resolucao de conglomerado indisponivel. "
-                "Execute cadastro.collect() para baixar os dados.",
-                PartialDataWarning,
+                PartialDataWarning(
+                    "Cadastro nao encontrado no cache. "
+                    "Resolucao de conglomerado indisponivel. "
+                    "Execute cadastro.collect() para baixar os dados.",
+                    reason="cadastro_missing",
+                ),
                 stacklevel=3,
             )
             return [], []
@@ -150,8 +150,10 @@ class TemporalResolver:
             from ifdata_bcb.domain.exceptions import PartialDataWarning
 
             emit_user_warning(
-                f"Resolucao temporal falhou: {e}. Resultados podem estar incompletos.",
-                PartialDataWarning,
+                PartialDataWarning(
+                    f"Resolucao temporal falhou: {e}. Resultados podem estar incompletos.",
+                    reason="temporal_query_failed",
+                ),
                 stacklevel=3,
             )
             return [], []
@@ -159,13 +161,13 @@ class TemporalResolver:
         if df_cad.empty:
             return [], cnpjs[:]
 
-        # Construir mapa: cnpj -> [(data_cadastro, cod)]
+        # Construir mapa: cnpj -> [(data_cadastro, cod)] via arrays (sem iterrows)
         cnpj_history: dict[str, list[tuple[int, str]]] = {}
-        for _, row in df_cad.iterrows():
-            cnpj = str(row["CNPJ_8"])
-            data = int(row["Data"])
-            cod = str(row["cod"])
-            cnpj_history.setdefault(cnpj, []).append((data, cod))
+        cnpjs_arr = df_cad["CNPJ_8"].astype(str).values
+        datas_arr = df_cad["Data"].values
+        cods_arr = df_cad["cod"].astype(str).values
+        for cnpj, data, cod in zip(cnpjs_arr, datas_arr, cods_arr):
+            cnpj_history.setdefault(cnpj, []).append((int(data), cod))
 
         groups: dict[str, dict] = {}
         unavailable_cnpjs: list[str] = []
@@ -214,148 +216,103 @@ class TemporalResolver:
             unavailable_cnpjs,
         )
 
-    def load_mapeamento_rows(
-        self,
-        start: str | None = None,
-        end: str | None = None,
-    ) -> pd.DataFrame:
-        """Lista pares cod_inst/tipo_inst nos dados IFDATA."""
-        if not self._qe.has_glob(self._valores_pattern, self._valores_subdir):
-            return pd.DataFrame(columns=["COD_INST", "TIPO_INST", "ESCOPO"])
-
-        path = self._qe.cache_path / self._valores_subdir / self._valores_pattern
-        where = self._ifdata_date_where(start, end)
-        query = f"""
-            SELECT DISTINCT CodInst as COD_INST, TipoInstituicao as TIPO_INST
-            FROM '{path}'
-            {where}
-            ORDER BY COD_INST, TIPO_INST
-        """
-        df = self._qe.sql(query)
-        if df.empty:
-            return df
-        df["ESCOPO"] = df["TIPO_INST"].map(_TIPO_INST_REVERSE)
-        return df
-
-    def load_cadastro_entities(
-        self,
-        start: str | None = None,
-        end: str | None = None,
-    ) -> pd.DataFrame:
-        """Carrega entidades com codigos de conglomerado."""
-        cadastro_pattern = get_pattern("cadastro")
-        cadastro_subdir = get_subdir("cadastro")
-        if not self._qe.has_glob(cadastro_pattern, cadastro_subdir):
-            return pd.DataFrame(
-                columns=["CNPJ_8", "INSTITUICAO", "COD_CONGL_PRUD", "COD_CONGL_FIN"]
-            )
-
-        path = self._qe.cache_path / cadastro_subdir / cadastro_pattern
-        where_parts = [self._resolver.real_entity_condition()]
-        periodos = _resolve_quarter_dates(start, end)
-        if periodos:
-            where_parts.append(build_int_condition("Data", periodos))
-        where = " AND ".join(where_parts)
-        query = f"""
-            SELECT
-                CNPJ_8,
-                NomeInstituicao as INSTITUICAO,
-                CodConglomeradoPrudencial as COD_CONGL_PRUD,
-                CodConglomeradoFinanceiro as COD_CONGL_FIN
-            FROM (
-                SELECT
-                    CNPJ_8,
-                    NomeInstituicao,
-                    CodConglomeradoPrudencial,
-                    CodConglomeradoFinanceiro,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY CNPJ_8
-                        ORDER BY Data DESC
-                    ) as rn
-                FROM read_parquet('{path}', union_by_name=true)
-                WHERE {where}
-            )
-            WHERE rn = 1
-        """
-        return self._qe.sql(query)
-
     def resolve_mapeamento(
         self,
         start: str | None = None,
         end: str | None = None,
     ) -> pd.DataFrame:
-        """Junta reporters com cadastro, resolve lookup."""
-        reporters = self.load_mapeamento_rows(start, end)
-        if reporters.empty:
-            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
-
-        cadastro = self.load_cadastro_entities(start, end)
-        frames: list[pd.DataFrame] = []
-
-        individual = reporters[
-            reporters["TIPO_INST"] == TIPO_INST_MAP["individual"]
-        ].copy()
-        if not individual.empty:
-            individual["CNPJ_8"] = individual["COD_INST"]
-            individual["REPORT_KEY_TYPE"] = "cnpj"
-            frames.append(individual)
-
-        for escopo, tipo_inst, cod_col in [
-            ("prudencial", TIPO_INST_MAP["prudencial"], "COD_CONGL_PRUD"),
-            ("financeiro", TIPO_INST_MAP["financeiro"], "COD_CONGL_FIN"),
-        ]:
-            subset = reporters[reporters["TIPO_INST"] == tipo_inst].copy()
-            if subset.empty:
-                continue
-
-            lookup = pd.concat(
-                [
-                    cadastro[["CNPJ_8"]].assign(COD_INST=cadastro["CNPJ_8"]),
-                    cadastro[["CNPJ_8", cod_col]]
-                    .rename(columns={cod_col: "COD_INST"})
-                    .dropna(subset=["COD_INST"]),
-                ],
-                ignore_index=True,
-            ).drop_duplicates()
-
-            merged = subset.merge(lookup, on="COD_INST", how="left")
-            merged = merged.dropna(subset=["CNPJ_8"])
-            if merged.empty:
-                continue
-            merged["REPORT_KEY_TYPE"] = (
-                merged["COD_INST"]
-                .astype(str)
-                .eq(merged["CNPJ_8"].astype(str))
-                .map({True: "cnpj", False: escopo})
-            )
-            frames.append(merged)
-
-        if not frames:
-            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
-
-        df = pd.concat(frames, ignore_index=True)
-
-        # Aplica nomes canonicos
-        cnpjs = df["CNPJ_8"].dropna().astype(str).unique().tolist()
-        if cnpjs:
-            nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
-            df["INSTITUICAO"] = df["CNPJ_8"].astype(str).map(nomes)
-
-        return (
-            df[
-                [
-                    "COD_INST",
-                    "TIPO_INST",
-                    "ESCOPO",
-                    "REPORT_KEY_TYPE",
-                    "CNPJ_8",
-                    "INSTITUICAO",
-                ]
-            ]
-            .drop_duplicates()
-            .sort_values(["COD_INST", "TIPO_INST", "CNPJ_8"])
-            .reset_index(drop=True)
+        """Junta reporters com cadastro via SQL, resolve lookup por escopo."""
+        valores_path = (
+            self._qe.cache_path / self._valores_subdir / self._valores_pattern
         )
+        if not self._qe.has_glob(self._valores_pattern, self._valores_subdir):
+            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
+
+        cadastro_pattern = get_pattern("cadastro")
+        cadastro_subdir = get_subdir("cadastro")
+        if not self._qe.has_glob(cadastro_pattern, cadastro_subdir):
+            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
+
+        cadastro_path = self._qe.cache_path / cadastro_subdir / cadastro_pattern
+
+        # Filtros de data
+        valores_where = self._ifdata_date_where(start, end)
+        cadastro_where_parts = [self._resolver.real_entity_condition()]
+        periodos = _resolve_quarter_dates(start, end)
+        if periodos:
+            cadastro_where_parts.append(build_int_condition("Data", periodos))
+        cadastro_where = " AND ".join(cadastro_where_parts)
+
+        tipo_ind = TIPO_INST_MAP["individual"]
+        tipo_prud = TIPO_INST_MAP["prudencial"]
+        tipo_fin = TIPO_INST_MAP["financeiro"]
+
+        query = f"""
+            WITH reporters AS (
+                SELECT DISTINCT CodInst as COD_INST, TipoInstituicao as TIPO_INST
+                FROM '{valores_path}'
+                {valores_where}
+            ),
+            cadastro AS (
+                SELECT CNPJ_8, NomeInstituicao as INSTITUICAO,
+                       CodConglomeradoPrudencial as COD_CONGL_PRUD,
+                       CodConglomeradoFinanceiro as COD_CONGL_FIN
+                FROM (
+                    SELECT CNPJ_8, NomeInstituicao,
+                           CodConglomeradoPrudencial, CodConglomeradoFinanceiro,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY CNPJ_8 ORDER BY Data DESC
+                           ) as rn
+                    FROM read_parquet('{cadastro_path}', union_by_name=true)
+                    WHERE {cadastro_where}
+                )
+                WHERE rn = 1
+            )
+            SELECT DISTINCT COD_INST, TIPO_INST, ESCOPO, REPORT_KEY_TYPE,
+                            CNPJ_8, INSTITUICAO
+            FROM (
+                SELECT r.COD_INST, r.TIPO_INST, 'individual' as ESCOPO,
+                       'cnpj' as REPORT_KEY_TYPE,
+                       r.COD_INST as CNPJ_8, c.INSTITUICAO
+                FROM reporters r
+                LEFT JOIN cadastro c ON r.COD_INST = c.CNPJ_8
+                WHERE r.TIPO_INST = {tipo_ind}
+
+                UNION ALL
+
+                SELECT r.COD_INST, r.TIPO_INST, 'prudencial' as ESCOPO,
+                       CASE WHEN r.COD_INST = c.CNPJ_8
+                            THEN 'cnpj' ELSE 'prudencial' END as REPORT_KEY_TYPE,
+                       c.CNPJ_8, c.INSTITUICAO
+                FROM reporters r
+                JOIN cadastro c
+                    ON (r.COD_INST = c.CNPJ_8 OR r.COD_INST = c.COD_CONGL_PRUD)
+                WHERE r.TIPO_INST = {tipo_prud}
+
+                UNION ALL
+
+                SELECT r.COD_INST, r.TIPO_INST, 'financeiro' as ESCOPO,
+                       CASE WHEN r.COD_INST = c.CNPJ_8
+                            THEN 'cnpj' ELSE 'financeiro' END as REPORT_KEY_TYPE,
+                       c.CNPJ_8, c.INSTITUICAO
+                FROM reporters r
+                JOIN cadastro c
+                    ON (r.COD_INST = c.CNPJ_8 OR r.COD_INST = c.COD_CONGL_FIN)
+                WHERE r.TIPO_INST = {tipo_fin}
+            )
+            ORDER BY COD_INST, TIPO_INST, CNPJ_8
+        """
+
+        try:
+            df = self._qe.sql(query)
+        except Exception as e:
+            self._logger.warning(f"resolve_mapeamento query failed: {e}")
+            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
+
+        if df.empty:
+            return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)
+
+        return df.reset_index(drop=True)
 
     @staticmethod
     def add_cnpj_mapping(
@@ -368,6 +325,7 @@ class TemporalResolver:
             return df
 
         if not cnpj_map:
+            df = df.copy()
             df["CNPJ_8"] = df[cod_inst_col]
             return df
 

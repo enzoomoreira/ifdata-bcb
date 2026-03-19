@@ -17,9 +17,16 @@ class TestMissingParams:
         with pytest.raises(TypeError):
             qa_cosif.read(instituicao="60872504")  # type: ignore[call-arg]
 
-    def test_read_without_instituicao_raises(self, qa_cosif: COSIFExplorer) -> None:
-        with pytest.raises(TypeError):
-            qa_cosif.read(start="2023-03")  # type: ignore[call-arg]
+    def test_read_without_instituicao_does_not_raise(
+        self, qa_cosif: COSIFExplorer
+    ) -> None:
+        """instituicao e opcional agora (bulk read)."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df = qa_cosif.read("2023-03")
+        assert df is not None
 
 
 class TestInvalidCNPJ:
@@ -85,6 +92,26 @@ class TestInvalidScope:
             qa_cosif.read(
                 instituicao="60872504", start="2023-03", cadastro=["COLUNA_FAKE"]
             )
+
+    def test_columns_unknown_raises(self, qa_cosif: COSIFExplorer) -> None:
+        with pytest.raises(InvalidScopeError):
+            qa_cosif.read("2023-03", instituicao="60872504", columns=["INVENTADA"])
+
+
+class TestPassthroughColumns:
+    """Colunas nativas do parquet que nao estao em _COLUMN_MAP devem ser aceitas."""
+
+    def test_cosif_cnpj8_accepted(self, qa_cosif: COSIFExplorer) -> None:
+        df = qa_cosif.read(
+            "2023-03", instituicao="60872504", columns=["CNPJ_8", "DATA", "VALOR"]
+        )
+        assert list(df.columns) == ["CNPJ_8", "DATA", "VALOR"]
+
+    def test_cosif_documento_accepted(self, qa_cosif: COSIFExplorer) -> None:
+        df = qa_cosif.read(
+            "2023-03", instituicao="60872504", columns=["DOCUMENTO", "DATA"]
+        )
+        assert "DOCUMENTO" in df.columns
 
 
 class TestSearchResilience:

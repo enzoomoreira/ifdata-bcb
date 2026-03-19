@@ -18,7 +18,7 @@ def test_ifdata_read_invalid_scope_raises(query_engine: QueryEngine) -> None:
     explorer = IFDATAExplorer(query_engine=query_engine)
 
     with pytest.raises(InvalidScopeError):
-        explorer.read("12345678", "2024-12", escopo="invalido")
+        explorer.read("2024-12", instituicao="12345678", escopo="invalido")
 
 
 def test_ifdata_list_methods_return_empty_when_cache_is_missing(

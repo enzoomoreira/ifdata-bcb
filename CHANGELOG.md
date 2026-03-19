@@ -1,5 +1,49 @@
 # Project Changelog
 
+## [2026-03-19 14:03]
+
+### Added
+- Bulk read (sem `instituicao`) em `cosif.read()` e `ifdata.read()`: retorna dados de todas as instituicoes de uma vez, sem necessidade de resolver entidade
+  - `IFDATAExplorer._read_bulk()`: leitura direta do parquet por escopo, sem resolucao temporal
+  - Diagnostico diferenciado para bulk vs filtrado (`had_institution_filter` em `_diagnose_empty_result`)
+- `QueryEngine.read_glob()` com novos parametros: `distinct`, `date_column`/`date_alias` (conversao YYYYMM->datetime via DuckDB), `exclude_columns` (EXCLUDE no SQL)
+  - Dedup e conversao de datas agora feitos no DuckDB em vez de pandas pos-query
+- `QueryEngine.sql_with_df()`: executa SQL com DataFrames registrados como tabelas virtuais (habilita JOINs, ASOF JOINs entre DataFrames em memoria)
+- `BaseExplorer._read_glob()`: wrapper que injeta `distinct=True`, `date_column`, e `exclude_columns` automaticamente
+- `_PASSTHROUGH_COLUMNS` em BaseExplorer: colunas nativas do parquet aceitas em `columns=` sem precisar estar em `_COLUMN_MAP`
+- `_DATE_COLUMN` em BaseExplorer: declara coluna YYYYMM int para conversao automatica em datetime no DuckDB
+- Coluna derivada `NOME_CONGL_PRUD` no enrichment cadastral: nome da instituicao lider do conglomerado prudencial, resolvida via lookup SQL
+- Parametro `grupo` em `ifdata.read()` para filtrar por grupo de conta
+- 6 novos parametros de filtro em `cadastro.read()`: `atividade`, `tcb`, `td`, `tc`, `sr`, `municipio`
+- `_COLUMN_ORDER` definido em CadastroExplorer para ordenacao consistente do output
+- Validacao `limit > 0` em `list_contas()` do COSIF e IFDATA
+- Validacao de `documento` numerico no COSIF (levanta `InvalidScopeError` se nao-numerico)
+- 3 novos modulos de teste: `test_bulk_read.py`, `test_cadastro_filters.py` (integration), `test_warnings_structured.py` (unit)
+- Scripts de benchmarking e smoke test: `bench_pandas_migration.py`, `smoke_nome_congl.py`, `smoke_nome_congl_e2e.py`
+
+### Changed
+- API breaking: `instituicao` agora e keyword-only e opcional em `cosif.read()`, `ifdata.read()` e `cadastro.read()`; `start` e o primeiro argumento posicional
+- Warnings estruturados: todas as classes de warning (`IncompatibleEraWarning`, `PartialDataWarning`, `ScopeUnavailableWarning`, `NullValuesWarning`, `EmptyFilterWarning`) agora carregam atributos semanticos (ex: `reason`, `entities`, `boundary`, `parameter`) alem da mensagem textual
+- `emit_user_warning()` aceita instancias de `Warning` diretamente, alem de string + category
+- `EntityLookup.real_entity_condition()` tornado `@staticmethod` (nao depende mais de estado de instancia); fallback legacy para caches sem CodInst removido
+- `_finalize_read()` simplificado: dedup, datetime conversion e drop de colunas movidos para o DuckDB; pipeline pos-query reduzido a rename + sort + reorder
+- `_apply_canonical_names()` so atua quando INSTITUICAO nao existe no DataFrame (skip lookup quando parquet ja tem os nomes)
+- `_check_null_value_instituicoes()` usa operacao vetorizada com sets em vez de `groupby().apply()`; threshold de entities exibidas aumentado de 3 para 5
+- Enrichment cadastral migrado de `pd.merge_asof` para ASOF LEFT JOIN via DuckDB SQL; caso data-unica usa LEFT JOIN com ROW_NUMBER
+- `TemporalResolver.resolve_mapeamento()` consolidado em uma unica query SQL (antes eram 3 metodos + manipulacao pandas)
+- `TemporalResolver`: iteracao com `iterrows()` substituida por arrays numpy + `zip()`
+- Filtros do `cadastro.read()` consolidados em loop data-driven (dict de parametros) em vez de blocos repetitivos
+- `_validate_required_params()` nao valida mais `instituicao` (agora opcional)
+
+### Removed
+- `yyyymm_to_datetime()` em `utils/date.py` (conversao de datas agora feita no DuckDB)
+- `EntityLookup._cadastro_has_codinst()` e `_legacy_alias_condition()` (fallback para caches sem CodInst)
+- `TemporalResolver.load_mapeamento_rows()` e `load_cadastro_entities()` (consolidados em `resolve_mapeamento()`)
+- `_TIPO_INST_REVERSE` dict (lookup reverso nao mais necessario)
+- `CadastroExplorer._resolve_start()` movido para `_resolve_start_fallback()` (so usado por `info()` e `get_conglomerate_members()`, nao mais por `read()`)
+- Testes de fallback legacy (`TestRealEntityConditionFallback`, `test_legacy_fallback_without_codinst`)
+- Testes de `yyyymm_to_datetime` (funcao removida)
+
 ## [2026-03-18 01:35]
 
 ### Added

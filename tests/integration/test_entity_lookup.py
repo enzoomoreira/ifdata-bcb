@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from ifdata_bcb.core.entity_lookup import EntityLookup
@@ -34,28 +33,6 @@ class TestRealEntityCondition:
         # Deve ser uma expressao SQL valida que filtra apenas entidades reais
         assert "CNPJ_8 IS NOT NULL" in condition
         assert "regexp_matches" in condition
-
-    def test_legacy_fallback_without_codinst(self, tmp_cache_dir: Path) -> None:
-        """Se cadastro nao tem CodInst, usa heuristica por nome."""
-        from tests.conftest import _save_parquet
-
-        df = pd.DataFrame(
-            {
-                "Data": pd.array([202303], dtype="Int64"),
-                "CNPJ_8": ["12345678"],
-                "NomeInstituicao": ["BANCO TESTE"],
-                "CNPJ_LIDER_8": [None],
-                "CodConglomeradoPrudencial": [None],
-                "CodConglomeradoFinanceiro": [None],
-                "Situacao": ["A"],
-            }
-        )
-        _save_parquet(df, tmp_cache_dir, "ifdata/cadastro", "ifdata_cad_202303")
-
-        lookup = _make_lookup(tmp_cache_dir)
-        condition = lookup.real_entity_condition()
-        # Sem CodInst -> usa heuristica
-        assert "PRUDENCIAL" in condition or "MASTER" in condition
 
 
 # =========================================================================
@@ -266,35 +243,6 @@ class TestSearch:
 # =========================================================================
 # _get_data_sources_for_cnpjs
 # =========================================================================
-
-
-class TestRealEntityConditionFallback:
-    def test_legacy_heuristic_still_returns_valid_entities(
-        self, tmp_cache_dir: Path
-    ) -> None:
-        """Se cadastro nao tem CodInst, get_entity_identifiers ainda funciona."""
-        from tests.conftest import _save_parquet
-
-        df = pd.DataFrame(
-            {
-                "Data": pd.array([202303], dtype="Int64"),
-                "CNPJ_8": [BANCO_A_CNPJ],
-                "NomeInstituicao": ["BANCO ALFA S.A."],
-                "CNPJ_LIDER_8": [BANCO_A_CNPJ],
-                "CodConglomeradoPrudencial": [COD_CONGL_PRUD],
-                "CodConglomeradoFinanceiro": [COD_CONGL_FIN],
-                "Situacao": ["A"],
-            }
-        )
-        _save_parquet(df, tmp_cache_dir, "ifdata/cadastro", "ifdata_cad_202303")
-
-        lookup = _make_lookup(tmp_cache_dir)
-        # Sem CodInst -> usa heuristica legacy
-        assert not lookup._cadastro_has_codinst()
-        info = lookup.get_entity_identifiers(BANCO_A_CNPJ)
-        assert info["nome_entidade"] == "BANCO ALFA S.A."
-        assert info["cnpj_interesse"] == BANCO_A_CNPJ
-        assert info["cod_congl_prud"] == COD_CONGL_PRUD
 
 
 class TestGetDataSources:

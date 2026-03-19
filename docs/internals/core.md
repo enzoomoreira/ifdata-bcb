@@ -119,6 +119,12 @@ class COSIFExplorer(BaseExplorer):
     # Colunas adicionadas pos-query por Python (nao existem no Parquet)
     _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
 
+    # Colunas nativas do parquet aceitas em columns= sem precisar estar em _COLUMN_MAP
+    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+
+    # Coluna YYYYMM int para conversao automatica em datetime no DuckDB
+    _DATE_COLUMN = "DATA_BASE"
+
     # Colunas a remover do resultado
     _DROP_COLUMNS: list[str] = []
 
@@ -186,6 +192,27 @@ _ESCOPOS = {
 
 def _get_sources(self):
     return self._ESCOPOS
+```
+
+### _read_glob() (wrapper)
+
+Wrapper que injeta `distinct=True`, `date_column` e `exclude_columns` automaticamente ao delegar para `QueryEngine.read_glob()`:
+
+```python
+def _read_glob(
+    self,
+    pattern: str,
+    subdir: str,
+    columns: list[str] | None = None,
+    where: str | None = None,
+) -> pd.DataFrame:
+    """
+    Le parquets via DuckDB com dedup, datetime e exclude automaticos.
+
+    - distinct=True: dedup no DuckDB (em vez de drop_duplicates pos-query)
+    - date_column: usa _DATE_COLUMN da subclasse para conversao YYYYMM->datetime
+    - exclude_columns: usa _DROP_COLUMNS para excluir colunas internas
+    """
 ```
 
 ### Metodos de Normalizacao
@@ -262,16 +289,17 @@ def _resolve_entidade(self, identificador: str) -> str:
 ```python
 def _validate_required_params(
     self,
-    instituicao: InstitutionInput | None,
     start: str | None,
 ) -> None:
     """
     Valida parametros obrigatorios.
 
     Raises:
-        MissingRequiredParameterError: Se faltar instituicao ou start
+        MissingRequiredParameterError: Se faltar start
     """
 ```
+
+**Nota**: `instituicao` nao e mais validado aqui, pois agora e opcional em todos os explorers.
 
 #### _validate_escopo()
 
@@ -337,8 +365,10 @@ def _diagnose_empty_result(
     source_name: str,
     has_files: bool,
     had_conta_filter: bool,
+    had_institution_filter: bool = True,
 ) -> None:
-    """Cascata de diagnostico quando read() retorna vazio. Emite PartialDataWarning."""
+    """Cascata de diagnostico quando read() retorna vazio. Emite PartialDataWarning.
+    had_institution_filter diferencia diagnostico entre bulk e filtrado."""
 ```
 
 #### _ensure_data_exists()
@@ -498,16 +528,15 @@ def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
 ```python
 def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Pipeline final:
-    1. Drop colunas internas (_DROP_COLUMNS)
-    2. Aplica mapeamento de colunas (_COLUMN_MAP)
-    3. Deduplicacao (drop_duplicates)
-    4. Converte DATA (int YYYYMM) -> datetime via pd.to_datetime + MonthEnd
-    5. Ordena por DATA ascending
-    6. Reordena colunas (_COLUMN_ORDER, se definido)
-    7. Reset index
+    Pipeline final (simplificado -- dedup, datetime e drop movidos para DuckDB):
+    1. Aplica mapeamento de colunas (_COLUMN_MAP)
+    2. Ordena por DATA ascending
+    3. Reordena colunas (_COLUMN_ORDER, se definido)
+    4. Reset index
 
-    Cria copia para evitar SettingWithCopyWarning.
+    Dedup (DISTINCT), conversao datetime (LAST_DAY/MAKE_DATE) e drop de
+    colunas internas sao feitos no DuckDB via _read_glob(), antes do
+    pipeline Python.
     """
 ```
 
@@ -722,7 +751,7 @@ def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
 
 ```python
 def clear_cache(self) -> None:
-    """Limpa caches LRU de get_entity_identifiers() e _cadastro_has_codinst()."""
+    """Limpa caches LRU de get_entity_identifiers()."""
 ```
 
 ### Filtragem de Entidades Reais
@@ -730,28 +759,25 @@ def clear_cache(self) -> None:
 O EntityLookup distingue entidades reais de aliases prudenciais/financeiros no cadastro:
 
 ```python
+@staticmethod
 def real_entity_condition(
-    self,
     cnpj_col: str = "CNPJ_8",
-    cnpj_lider_col: str = "CNPJ_LIDER_8",
-    name_col: str = "NomeInstituicao",
     cod_inst_col: str = "CodInst",
 ) -> str:
     """
     Filtra linhas que representam entidades reais.
 
-    Se o cache possui CodInst (caches novos):
-      CNPJ_8 IS NOT NULL AND CodInst e numerico
+    Regra canonica: toda linha com CNPJ_8 e CodInst numerico
+    representa uma entidade. Aliases prudenciais/financeiros
+    sao identificados pelo CodInst nao-numerico.
 
-    Se nao (caches legados):
-      Heuristica por nome (exclui aliases como 'PRUDENCIAL', 'MASTER')
+    E um @staticmethod -- nao depende de estado de instancia.
     """
 
 def resolved_entity_cnpj_expr(
     self,
     cnpj_col: str = "CNPJ_8",
     cnpj_lider_col: str = "CNPJ_LIDER_8",
-    name_col: str = "NomeInstituicao",
     cod_inst_col: str = "CodInst",
 ) -> str:
     """Resolve aliases prudenciais para o CNPJ da entidade lider."""
@@ -826,12 +852,12 @@ class BaseExplorer:
 
 ```python
 class COSIFExplorer(BaseExplorer):
-    def read(self, instituicao, start, end=None, conta=None, escopo=None):
-        # Validacao (herdada)
-        self._validate_required_params(instituicao, start)
+    def read(self, start, end=None, *, instituicao=None, escopo=None, conta=None):
+        # Validacao (herdada -- apenas start e obrigatorio)
+        self._validate_required_params(start)
 
         # Normalizacao (herdada)
-        cnpjs = self._normalize_instituicoes(instituicao)
+        cnpjs = self._normalize_instituicoes(instituicao) if instituicao else None
 
         # SQL Building (herdado + funcoes de infra.sql)
         conditions = [
@@ -840,8 +866,8 @@ class COSIFExplorer(BaseExplorer):
         ]
         where = join_conditions(conditions)
 
-        # Query (usa QueryEngine herdado)
-        df = self._qe.read_glob(
+        # Query (usa _read_glob com distinct, date_column, exclude)
+        df = self._read_glob(
             pattern=f"{prefix}_*.parquet",
             subdir=subdir,
             where=where,

@@ -38,80 +38,32 @@ class EntityLookup:
         """Retorna path completo para glob de arquivos."""
         return f"{self._qe.cache_path}/{subdir}/{pattern}"
 
-    @cached(maxsize=1)
-    def _cadastro_has_codinst(self) -> bool:
-        """Indica se o cache de cadastro ja preserva CodInst bruto."""
-        cadastro_path = self._get_source_path(
-            get_subdir("cadastro"), get_pattern("cadastro")
-        )
-        try:
-            df = self._qe.sql(
-                f"DESCRIBE SELECT * FROM read_parquet('{cadastro_path}', union_by_name=true) LIMIT 1"
-            )
-        except Exception as e:
-            self._logger.warning(
-                f"DESCRIBE cadastro failed, using legacy heuristic: {e}"
-            )
-            return False
-        return "CodInst" in df["column_name"].astype(str).tolist()
-
-    def _legacy_alias_condition(
-        self,
-        cnpj_col: str = "CNPJ_8",
-        cnpj_lider_col: str = "CNPJ_LIDER_8",
-        name_col: str = "NomeInstituicao",
-    ) -> str:
-        """
-        Heuristica para caches legados sem CodInst.
-
-        Mantem entidades reais com CNPJ_8, inclusive membros de conglomerado,
-        e tenta excluir aliases prudenciais/financeiros mais obvios.
-        """
-        name_norm = f"strip_accents(UPPER(COALESCE({name_col}, '')))"
-        return (
-            f"(({cnpj_lider_col} IS NOT NULL AND {cnpj_col} <> {cnpj_lider_col} "
-            f"AND {name_norm} LIKE '%PRUDENCIAL%') "
-            f"OR {name_norm} = 'MASTER')"
-        )
-
+    @staticmethod
     def real_entity_condition(
-        self,
         cnpj_col: str = "CNPJ_8",
-        cnpj_lider_col: str = "CNPJ_LIDER_8",
-        name_col: str = "NomeInstituicao",
         cod_inst_col: str = "CodInst",
+        **_kwargs: str,
     ) -> str:
-        """
-        Filtra apenas linhas que representam entidades reais.
+        """Filtra apenas linhas que representam entidades reais.
 
-        Regra canonica:
-        - toda linha com CNPJ_8 e CodInst numerico representa uma entidade
-        - aliases prudenciais/financeiros sao identificados pelo CodInst bruto
-
-        Para caches legados sem CodInst, usa heuristica por nome.
+        Regra canonica: toda linha com CNPJ_8 e CodInst numerico
+        representa uma entidade. Aliases prudenciais/financeiros
+        sao identificados pelo CodInst nao-numerico.
         """
-        if self._cadastro_has_codinst():
-            return (
-                f"{cnpj_col} IS NOT NULL AND "
-                f"regexp_matches(COALESCE({cod_inst_col}, ''), '^[0-9]+$')"
-            )
         return (
             f"{cnpj_col} IS NOT NULL AND "
-            f"NOT {self._legacy_alias_condition(cnpj_col, cnpj_lider_col, name_col)}"
+            f"regexp_matches(COALESCE({cod_inst_col}, ''), '^[0-9]+$')"
         )
 
     def resolved_entity_cnpj_expr(
         self,
         cnpj_col: str = "CNPJ_8",
         cnpj_lider_col: str = "CNPJ_LIDER_8",
-        name_col: str = "NomeInstituicao",
         cod_inst_col: str = "CodInst",
     ) -> str:
         """Resolve aliases prudenciais para o CNPJ da entidade lider."""
         entity_condition = self.real_entity_condition(
             cnpj_col=cnpj_col,
-            cnpj_lider_col=cnpj_lider_col,
-            name_col=name_col,
             cod_inst_col=cod_inst_col,
         )
         return (
@@ -548,5 +500,4 @@ class EntityLookup:
 
     def clear_cache(self) -> None:
         """Limpa caches LRU."""
-        self._cadastro_has_codinst.cache_clear()
         self.get_entity_identifiers.cache_clear()

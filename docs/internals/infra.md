@@ -143,10 +143,14 @@ Le multiplos arquivos via glob pattern:
 ```python
 def read_glob(
     self,
-    pattern: str,        # Glob (ex: "cosif_prud_*.parquet")
+    pattern: str,                          # Glob (ex: "cosif_prud_*.parquet")
     subdir: str,
-    columns: list = None,
-    where: str = None
+    columns: list[str] | None = None,
+    where: str | None = None,
+    distinct: bool = False,                # Se True, adiciona DISTINCT ao SELECT
+    date_column: str | None = None,        # Coluna YYYYMM int a converter para datetime via DuckDB
+    date_alias: str = "DATA",              # Nome da coluna datetime no output
+    exclude_columns: list[str] | None = None,  # Colunas a excluir via EXCLUDE (so quando columns=None)
 ) -> pd.DataFrame:
 ```
 
@@ -160,6 +164,11 @@ df = qe.read_glob(
     where="CONTA = 'TOTAL GERAL DO ATIVO'"
 )
 ```
+
+**Novos parametros**:
+- `distinct`: Adiciona `DISTINCT` ao SELECT para deduplicar resultados no DuckDB.
+- `date_column`/`date_alias`: Converte coluna YYYYMM int para datetime diretamente no DuckDB (ultimo dia do mes via `LAST_DAY(MAKE_DATE(...))`), evitando conversao pos-query em pandas.
+- `exclude_columns`: Usa `EXCLUDE(col1, col2)` no SQL para remover colunas do resultado (so quando `columns=None`).
 
 **union_by_name**: A leitura usa `read_parquet(..., union_by_name=true)` para compatibilidade com parquets que tenham schemas ligeiramente diferentes (ex: eras distintas de formato COSIF).
 
@@ -199,6 +208,40 @@ df = qe.sql("""
     LIMIT 10
 """)
 ```
+
+### sql_with_df()
+
+Executa SQL com DataFrames registrados como tabelas virtuais:
+
+```python
+def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
+    """
+    Permite JOINs, ASOF JOINs etc entre DataFrames em memoria
+    e/ou parquets via read_parquet() na mesma query.
+
+    DataFrames sao registrados como tabelas virtuais pelo nome do parametro
+    e desregistrados automaticamente ao final.
+    """
+```
+
+**Exemplo**:
+
+```python
+qe = QueryEngine()
+
+df_financial = pd.DataFrame(...)
+df_cadastro = pd.DataFrame(...)
+
+result = qe.sql_with_df("""
+    SELECT f.*, c.SEGMENTO
+    FROM _financial f
+    ASOF LEFT JOIN _cadastro c
+        ON f.CNPJ_8 = c.CNPJ_8
+        AND f.DATA >= c.DATA
+""", _financial=df_financial, _cadastro=df_cadastro)
+```
+
+Usado internamente pelo modulo de enrichment para ASOF JOINs entre dados financeiros e cadastrais.
 
 ---
 
@@ -459,12 +502,14 @@ def get_log_path() -> Path:
 
 ```python
 def emit_user_warning(
-    message: str,
+    warning: str | Warning,
     category: type[Warning] = UserWarning,
     stacklevel: int = 2,
 ) -> None:
     """Emite warning para o usuario E registra no log interno."""
 ```
+
+Aceita tanto uma string de mensagem (com `category` separado) quanto uma instancia de `Warning` diretamente. No segundo caso, o tipo do warning e extraido automaticamente.
 
 Dual output: chama `warnings.warn()` para o usuario e registra no logger interno. Usado por `BaseExplorer._diagnose_empty_result()` e `QueryEngine.read_glob()` para comunicar problemas sem levantar excecao.
 

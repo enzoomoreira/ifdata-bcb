@@ -279,14 +279,14 @@ Retorna: (registros_total, periodos_ok, falhas, indisponiveis)
 ## Fluxo de Leitura
 
 ```
-Usuario: bcb.cosif.read(instituicao='60872504', start='2024-01', end='2024-12')
+Usuario: bcb.cosif.read('2024-01', '2024-12', instituicao='60872504')
     |
     v
 COSIFExplorer.read()
     |
-    +-- _validate_required_params(instituicao, start)
+    +-- _validate_required_params(start)
     |
-    +-- _normalize_instituicoes('60872504')
+    +-- _normalize_instituicoes('60872504')  (se instituicao != None)
     |   +-- InstitutionList (Pydantic) --> Valida regex [0-9]{8}
     |
     +-- _resolve_date_range('2024-01', '2024-12')
@@ -297,18 +297,14 @@ COSIFExplorer.read()
     |   +-- _build_date_condition() --> "DATA_BASE IN (202401, ...)"
     |   +-- join_conditions() --> "... AND ..."
     |
-    +-- QueryEngine.read_glob(
-    |       pattern='cosif_ind_*.parquet',
-    |       subdir='cosif/individual',
-    |       where='CNPJ_8 = ... AND DATA_BASE IN ...'
-    |   )
-    |   +-- DuckDB executa glob SELECT com predicate pushdown
+    +-- _read_glob(pattern, subdir, where=...)
+    |   +-- Injeta distinct=True, date_column, exclude_columns
+    |   +-- QueryEngine.read_glob()
+    |       +-- DuckDB: DISTINCT + LAST_DAY(MAKE_DATE(...)) + EXCLUDE(...)
+    |       +-- Predicate pushdown no Parquet
     |
     +-- _finalize_read(df)
-        +-- Drop colunas internas (_DROP_COLUMNS)
-        +-- _apply_column_mapping() --> DATA_BASE -> DATA
-        +-- drop_duplicates()
-        +-- Converter DATA int -> datetime via pd.to_datetime + MonthEnd
+        +-- _apply_column_mapping() --> NOME_CONTA -> CONTA, etc
         +-- Sort por DATA
         +-- Reordenar colunas (_COLUMN_ORDER)
     |

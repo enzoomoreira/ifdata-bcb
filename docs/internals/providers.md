@@ -243,6 +243,8 @@ class COSIFExplorer(BaseExplorer):
     }
 
     _DROP_COLUMNS: list[str] = []
+    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+    _DATE_COLUMN = "DATA_BASE"
 
     _ESCOPOS = {
         "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
@@ -257,17 +259,19 @@ class COSIFExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: InstitutionInput,
         start: str,
         end: str | None = None,
-        conta: AccountInput | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
         escopo: Literal["individual", "prudencial"] | None = None,
-        columns: list[str] | None = None,
+        conta: AccountInput | None = None,
         documento: str | list[str] | None = None,
+        columns: list[str] | None = None,
         cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Le dados COSIF.
+        instituicao e keyword-only e opcional (bulk read quando None).
         Apos finalizacao, aplica nomes canônicos do cadastro.
         """
 
@@ -375,19 +379,23 @@ class IFDATAExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: InstitutionInput,
         start: str,
         end: str | None = None,
-        conta: AccountInput | None = None,
-        columns: list[str] | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
         escopo: Literal["individual", "prudencial", "financeiro"] | None = None,
+        conta: AccountInput | None = None,
         relatorio: str | None = None,
+        grupo: str | None = None,
+        columns: list[str] | None = None,
         cadastro: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Args:
+            instituicao: Se None, bulk read (todas as instituicoes).
             escopo: "individual", "prudencial", ou "financeiro"
             relatorio: Filtrar por relatorio (Ativo, Passivo, DRE, Resumo)
+            grupo: Filtrar por grupo de conta
         """
 ```
 
@@ -500,19 +508,28 @@ class CadastroExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: InstitutionInput | None = None,
-        start: str | None = None,
+        start: str,
         end: str | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
         segmento: str | None = None,
         uf: str | None = None,
         situacao: str | None = None,
+        atividade: str | None = None,
+        tcb: str | None = None,
+        td: str | None = None,
+        tc: str | int | None = None,
+        sr: str | None = None,
+        municipio: str | None = None,
         columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Args:
+            start: Periodo obrigatorio.
             instituicao: CNPJ de 8 digitos (opcional para listar todas)
             segmento: Filtrar por segmento
             uf: Filtrar por UF
+            atividade, tcb, td, tc, sr, municipio: Novos filtros (case/accent insensitive)
         """
 
     def info(self, instituicao: str, start: str | None = None) -> dict | None:
@@ -558,7 +575,7 @@ Modulo de enriquecimento cadastral inline. Permite adicionar colunas cadastrais 
 VALID_CADASTRO_COLUMNS = {
     "SEGMENTO", "COD_CONGL_PRUD", "COD_CONGL_FIN", "SITUACAO",
     "ATIVIDADE", "TCB", "TD", "TC", "UF", "MUNICIPIO", "SR",
-    "DATA_INICIO_ATIVIDADE",
+    "DATA_INICIO_ATIVIDADE", "NOME_CONGL_PRUD",
 }
 
 def validate_cadastro_columns(columns: list[str] | None) -> None:
@@ -577,11 +594,15 @@ def enrich_with_cadastro(
     """
     Enriquece DataFrame financeiro com colunas cadastrais.
 
-    Usa merge temporal backward-looking: cada linha financeira recebe
-    os atributos cadastrais do trimestre mais recente <= sua data.
+    Usa ASOF LEFT JOIN no DuckDB para alinhamento temporal backward-looking:
+    cada linha financeira recebe os atributos cadastrais do trimestre
+    mais recente <= sua data.
 
-    Para data unica: merge simples por CNPJ_8.
-    Para time-series: merge_asof para alinhamento temporal.
+    Para data unica: LEFT JOIN com ROW_NUMBER para pegar registro mais recente.
+    Para time-series: ASOF LEFT JOIN via DuckDB SQL.
+
+    Suporta coluna derivada NOME_CONGL_PRUD: nome da instituicao lider
+    do conglomerado prudencial, resolvida via lookup SQL interno.
     """
 ```
 

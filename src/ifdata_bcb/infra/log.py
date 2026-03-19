@@ -74,14 +74,21 @@ def set_log_level(level: str) -> None:
 
 
 def emit_user_warning(
-    message: str,
+    warning: str | Warning,
     category: type[Warning] = UserWarning,
     stacklevel: int = 2,
 ) -> None:
     """Emite warning para o usuario E registra no log interno."""
-    warnings.warn(message, category, stacklevel=stacklevel + 1)
+    if isinstance(warning, Warning):
+        warnings.warn(warning, type(warning), stacklevel=stacklevel + 1)
+        msg = str(warning)
+        cat_name = type(warning).__name__
+    else:
+        warnings.warn(warning, category, stacklevel=stacklevel + 1)
+        msg = warning
+        cat_name = category.__name__
     logger = get_logger("ifdata_bcb.warnings")
-    logger.warning(f"[{category.__name__}] {message}")
+    logger.warning(f"[{cat_name}] {msg}")
 
 
 def get_log_path() -> Path:

@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import pandas as pd
 import pytest
 
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
@@ -11,7 +10,6 @@ from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
     normalize_date_to_int,
-    yyyymm_to_datetime,
 )
 
 
@@ -143,27 +141,3 @@ class TestGenerateQuarterRange:
     def test_start_equals_end_not_quarter(self) -> None:
         # start=end=202402, primeiro trimestre=202403 que e > end
         assert generate_quarter_range(202402, 202402) == []
-
-
-class TestYyyymToDatetime:
-    """yyyymm_to_datetime: converte YYYYMM para ultimo dia do mes."""
-
-    def test_regular_month(self) -> None:
-        result = yyyymm_to_datetime(202403)
-        assert result == pd.Timestamp(2024, 3, 31)
-
-    def test_february_non_leap(self) -> None:
-        result = yyyymm_to_datetime(202302)
-        assert result == pd.Timestamp(2023, 2, 28)
-
-    def test_february_leap(self) -> None:
-        result = yyyymm_to_datetime(202402)
-        assert result == pd.Timestamp(2024, 2, 29)
-
-    def test_april_30_days(self) -> None:
-        result = yyyymm_to_datetime(202404)
-        assert result == pd.Timestamp(2024, 4, 30)
-
-    def test_december(self) -> None:
-        result = yyyymm_to_datetime(202412)
-        assert result == pd.Timestamp(2024, 12, 31)

@@ -109,17 +109,12 @@ class TestBuildDateCondition:
 class TestValidateRequiredParams:
     """_validate_required_params: valida parametros obrigatorios."""
 
-    def test_both_present(self, explorer: ConcreteExplorer) -> None:
-        explorer._validate_required_params("12345678", "2024-01")
-
-    def test_missing_instituicao_raises(self, explorer: ConcreteExplorer) -> None:
-        with pytest.raises(MissingRequiredParameterError) as exc_info:
-            explorer._validate_required_params(None, "2024-01")
-        assert exc_info.value.param_name == "instituicao"
+    def test_start_present(self, explorer: ConcreteExplorer) -> None:
+        explorer._validate_required_params("2024-01")
 
     def test_missing_start_raises(self, explorer: ConcreteExplorer) -> None:
         with pytest.raises(MissingRequiredParameterError) as exc_info:
-            explorer._validate_required_params("12345678", None)
+            explorer._validate_required_params(None)
         assert exc_info.value.param_name == "start"
 
 
@@ -197,6 +192,7 @@ class DerivedExplorer(BaseExplorer):
 
     _COLUMN_MAP = {"AnoMes": "DATA", "CodInst": "COD_INST", "NomeColuna": "CONTA"}
     _DERIVED_COLUMNS: set[str] = {"CNPJ_8", "INSTITUICAO", "ESCOPO"}
+    _PASSTHROUGH_COLUMNS: set[str] = {"NATIVE_COL"}
     _DROP_COLUMNS = ["TipoInstituicao"]
     _COLUMN_ORDER = ["DATA", "CNPJ_8", "ESCOPO", "COD_INST", "CONTA"]
     _VALID_ESCOPOS = ["individual", "prudencial"]
@@ -271,6 +267,12 @@ class TestValidateColumnsEdgeCases:
 
     def test_derived_column_accepted(self, derived_explorer: DerivedExplorer) -> None:
         derived_explorer._validate_columns(["CNPJ_8", "ESCOPO"])
+
+    def test_passthrough_column_accepted(
+        self, derived_explorer: DerivedExplorer
+    ) -> None:
+        result = derived_explorer._validate_columns(["NATIVE_COL", "DATA"])
+        assert result == ["NATIVE_COL", "DATA"]
 
     def test_unknown_column_raises_with_suggestions(
         self, derived_explorer: DerivedExplorer
