@@ -170,48 +170,52 @@ contas = bcb.ifdata.list_contas(escopo='individual', limit=50)
 contas = bcb.ifdata.list_contas(relatorio='Resumo')
 ```
 
-### list_instituicoes()
+### list()
 
-Lista entidades analiticas com disponibilidade por escopo.
+Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 
 ```python
-bcb.ifdata.list_instituicoes(
-    start: str | None = None,      # Data inicial ou unica
-    end: str | None = None         # Data final para range
+bcb.ifdata.list(
+    columns: list[str],            # Colunas a listar: DATA, ESCOPO, RELATORIO, GRUPO
+    *,
+    start: str | None = None,      # Periodo inicial
+    end: str | None = None,        # Periodo final
+    escopo: str | None = None,     # Filtro por escopo
+    relatorio: str | None = None,  # Filtro por relatorio (case/accent insensitive)
+    grupo: str | None = None,      # Filtro por grupo (case/accent insensitive)
+    limit: int = 100               # Maximo de resultados
 ) -> pd.DataFrame
 ```
 
-**Retorna**: DataFrame com colunas:
-- `CNPJ_8`: CNPJ de 8 digitos da entidade
-- `INSTITUICAO`: Nome canônico do cadastro
-- `TEM_INDIVIDUAL`: bool - se ha dados no escopo individual
-- `TEM_PRUDENCIAL`: bool - se ha dados no escopo prudencial
-- `TEM_FINANCEIRO`: bool - se ha dados no escopo financeiro
-- `COD_INST_INDIVIDUAL`: Codigo(s) de reporte individual
-- `COD_INST_PRUDENCIAL`: Codigo(s) de reporte prudencial
-- `COD_INST_FINANCEIRO`: Codigo(s) de reporte financeiro
+**Colunas bloqueadas** (emitem warning e retornam DataFrame vazio):
+- `CONTA`, `COD_CONTA`: use `list_contas()` para buscar contas
+- `COD_INST`: use `cadastro.search(fonte='ifdata')` para listar instituicoes
+- `VALOR`: metrica continua, nao listavel
+
+**Raises**: `InvalidColumnError` se coluna invalida. `TruncatedResultWarning` quando `len(resultado) == limit`.
 
 **Exemplos**:
 
 ```python
-# Listar entidades de dezembro/2024
-inst = bcb.ifdata.list_instituicoes(start='2024-12')
+# Listar relatorios disponiveis
+bcb.ifdata.list(["RELATORIO"])
 
-# Filtrar entidades com dados prudenciais
-prud = inst[inst['TEM_PRUDENCIAL']]
+# Listar combinacoes relatorio + escopo
+bcb.ifdata.list(["RELATORIO", "ESCOPO"])
 
-# Ver codigos de reporte de uma entidade
-row = inst[inst['CNPJ_8'] == '60872504'].iloc[0]
-print(f"Individual: {row['COD_INST_INDIVIDUAL']}")
-print(f"Prudencial: {row['COD_INST_PRUDENCIAL']}")
+# Listar grupos de um relatorio especifico
+bcb.ifdata.list(["GRUPO"], relatorio="Ativo")
+
+# Listar periodos como datetime64
+bcb.ifdata.list(["DATA"])
 ```
 
-### list_mapeamento()
+### mapeamento()
 
-Lista chaves operacionais de reporte do IFDATA por entidade e escopo.
+Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo.
 
 ```python
-bcb.ifdata.list_mapeamento(
+bcb.ifdata.mapeamento(
     start: str | None = None,      # Data inicial ou unica
     end: str | None = None         # Data final para range
 ) -> pd.DataFrame
@@ -221,40 +225,23 @@ bcb.ifdata.list_mapeamento(
 - `COD_INST`: Codigo de reporte no IFDATA
 - `TIPO_INST`: Codigo do tipo de instituicao (1, 2, 3)
 - `ESCOPO`: "individual", "prudencial" ou "financeiro"
-- `REPORT_KEY_TYPE`: "cnpj" ou nome do escopo (indica se COD_INST e CNPJ direto ou codigo de conglomerado)
+- `REPORT_KEY_TYPE`: "cnpj" ou nome do escopo
 - `CNPJ_8`: CNPJ da entidade associada
-- `INSTITUICAO`: Nome canônico
-
-**Exemplo**:
-
-```python
-# Ver mapeamento completo de reporters
-reporters = bcb.ifdata.list_mapeamento(start='2024-12')
-print(reporters[reporters['CNPJ_8'] == '60872504'])
-```
-
-### list_relatorios()
-
-Lista relatorios disponiveis nos dados.
-
-```python
-bcb.ifdata.list_relatorios(
-    start: str | None = None,      # Data inicial ou unica
-    end: str | None = None         # Data final para range
-) -> list[str]
-```
-
-**Retorna**: Lista de nomes de relatorios.
+- `INSTITUICAO`: Nome canonico
 
 **Exemplos**:
 
 ```python
-# Listar relatorios disponiveis
-relatorios = bcb.ifdata.list_relatorios()
-# ['Ativo', 'Passivo', 'DRE', 'Resumo', ...]
+# Ver mapeamento completo
+reporters = bcb.ifdata.mapeamento(start='2024-12')
+print(reporters[reporters['CNPJ_8'] == '60872504'])
 
-# Relatorios de um periodo especifico
-relatorios = bcb.ifdata.list_relatorios(start='2024-12')
+# Descobrir COD_INST de um banco por escopo
+df = bcb.ifdata.mapeamento(start='2024-12')
+df[df['CNPJ_8'] == '60746948']  # Bradesco: individual=60746948, prudencial=C0080075
+
+# Listar membros de um conglomerado
+df[df['COD_INST'] == 'C0080075']
 ```
 
 ### list_periodos()

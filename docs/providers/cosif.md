@@ -211,31 +211,40 @@ contas = bcb.cosif.list_contas(termo='deposito')
 contas = bcb.cosif.list_contas(escopo='prudencial', limit=50)
 ```
 
-### list_instituicoes()
+### list()
 
-Lista instituicoes disponiveis nos dados.
+Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 
 ```python
-bcb.cosif.list_instituicoes(
-    start: str | None = None,      # Data inicial ou unica
-    end: str | None = None,        # Data final para range
-    escopo: str | None = None      # 'individual', 'prudencial', ou None (ambos)
+bcb.cosif.list(
+    columns: list[str],            # Colunas a listar: DATA, ESCOPO, DOCUMENTO
+    *,
+    start: str | None = None,      # Periodo inicial
+    end: str | None = None,        # Periodo final
+    escopo: str | None = None,     # Filtro por escopo
+    documento: str | list[str] | None = None,  # Filtro por documento
+    limit: int = 100               # Maximo de resultados
 ) -> pd.DataFrame
 ```
 
-**Retorna**: Quando escopo=None, DataFrame com colunas `CNPJ_8`, `INSTITUICAO`, `TEM_INDIVIDUAL` (bool) e `TEM_PRUDENCIAL` (bool). Quando escopo especificado, retorna `CNPJ_8` e `INSTITUICAO`.
+**Colunas bloqueadas** (emitem warning e retornam DataFrame vazio):
+- `CONTA`, `COD_CONTA`: use `list_contas()` para buscar contas
+- `CNPJ_8`, `INSTITUICAO`: use `cadastro.search()` para buscar instituicoes
+- `VALOR`, `SALDO`: metrica continua, nao listavel
+
+**Raises**: `InvalidColumnError` se coluna invalida. `TruncatedResultWarning` quando `len(resultado) == limit`.
 
 **Exemplos**:
 
 ```python
-# Listar instituicoes de dezembro/2024
-inst = bcb.cosif.list_instituicoes(start='2024-12')
+# Listar periodos disponiveis como datetime64
+bcb.cosif.list(["DATA"])
 
-# Listar apenas do prudencial
-inst = bcb.cosif.list_instituicoes(start='2024-12', escopo='prudencial')
+# Listar documentos por escopo
+bcb.cosif.list(["DOCUMENTO", "ESCOPO"])
 
-# Listar de um range de periodos
-inst = bcb.cosif.list_instituicoes(start='2024-01', end='2024-12')
+# Listar periodos de um escopo especifico
+bcb.cosif.list(["DATA"], escopo='prudencial')
 ```
 
 ### list_periodos()

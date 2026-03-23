@@ -132,7 +132,7 @@ collect(start, end)
         |       +-- temp_dir(prefix="cosif_ind_202401") as work_dir
         |       |   +-- _download_period(202401, work_dir)
         |       |   |   +-- @retry(max_attempts=3)
-        |       |   |   +-- requests.get(url)
+        |       |   |   +-- self._http.get(url)
         |       |   |   --> Path do CSV ou None
         |       |   +-- _process_to_parquet(csv_path, 202401)
         |       |   |   --> pd.DataFrame normalizado
@@ -421,35 +421,9 @@ chaves de reporte (COD_INST) para entidades analiticas (CNPJ_8):
 - **Prudencial**: COD_INST pode ser CodConglomeradoPrudencial ou CNPJ direto
 - **Financeiro**: COD_INST pode ser CodConglomeradoFinanceiro ou CNPJ direto
 
-### list_instituicoes()
+### mapeamento()
 
-Retorna visao centrada em entidades com disponibilidade por escopo.
-
-**IFDATA** (`bcb.ifdata.list_instituicoes()`):
-
-| Coluna | Descricao |
-|--------|-----------|
-| CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome canonico do cadastro |
-| TEM_INDIVIDUAL | bool |
-| TEM_PRUDENCIAL | bool |
-| TEM_FINANCEIRO | bool |
-| COD_INST_INDIVIDUAL | Codigo(s) de reporte |
-| COD_INST_PRUDENCIAL | Codigo(s) de reporte |
-| COD_INST_FINANCEIRO | Codigo(s) de reporte |
-
-**COSIF** (`bcb.cosif.list_instituicoes()`):
-
-| Coluna | Descricao |
-|--------|-----------|
-| CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome canonico do cadastro |
-| TEM_INDIVIDUAL | bool |
-| TEM_PRUDENCIAL | bool |
-
-### list_mapeamento()
-
-Lista chaves operacionais de reporte por entidade e escopo:
+Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo (apenas IFDATA):
 
 | Coluna | Descricao |
 |--------|-----------|
@@ -458,7 +432,7 @@ Lista chaves operacionais de reporte por entidade e escopo:
 | ESCOPO | individual, prudencial, financeiro |
 | REPORT_KEY_TYPE | "cnpj" ou nome do escopo |
 | CNPJ_8 | CNPJ da entidade associada |
-| INSTITUICAO | Nome canônico |
+| INSTITUICAO | Nome canonico |
 
 ### Colunas Disponiveis (read)
 
@@ -529,17 +503,11 @@ class CadastroExplorer(BaseExplorer):
             atividade, tcb, td, tc, sr, municipio: Novos filtros (case/accent insensitive)
         """
 
-    def info(self, instituicao: str, start: str | None = None) -> dict | None:
-        """Retorna dict com info da instituicao. None se nao encontrar."""
+    def list(self, columns: list[str], *, ...) -> pd.DataFrame:
+        """Lista valores distintos para colunas solicitadas."""
 
-    def list_segmentos(self) -> list[str]:
-        """Lista segmentos disponiveis."""
-
-    def list_ufs(self) -> list[str]:
-        """Lista UFs disponiveis."""
-
-    def get_conglomerate_members(self, cod_congl: str, start: str | None = None) -> pd.DataFrame:
-        """Retorna membros de um conglomerado prudencial."""
+    def search(self, termo: str | None = None, *, fonte=None, escopo=None, ...) -> pd.DataFrame:
+        """Busca instituicoes por nome ou lista todas com dados."""
 ```
 
 ### Colunas Disponiveis
@@ -638,7 +606,7 @@ class NovoCollector(BaseCollector):
     @retry(max_attempts=3, delay=2.0)
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         url = f"https://api.exemplo.com/dados/{period}"
-        response = requests.get(url, timeout=120)
+        response = self._http.get(url)
         response.raise_for_status()
         output_path = work_dir / f"novo_{period}.csv"
         output_path.write_bytes(response.content)

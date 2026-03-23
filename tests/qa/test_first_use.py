@@ -24,13 +24,8 @@ class TestImport:
         import ifdata_bcb
 
         d = dir(ifdata_bcb)
-        for name in ("cosif", "ifdata", "cadastro", "search"):
+        for name in ("cosif", "ifdata", "cadastro"):
             assert name in d
-
-    def test_from_import_search(self) -> None:
-        from ifdata_bcb import search  # noqa: F401
-
-        assert callable(search)
 
     def test_import_nonexistent_raises(self) -> None:
         with pytest.raises(ImportError):

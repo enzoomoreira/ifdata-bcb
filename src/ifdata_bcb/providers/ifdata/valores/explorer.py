@@ -1,5 +1,7 @@
 """Explorer para dados IFDATA Valores (trimestrais)."""
 
+from __future__ import annotations
+
 from typing import Literal
 
 import pandas as pd
@@ -28,7 +30,7 @@ from ifdata_bcb.providers.enrichment import (
 )
 from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
 from ifdata_bcb.providers.ifdata.valores.temporal import TemporalGroup, TemporalResolver
-from ifdata_bcb.utils.text import format_entity_labels
+from ifdata_bcb.utils.text import format_entity_labels, stem_ptbr
 
 
 EscopoIFDATA = Literal["individual", "prudencial", "financeiro"]
@@ -47,16 +49,6 @@ _EMPTY_COLUMNS = [
     "GRUPO",
 ]
 _EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
-_EMPTY_INSTITUTION_COLUMNS = [
-    "CNPJ_8",
-    "INSTITUICAO",
-    "TEM_INDIVIDUAL",
-    "TEM_PRUDENCIAL",
-    "TEM_FINANCEIRO",
-    "COD_INST_INDIVIDUAL",
-    "COD_INST_PRUDENCIAL",
-    "COD_INST_FINANCEIRO",
-]
 
 
 class IFDATAExplorer(BaseExplorer):
@@ -96,6 +88,25 @@ class IFDATAExplorer(BaseExplorer):
     ]
 
     _VALID_ESCOPOS = ["individual", "prudencial", "financeiro"]
+
+    _LIST_COLUMNS: dict[str, str] = {
+        "DATA": "AnoMes",
+        "ESCOPO": (
+            "CASE TipoInstituicao "
+            "WHEN 1 THEN 'prudencial' "
+            "WHEN 2 THEN 'financeiro' "
+            "WHEN 3 THEN 'individual' END"
+        ),
+        "RELATORIO": "NomeRelatorio",
+        "GRUPO": "Grupo",
+    }
+
+    _BLOCKED_COLUMNS: dict[str, str] = {
+        "CONTA": "Use list_contas(termo='...') para buscar contas.",
+        "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
+        "COD_INST": "Use cadastro.search(fonte='ifdata') para listar instituicoes.",
+        "VALOR": "VALOR e uma metrica continua, nao listavel.",
+    }
 
     def __init__(
         self,
@@ -410,6 +421,84 @@ class IFDATAExplorer(BaseExplorer):
 
         return self._filter_columns(df, columns)
 
+    def list(
+        self,
+        columns: list[str],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        escopo: EscopoIFDATA | None = None,
+        relatorio: str | None = None,
+        grupo: str | None = None,
+        limit: int = 100,
+    ) -> pd.DataFrame:
+        """Lista valores distintos para as colunas solicitadas.
+
+        Args:
+            columns: Colunas a listar (DATA, ESCOPO, RELATORIO, GRUPO).
+            start: Periodo inicial (opcional).
+            end: Periodo final (opcional).
+            escopo: Filtro por escopo.
+            relatorio: Filtro por relatorio (case/accent insensitive).
+            grupo: Filtro por grupo (case/accent insensitive).
+            limit: Maximo de resultados.
+
+        Raises:
+            InvalidColumnError: Se coluna invalida.
+        """
+        return self._base_list(
+            columns,
+            start=start,
+            end=end,
+            limit=limit,
+            escopo=escopo,
+            relatorio=relatorio,
+            grupo=grupo,
+        )
+
+    def _build_list_conditions(
+        self,
+        start: str | None = None,
+        end: str | None = None,
+        **filters: object,
+    ) -> list[str | None]:
+        conditions: list[str | None] = []
+
+        # Date filter (trimestral)
+        conditions.append(self._build_date_condition(start, end, trimestral=True))
+
+        # Escopo -> TipoInstituicao
+        escopo = filters.get("escopo")
+        if escopo is not None:
+            tipo_inst = TIPO_INST_MAP[self._validate_escopo(str(escopo))]
+            conditions.append(f"TipoInstituicao = {tipo_inst}")
+
+        # Relatorio
+        relatorio = filters.get("relatorio")
+        if relatorio is not None:
+            conditions.append(
+                build_string_condition(
+                    "NomeRelatorio",
+                    [str(relatorio)],
+                    case_insensitive=True,
+                    accent_insensitive=True,
+                )
+            )
+
+        # Grupo
+        grupo = filters.get("grupo")
+        if grupo is not None:
+            conditions.append(
+                build_string_condition(
+                    "Grupo",
+                    [str(grupo)],
+                    case_insensitive=True,
+                    accent_insensitive=True,
+                )
+            )
+
+        return conditions
+
     def list_contas(
         self,
         termo: str | None = None,
@@ -439,7 +528,7 @@ class IFDATAExplorer(BaseExplorer):
 
         conditions = []
         if termo:
-            conditions.append(build_like_condition("NomeColuna", termo))
+            conditions.append(build_like_condition("NomeColuna", stem_ptbr(termo)))
 
         if escopo:
             tipo_inst = TIPO_INST_MAP[self._validate_escopo(escopo)]
@@ -464,75 +553,10 @@ class IFDATAExplorer(BaseExplorer):
         """
         return self._qe.sql(query)
 
-    def list_instituicoes(
+    def mapeamento(
         self,
         start: str | None = None,
         end: str | None = None,
     ) -> pd.DataFrame:
-        """Lista entidades analiticas com disponibilidade por escopo."""
-        df = self._temporal.resolve_mapeamento(start, end)
-        if df.empty:
-            return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS)
-
-        def join_codes(series: pd.Series) -> str:
-            values = sorted({str(v) for v in series.dropna().astype(str) if str(v)})
-            return ", ".join(values)
-
-        rows = []
-        for cnpj, group in df.groupby("CNPJ_8", sort=True):
-            rows.append(
-                {
-                    "CNPJ_8": cnpj,
-                    "INSTITUICAO": group["INSTITUICAO"].dropna().astype(str).iloc[0]
-                    if not group["INSTITUICAO"].dropna().empty
-                    else "",
-                    "TEM_INDIVIDUAL": bool((group["ESCOPO"] == "individual").any()),
-                    "TEM_PRUDENCIAL": bool((group["ESCOPO"] == "prudencial").any()),
-                    "TEM_FINANCEIRO": bool((group["ESCOPO"] == "financeiro").any()),
-                    "COD_INST_INDIVIDUAL": join_codes(
-                        group.loc[group["ESCOPO"] == "individual", "COD_INST"]
-                    ),
-                    "COD_INST_PRUDENCIAL": join_codes(
-                        group.loc[group["ESCOPO"] == "prudencial", "COD_INST"]
-                    ),
-                    "COD_INST_FINANCEIRO": join_codes(
-                        group.loc[group["ESCOPO"] == "financeiro", "COD_INST"]
-                    ),
-                }
-            )
-
-        return (
-            pd.DataFrame(rows)
-            .sort_values(["INSTITUICAO", "CNPJ_8"])
-            .reset_index(drop=True)
-        )
-
-    def list_mapeamento(
-        self,
-        start: str | None = None,
-        end: str | None = None,
-    ) -> pd.DataFrame:
-        """Lista chaves operacionais de reporte do IFDATA por entidade e escopo."""
+        """Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo."""
         return self._temporal.resolve_mapeamento(start, end)
-
-    def list_relatorios(
-        self,
-        start: str | None = None,
-        end: str | None = None,
-    ) -> list[str]:
-        """Lista relatorios disponiveis."""
-        if not self._ensure_data_exists():
-            return []
-
-        path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
-        where = self._temporal._ifdata_date_where(start, end)
-
-        query = f"""
-            SELECT DISTINCT NomeRelatorio as RELATORIO
-            FROM '{path}'
-            {where}
-            ORDER BY RELATORIO
-        """
-
-        df = self._qe.sql(query)
-        return df["RELATORIO"].tolist() if not df.empty else []

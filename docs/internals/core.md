@@ -7,7 +7,6 @@ O modulo `core` concentra a logica central compartilhada entre todos os provider
 ```
 src/ifdata_bcb/core/
 |-- __init__.py           # Exports publicos
-|-- api.py               # Funcao search() de alto nivel
 |-- entity_lookup.py     # Resolucao e busca de entidades
 |-- constants.py         # Configuracoes centralizadas
 +-- eras.py              # Deteccao e tratamento de eras de formato BCB
@@ -766,42 +765,6 @@ A funcao `strip_accents()` e UDF registrada no DuckDB para comparacao insensivel
 
 ---
 
-## api.py
-
-### search()
-
-Funcao de alto nivel para busca de instituicoes:
-
-```python
-_lookup: EntityLookup | None = None
-
-def search(termo: str, limit: int = 10) -> pd.DataFrame:
-    """
-    Busca instituicoes por nome em todas as fontes.
-
-    Use esta funcao para encontrar o CNPJ antes de fazer consultas.
-
-    Args:
-        termo: Nome ou parte dele
-        limit: Maximo de resultados (default 10)
-
-    Exemplo:
-        >>> from ifdata_bcb import search
-        >>> search("itau")
-           CNPJ_8          INSTITUICAO SITUACAO       FONTES  SCORE
-        0  60872504  ITAU UNIBANCO S.A.        A  cosif,ifdata    100
-    """
-    global _lookup
-    if _lookup is None:
-        _lookup = EntityLookup()
-    return _lookup.search(termo, limit=limit)
-```
-
-- Lazy loading do EntityLookup
-- Singleton reutilizado em chamadas subsequentes
-
----
-
 ## Integracao entre Componentes
 
 ### BaseExplorer usa EntityLookup
@@ -946,11 +909,9 @@ A deteccao de tipo de relatorio usa normalizacao Unicode (remove acentos, lowerc
 
 ```python
 # core/__init__.py
-from ifdata_bcb.core.api import search
 from ifdata_bcb.core.entity_lookup import EntityLookup
 
 __all__ = [
-    "search",
     "EntityLookup",
 ]
 ```

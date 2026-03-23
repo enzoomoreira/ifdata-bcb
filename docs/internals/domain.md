@@ -29,6 +29,7 @@ Exception
     |       +-- InvalidDateFormatError
     |       +-- PeriodUnavailableError
     |       +-- DataProcessingError
+    |       +-- InvalidColumnError
     +-- UserWarning
             +-- IncompatibleEraWarning
             +-- PartialDataWarning
@@ -37,6 +38,7 @@ Exception
             +-- ScopeMigrationWarning
             +-- DroppedReportWarning
             +-- EmptyFilterWarning
+            +-- TruncatedResultWarning
 ```
 
 > **Nota:** `EntityNotFoundError` e `AmbiguousIdentifierError` foram removidas da hierarquia por nao terem call sites restantes.

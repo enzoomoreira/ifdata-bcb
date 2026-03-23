@@ -134,28 +134,10 @@ class TestIFDATAReadRelatorio:
 class TestIFDATAListMethodsExtended:
     """Metodos list/describe que nao tinham cobertura."""
 
-    def test_list_relatorios_returns_strings(
+    def test_mapeamento_returns_mapping(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        reports = explorers[1].list_relatorios()
-        assert isinstance(reports, list)
-        assert len(reports) > 0
-        assert all(isinstance(r, str) for r in reports)
-        assert "Resumo" in reports
-
-    def test_list_instituicoes_returns_availability_matrix(
-        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
-    ) -> None:
-        df = explorers[1].list_instituicoes()
-        assert not df.empty
-        for col in ("CNPJ_8", "INSTITUICAO", "TEM_INDIVIDUAL", "TEM_PRUDENCIAL"):
-            assert col in df.columns
-        assert df["TEM_INDIVIDUAL"].dtype == bool
-
-    def test_list_mapeamento_returns_mapping(
-        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
-    ) -> None:
-        df = explorers[1].list_mapeamento()
+        df = explorers[1].mapeamento()
         assert not df.empty
         for col in ("COD_INST", "TIPO_INST", "ESCOPO", "CNPJ_8"):
             assert col in df.columns

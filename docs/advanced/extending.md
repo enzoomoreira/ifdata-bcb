@@ -54,12 +54,9 @@ O Collector e responsavel por baixar e processar dados.
 from pathlib import Path
 import tempfile
 import pandas as pd
-import requests
-
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
-from ifdata_bcb.infra.resilience import retry, DEFAULT_REQUEST_TIMEOUT
 from ifdata_bcb.infra.storage import DataManager
 
 

@@ -148,23 +148,6 @@ class TestCOSIFListMethods:
         assert "ESCOPOS" not in df.columns
         assert list(df.columns) == ["COD_CONTA", "CONTA"]
 
-    def test_list_instituicoes(
-        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
-    ) -> None:
-        df = explorers[0].list_instituicoes()
-        assert not df.empty
-        assert "CNPJ_8" in df.columns
-        assert "TEM_INDIVIDUAL" in df.columns
-        assert "TEM_PRUDENCIAL" in df.columns
-        assert df["TEM_INDIVIDUAL"].dtype == bool
-
-    def test_list_instituicoes_with_escopo_no_tem_columns(
-        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
-    ) -> None:
-        df = explorers[0].list_instituicoes(escopo="individual")
-        assert not df.empty
-        assert list(df.columns) == ["CNPJ_8", "INSTITUICAO"]
-
 
 class TestCOSIFDocumentoValidation:
     """Validacao do parametro documento em cosif.read()."""

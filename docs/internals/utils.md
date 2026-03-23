@@ -40,6 +40,31 @@ def normalize_accents(text: str) -> str:
 1. Aplica normalizacao Unicode NFKD (separa base de modificadores)
 2. Filtra caracteres nao-combinadores (`unicodedata.combining()`)
 
+### stem_ptbr()
+
+Stemming simples PT-BR para busca singular/plural:
+
+```python
+def stem_ptbr(term: str) -> str:
+    """
+    Remove sufixos comuns para unificar formas singular/plural.
+
+    Usa pares atomicos (singular, plural) com raiz minima de 4 chars
+    para evitar falsos positivos.
+
+    Exemplos:
+        "operacao"  -> "opera"   (match com "operacoes")
+        "captacao"  -> "capta"   (match com "captacoes")
+        "capital"   -> "capit"   (match com "capitais")
+        "credito"   -> "credito" (sem inflexao, passthrough)
+        "cao"       -> "cao"     (raiz < 4 chars, passthrough)
+    """
+```
+
+**Pares suportados**: `(icao, icoes)`, `(ucao, ucoes)`, `(cao, coes)`, `(sao, soes)`, `(ao, oes)`, `(al, ais)`, `(el, eis)`.
+
+Usado internamente por `list_contas()` no IFDATA e COSIF para stemming do termo de busca.
+
 ### format_entity_labels()
 
 Formata lista de CNPJs com nomes canonicos para mensagens de warning:
@@ -357,7 +382,7 @@ class BaseCollector:
 # utils/__init__.py
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 from ifdata_bcb.utils.fuzzy import FuzzyMatcher
-from ifdata_bcb.utils.text import normalize_accents, normalize_text
+from ifdata_bcb.utils.text import normalize_accents, normalize_text, stem_ptbr
 from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
@@ -377,6 +402,7 @@ __all__ = [
     # text
     "normalize_accents",
     "normalize_text",
+    "stem_ptbr",
     # date
     "generate_month_range",
     "generate_quarter_range",

@@ -146,3 +146,24 @@ class EmptyFilterWarning(UserWarning):
     def __init__(self, message: str, parameter: str):
         self.parameter = parameter
         super().__init__(message)
+
+
+class InvalidColumnError(BacenAnalysisError):
+    """Coluna invalida para list()."""
+
+    def __init__(self, column: str, valid_columns: list[str], extras: str = ""):
+        self.column = column
+        self.valid_columns = valid_columns
+        valid_str = ", ".join(valid_columns)
+        msg = f"Coluna '{column}' invalida. Disponiveis: {valid_str}."
+        if extras:
+            msg += f" {extras}"
+        super().__init__(msg)
+
+
+class TruncatedResultWarning(UserWarning):
+    """Resultado truncado pelo limit."""
+
+    def __init__(self, message: str, limit: int):
+        self.limit = limit
+        super().__init__(message)

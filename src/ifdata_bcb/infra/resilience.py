@@ -3,8 +3,7 @@ import random
 import time
 from typing import Any, Tuple, Type
 
-import requests
-import urllib3
+import httpx
 from tenacity import (
     RetryCallState,
     retry as tenacity_retry,
@@ -57,11 +56,8 @@ def _log_final_failure(retry_state: RetryCallState) -> None:
 
 # Excecoes transientes que justificam retry (rede, parsing, APIs instaveis)
 TRANSIENT_EXCEPTIONS: Tuple[Type[Exception], ...] = (
-    # Rede/HTTP
-    requests.RequestException,
-    requests.ConnectionError,
-    requests.Timeout,
-    urllib3.exceptions.HTTPError,
+    # Rede/HTTP (httpx.HTTPError cobre ConnectError, TimeoutException, etc.)
+    httpx.HTTPError,
     ConnectionError,
     TimeoutError,
     OSError,  # Inclui socket errors

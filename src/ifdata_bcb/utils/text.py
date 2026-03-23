@@ -16,6 +16,29 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
+def stem_ptbr(term: str) -> str:
+    """Stem simples PT-BR: remove sufixos comuns para busca singular/plural.
+
+    Usa pares atomicos (singular, plural) com raiz minima de 4 chars
+    para evitar falsos positivos.
+    """
+    t = normalize_accents(term.lower())
+    pairs = [
+        ("icao", "icoes"),  # aplicacao/aplicacoes
+        ("ucao", "ucoes"),  # reducao/reducoes
+        ("cao", "coes"),  # operacao/operacoes, captacao/captacoes
+        ("sao", "soes"),  # provisao/provisoes
+        ("ao", "oes"),  # restante
+        ("al", "ais"),  # capital/capitais
+        ("el", "eis"),  # papel/papeis
+    ]
+    for sing, plur in pairs:
+        for suf in (plur, sing):
+            if t.endswith(suf) and len(t) - len(suf) >= 4:
+                return t[: -len(suf)]
+    return t
+
+
 def format_entity_labels(
     cnpjs: list[str],
     nomes: dict[str, str],

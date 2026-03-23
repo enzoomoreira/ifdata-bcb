@@ -46,7 +46,7 @@ import ifdata_bcb as bcb
 print(f"bcb.cosif: {type(bcb.cosif).__name__}")      # COSIFExplorer
 print(f"bcb.ifdata: {type(bcb.ifdata).__name__}")    # IFDATAExplorer
 print(f"bcb.cadastro: {type(bcb.cadastro).__name__}")  # CadastroExplorer
-print(f"bcb.search: {type(bcb.search).__name__}")    # function
+print(f"bcb.cadastro.search: {type(bcb.cadastro.search).__name__}")  # method
 ```
 
 ## Primeiro Uso
@@ -84,12 +84,18 @@ A biblioteca usa o padrao "search + select" para identificar instituicoes:
 
 ```python
 # Buscar instituicao por nome (fuzzy matching)
-bcb.search('Itau')
-#    CNPJ_8                       INSTITUICAO  SITUACAO                           FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A                   cosif,ifdata    100
+bcb.cadastro.search('Itau')
+#    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
 
-bcb.search('Bradesco')
-bcb.search('Santander')
+bcb.cadastro.search('Bradesco')
+bcb.cadastro.search('Santander')
+
+# Listar todas as instituicoes com dados no COSIF
+bcb.cadastro.search(fonte='cosif')
+
+# Filtrar por fonte e escopo
+bcb.cadastro.search(fonte='ifdata', escopo='prudencial')
 ```
 
 O resultado retorna:
@@ -100,7 +106,7 @@ O resultado retorna:
 | `INSTITUICAO` | Nome completo da instituicao |
 | `SITUACAO` | Status: A (Ativa) ou I (Inativa) |
 | `FONTES` | Fontes onde ha dados disponiveis para consulta (`cosif`, `ifdata`) |
-| `SCORE` | Score de similaridade (0-100) |
+| `SCORE` | Score de similaridade (0-100, presente apenas com `termo`) |
 
 Quando houver matches com e sem dados disponiveis, o `search()` prioriza os que possuem `FONTES`.
 
@@ -127,9 +133,6 @@ df = bcb.ifdata.read(
     instituicao='60872504',
     conta='Lucro Liquido'
 )
-
-# Cadastro: consultar info basica (start=None usa ultimo periodo)
-info = bcb.cadastro.info('60872504')
 
 # Cadastro: start obrigatorio em read(), instituicao opcional
 df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
@@ -158,7 +161,7 @@ bcb.cosif.read('2024-12', instituicao='Itau')  # Erro!
 bcb.cosif.read(start=None)  # Erro!
 ```
 
-**Sempre use `bcb.search()` para encontrar o CNPJ correto antes de fazer consultas.**
+**Sempre use `bcb.cadastro.search()` para encontrar o CNPJ correto antes de fazer consultas.**
 
 ### Escopos COSIF
 
@@ -239,7 +242,7 @@ A coluna `DATA` retornada e sempre do tipo `datetime64[ns]`.
 import ifdata_bcb as bcb
 
 # Buscar CNPJ
-bcb.search('Bradesco')
+bcb.cadastro.search('Bradesco')
 # CNPJ do Bradesco: 60746948
 
 # Consultar Ativo Total
@@ -306,23 +309,25 @@ plt.ylabel('R$')
 plt.show()
 ```
 
-### Informacoes Cadastrais
+### Explorar Dados Disponiveis
 
 ```python
 import ifdata_bcb as bcb
 
-# Info completa de uma instituicao (ultimo periodo)
-info = bcb.cadastro.info('60872504')
-print(f"Nome: {info['INSTITUICAO']}")
-print(f"Segmento: {info['SEGMENTO']}")
-print(f"UF: {info['UF']}")
-print(f"Situacao: {info['SITUACAO']}")
+# Listar relatorios IFDATA disponiveis
+bcb.ifdata.list(["RELATORIO"])
 
-# Listar segmentos disponiveis
-bcb.cadastro.list_segmentos()
+# Listar segmentos do cadastro
+bcb.cadastro.list(["SEGMENTO"])
 
-# Listar UFs
-bcb.cadastro.list_ufs()
+# Listar UFs com filtro
+bcb.cadastro.list(["UF"], situacao='A')
+
+# Listar combinacoes de DATA + ESCOPO no COSIF
+bcb.cosif.list(["DATA", "ESCOPO"])
+
+# Listar municipios de SP
+bcb.cadastro.list(["MUNICIPIO"], uf='SP')
 ```
 
 ### Enriquecimento Cadastral Inline

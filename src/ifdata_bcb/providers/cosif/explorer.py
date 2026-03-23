@@ -1,5 +1,7 @@
 """Explorer para dados COSIF (mensais)."""
 
+from __future__ import annotations
+
 from typing import Literal, cast
 
 import pandas as pd
@@ -10,6 +12,7 @@ from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import build_int_condition, build_like_condition
+from ifdata_bcb.utils.text import stem_ptbr
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.enrichment import (
@@ -33,13 +36,6 @@ _EMPTY_COLUMNS = [
 ]
 _EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
 _EMPTY_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPOS"]
-_EMPTY_INSTITUTION_COLUMNS = ["CNPJ_8", "INSTITUICAO"]
-_EMPTY_INSTITUTION_COLUMNS_ALL = [
-    "CNPJ_8",
-    "INSTITUICAO",
-    "TEM_INDIVIDUAL",
-    "TEM_PRUDENCIAL",
-]
 
 
 class COSIFExplorer(BaseExplorer):
@@ -84,6 +80,21 @@ class COSIFExplorer(BaseExplorer):
             "subdir": get_subdir("cosif_prudencial"),
             "prefix": DATA_SOURCES["cosif_prudencial"]["prefix"],
         },
+    }
+
+    _LIST_COLUMNS: dict[str, str] = {
+        "DATA": "DATA_BASE",
+        "ESCOPO": "ESCOPO",
+        "DOCUMENTO": "DOCUMENTO",
+    }
+
+    _BLOCKED_COLUMNS: dict[str, str] = {
+        "CONTA": "Use list_contas(termo='...') para buscar contas.",
+        "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
+        "CNPJ_8": "Use cadastro.search() para buscar instituicoes.",
+        "INSTITUICAO": "Use cadastro.search() para buscar instituicoes.",
+        "VALOR": "VALOR e uma metrica continua, nao listavel.",
+        "SALDO": "VALOR e uma metrica continua, nao listavel.",
     }
 
     def __init__(
@@ -137,14 +148,7 @@ class COSIFExplorer(BaseExplorer):
             )
 
         if documento:
-            docs = [documento] if isinstance(documento, str) else documento
-            try:
-                docs_int = [int(d) for d in docs]
-            except (ValueError, TypeError):
-                raise InvalidScopeError(
-                    "documento", str(documento), "valores numericos (ex: 4010, 4016)"
-                )
-            conditions.append(build_int_condition("DOCUMENTO", docs_int))
+            conditions.append(self._build_documento_condition(documento))
 
         from ifdata_bcb.infra.sql import join_conditions as jc
 
@@ -311,6 +315,107 @@ class COSIFExplorer(BaseExplorer):
         df = self._filter_columns(df, columns)
         return df
 
+    def list(
+        self,
+        columns: list[str],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        escopo: EscopoCOSIF | None = None,
+        documento: str | list[str] | None = None,
+        limit: int = 100,
+    ) -> pd.DataFrame:
+        """Lista valores distintos para as colunas solicitadas.
+
+        Args:
+            columns: Colunas a listar (DATA, ESCOPO, DOCUMENTO).
+            start: Periodo inicial (opcional).
+            end: Periodo final (opcional).
+            escopo: Filtro por escopo.
+            documento: Filtro por documento COSIF.
+            limit: Maximo de resultados.
+
+        Raises:
+            InvalidColumnError: Se coluna invalida.
+        """
+        return self._base_list(
+            columns,
+            start=start,
+            end=end,
+            limit=limit,
+            escopo=escopo,
+            documento=documento,
+        )
+
+    def _get_list_source(
+        self,
+        columns: list[str],
+        start: str | None = None,
+        end: str | None = None,
+        **filters: object,
+    ) -> str | None:
+        """Monta UNION ALL de escopos disponiveis com coluna ESCOPO literal."""
+        escopo_filter = filters.get("escopo")
+        if escopo_filter is not None:
+            escopos_to_check: list[str] = [self._validate_escopo(str(escopo_filter))]
+        else:
+            escopos_to_check = list(self._ESCOPOS.keys())
+
+        union_parts: list[str] = []
+        for esc in escopos_to_check:
+            cfg = self._get_escopo_config(esc)  # type: ignore[arg-type]
+            pattern = self._get_pattern_for_escopo(esc)  # type: ignore[arg-type]
+            if not self._qe.has_glob(pattern, cfg["subdir"]):
+                continue
+            path = self._qe.cache_path / cfg["subdir"] / pattern
+            union_parts.append(
+                f"SELECT *, '{esc}' AS ESCOPO "
+                f"FROM read_parquet('{path}', union_by_name=true)"
+            )
+
+        if not union_parts:
+            return None
+
+        if len(union_parts) == 1:
+            return f"({union_parts[0]})"
+        return f"({' UNION ALL '.join(union_parts)})"
+
+    def _build_documento_condition(self, documento: str | list[str]) -> str:
+        """Valida e converte documento para condicao SQL."""
+        docs = [documento] if isinstance(documento, str) else documento
+        try:
+            docs_int = [int(d) for d in docs]
+        except (ValueError, TypeError):
+            raise InvalidScopeError(
+                "documento", str(documento), "valores numericos (ex: 4010, 4016)"
+            )
+        return build_int_condition("DOCUMENTO", docs_int)
+
+    def _build_list_conditions(
+        self,
+        start: str | None = None,
+        end: str | None = None,
+        **filters: object,
+    ) -> list[str | None]:
+        conditions: list[str | None] = []
+
+        # Date filter (mensal)
+        conditions.append(self._build_date_condition(start, end, trimestral=False))
+
+        # Escopo filter (already handled by _get_list_source UNION selection,
+        # but also add WHERE for safety when both escopos in UNION)
+        escopo = filters.get("escopo")
+        if escopo is not None:
+            esc_val = self._validate_escopo(str(escopo))
+            conditions.append(f"ESCOPO = '{esc_val}'")
+
+        # Documento filter
+        documento = filters.get("documento")
+        if documento is not None:
+            conditions.append(self._build_documento_condition(documento))
+
+        return conditions
+
     def list_contas(
         self,
         termo: str | None = None,
@@ -373,87 +478,36 @@ class COSIFExplorer(BaseExplorer):
 
         path = self._qe.cache_path / cfg["subdir"] / pattern
 
-        conditions: list[str] = []
-        if termo:
-            conditions.append(build_like_condition("NOME_CONTA", termo))
+        # Base conditions for the CTE (date filter + non-null names)
+        base_conditions: list[str] = ["NOME_CONTA IS NOT NULL"]
         if datas:
-            conditions.append(build_int_condition("DATA_BASE", datas))
+            base_conditions.append(build_int_condition("DATA_BASE", datas))
 
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        base_where = f"WHERE {' AND '.join(base_conditions)}"
+
+        # Outer conditions (applied after dedup): term filter
+        outer_conditions: list[str] = ["rn = 1"]
+        if termo:
+            outer_conditions.append(
+                build_like_condition("NOME_CONTA", stem_ptbr(termo))
+            )
+
+        outer_where = f"WHERE {' AND '.join(outer_conditions)}"
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
 
         query = f"""
-            SELECT DISTINCT CONTA as COD_CONTA, NOME_CONTA as CONTA
-            FROM '{path}'
-            {where}
+            WITH deduped AS (
+                SELECT CONTA, NOME_CONTA, DATA_BASE,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY CONTA ORDER BY DATA_BASE DESC
+                       ) AS rn
+                FROM '{path}'
+                {base_where}
+            )
+            SELECT DISTINCT CONTA AS COD_CONTA, NOME_CONTA AS CONTA
+            FROM deduped
+            {outer_where}
             ORDER BY CONTA, COD_CONTA
             {limit_clause}
         """
         return self._qe.sql(query)
-
-    def list_instituicoes(
-        self,
-        start: str | None = None,
-        end: str | None = None,
-        escopo: EscopoCOSIF | None = None,
-    ) -> pd.DataFrame:
-        """Lista instituicoes disponiveis."""
-        if escopo is not None:
-            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
-            return self._list_instituicoes_single(escopo, start, end)
-
-        dfs = []
-        for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):
-            df = self._list_instituicoes_single(esc, start, end)
-            if df.empty:
-                continue
-            df["_escopo"] = esc
-            dfs.append(df)
-        if not dfs:
-            return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS_ALL)
-
-        combined = pd.concat(dfs, ignore_index=True)
-        rows = []
-        for cnpj, group in combined.groupby("CNPJ_8", sort=True):
-            escopos_presentes = set(group["_escopo"])
-            rows.append(
-                {
-                    "CNPJ_8": cnpj,
-                    "INSTITUICAO": group["INSTITUICAO"].iloc[0],
-                    "TEM_INDIVIDUAL": "individual" in escopos_presentes,
-                    "TEM_PRUDENCIAL": "prudencial" in escopos_presentes,
-                }
-            )
-        return (
-            pd.DataFrame(rows)
-            .sort_values(["INSTITUICAO", "CNPJ_8"])
-            .reset_index(drop=True)
-        )
-
-    def _list_instituicoes_single(
-        self,
-        escopo: EscopoCOSIF,
-        start: str | None = None,
-        end: str | None = None,
-    ) -> pd.DataFrame:
-        cfg = self._get_escopo_config(escopo)
-        pattern = self._get_pattern_for_escopo(escopo)
-        if not self._qe.has_glob(pattern, cfg["subdir"]):
-            return pd.DataFrame(columns=_EMPTY_INSTITUTION_COLUMNS)
-
-        path = self._qe.cache_path / cfg["subdir"] / pattern
-
-        where = ""
-        datas = self._resolve_date_range(start, end, trimestral=False)
-        if datas:
-            cond = build_int_condition("DATA_BASE", datas)
-            where = f"WHERE {cond}"
-
-        query = f"""
-            SELECT DISTINCT CNPJ_8, NOME_INSTITUICAO as INSTITUICAO
-            FROM '{path}'
-            {where}
-            ORDER BY INSTITUICAO
-        """
-        df = self._qe.sql(query)
-        return self._apply_canonical_names(df)

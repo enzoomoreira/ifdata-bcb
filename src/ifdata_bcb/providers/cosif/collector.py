@@ -2,8 +2,8 @@ import zipfile
 from pathlib import Path
 from typing import TypedDict
 
+import httpx
 import pandas as pd
-import requests
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.domain.exceptions import (
@@ -11,7 +11,7 @@ from ifdata_bcb.domain.exceptions import (
     InvalidScopeError,
     PeriodUnavailableError,
 )
-from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry
+from ifdata_bcb.infra.resilience import retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
@@ -80,9 +80,9 @@ class COSIFCollector(BaseCollector):
         """
         Excecoes:
             PeriodUnavailableError: Se 404 (sem retry).
-            requests.RequestException: Se falhas apos todas tentativas.
+            httpx.HTTPError: Se falhas apos todas tentativas.
         """
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
+        response = self._http.get(url)
 
         # 404 = periodo indisponivel, propaga PeriodUnavailableError (sem retry)
         if response.status_code == 404:
@@ -141,7 +141,7 @@ class COSIFCollector(BaseCollector):
                 not_found_count += 1
                 continue
 
-            except requests.RequestException:
+            except httpx.HTTPError:
                 # Outros erros de rede
                 other_errors += 1
                 continue

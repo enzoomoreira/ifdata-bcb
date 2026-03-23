@@ -1,6 +1,6 @@
 """Testes de contrato: verificam que os endpoints do BCB respondem com o schema esperado.
 
-Estes testes fazem requests REAIS ao BCB. Rodar sob demanda:
+Estes testes fazem requisicoes REAIS ao BCB. Rodar sob demanda:
     uv run python -m pytest tests/contract/ -m contract -v
 
 NAO rodar no CI (dependem de rede e disponibilidade do BCB).
@@ -11,7 +11,7 @@ import zipfile
 
 import pandas as pd
 import pytest
-import requests
+import httpx
 
 # Periodo recente que sabemos existir
 _TEST_PERIOD = 202412
@@ -47,7 +47,7 @@ class TestCOSIFEndpoints:
 
         for suffix in suffixes:
             url = f"{self._COSIF_BASE}/{segment}/{_TEST_PERIOD}{suffix}"
-            r = requests.get(url, timeout=_TIMEOUT)
+            r = httpx.get(url, timeout=_TIMEOUT, follow_redirects=True)
             if r.status_code != 200:
                 continue
 
@@ -73,14 +73,12 @@ class TestCOSIFEndpoints:
 
     def test_individual_returns_200(self) -> None:
         url = f"{self._COSIF_BASE}/Bancos/{_TEST_PERIOD}BANCOS.csv.zip"
-        r = requests.get(url, timeout=_TIMEOUT, stream=True)
-        r.close()
+        r = httpx.head(url, timeout=_TIMEOUT, follow_redirects=True)
         assert r.status_code == 200, f"COSIF Individual: status {r.status_code}"
 
     def test_prudencial_returns_200(self) -> None:
         url = f"{self._COSIF_BASE}/Conglomerados-prudenciais/{_TEST_PERIOD}BLOPRUDENCIAL.csv.zip"
-        r = requests.get(url, timeout=_TIMEOUT, stream=True)
-        r.close()
+        r = httpx.head(url, timeout=_TIMEOUT, follow_redirects=True)
         assert r.status_code == 200, f"COSIF Prudencial: status {r.status_code}"
 
     def test_individual_csv_has_expected_columns(self) -> None:
@@ -130,7 +128,7 @@ class TestIFDATAEndpoints:
 
     def _fetch_ifdata_csv(self, endpoint: str, params: str) -> pd.DataFrame:
         url = f"{self._IFDATA_BASE}/{endpoint}?{params}&$format=text/csv"
-        r = requests.get(url, timeout=_TIMEOUT)
+        r = httpx.get(url, timeout=_TIMEOUT, follow_redirects=True)
         assert r.status_code == 200, f"IFDATA {endpoint}: status {r.status_code}"
         return pd.read_csv(io.StringIO(r.text), nrows=5)
 
@@ -140,7 +138,7 @@ class TestIFDATAEndpoints:
             f"(AnoMes=@AnoMes,TipoInstituicao=@TipoInstituicao,Relatorio=@Relatorio)"
             f"?@AnoMes={_TEST_PERIOD}&@TipoInstituicao=3&@Relatorio='T'&$format=text/csv"
         )
-        r = requests.get(url, timeout=_TIMEOUT)
+        r = httpx.get(url, timeout=_TIMEOUT, follow_redirects=True)
         assert r.status_code == 200
         assert len(r.text) > 100, "Resposta muito curta (possivelmente vazia)"
 
@@ -159,7 +157,7 @@ class TestIFDATAEndpoints:
             f"{self._IFDATA_BASE}/IfDataCadastro(AnoMes=@AnoMes)"
             f"?@AnoMes={_TEST_PERIOD}&$format=text/csv"
         )
-        r = requests.get(url, timeout=_TIMEOUT)
+        r = httpx.get(url, timeout=_TIMEOUT, follow_redirects=True)
         assert r.status_code == 200
         assert len(r.text) > 100
 

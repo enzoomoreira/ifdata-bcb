@@ -7,11 +7,13 @@ import pandas as pd
 from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import (
     EmptyFilterWarning,
+    InvalidColumnError,
     InvalidDateRangeError,
     InvalidScopeError,
     MissingRequiredParameterError,
     NullValuesWarning,
     PartialDataWarning,
+    TruncatedResultWarning,
 )
 from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
 from ifdata_bcb.domain.validation import (
@@ -67,6 +69,10 @@ class BaseExplorer(ABC):
     _COLUMN_ORDER: list[str] = []
     _VALID_ESCOPOS: list[str] = []
     _DATE_COLUMN: str | None = None
+
+    # list() infrastructure -- overridden by subclasses
+    _LIST_COLUMNS: dict[str, str] = {}
+    _BLOCKED_COLUMNS: dict[str, str] = {}
 
     def __init__(
         self,
@@ -475,6 +481,7 @@ class BaseExplorer(ABC):
                 "source": source,
                 "subdir": cfg["subdir"],
                 "prefix": cfg["prefix"],
+                "columns": sorted(self._LIST_COLUMNS.keys()),
                 "periods": periods,
                 "period_count": len(periods),
                 "has_data": len(periods) > 0,
@@ -486,6 +493,7 @@ class BaseExplorer(ABC):
         by_source: dict[str, dict] = {}
         result: dict = {
             "sources": list(sources.keys()),
+            "columns": sorted(self._LIST_COLUMNS.keys()),
             "periods": all_periods,
             "period_count": len(all_periods),
             "has_data": len(all_periods) > 0,
@@ -504,6 +512,158 @@ class BaseExplorer(ABC):
             }
 
         return result
+
+    # ------------------------------------------------------------------
+    # list() generic infrastructure
+    # ------------------------------------------------------------------
+
+    def _validate_list_columns(self, columns: list[str]) -> None:
+        """Valida colunas para list(). Levanta erro ou emite warning conforme o caso."""
+        if not columns:
+            raise ValueError("columns deve conter pelo menos uma coluna.")
+
+        blocked_found: list[str] = []
+        for col in columns:
+            col_upper = col.upper()
+            if col_upper in self._BLOCKED_COLUMNS:
+                blocked_found.append(col_upper)
+
+        if blocked_found:
+            for col_name in blocked_found:
+                emit_user_warning(
+                    UserWarning(self._BLOCKED_COLUMNS[col_name]),
+                    stacklevel=4,
+                )
+            return
+
+        valid_names = sorted(self._LIST_COLUMNS.keys())
+        extras = (
+            "Para contas: use list_contas(). Para instituicoes: use cadastro.search()."
+        )
+        for col in columns:
+            col_upper = col.upper()
+            if col_upper not in self._LIST_COLUMNS:
+                raise InvalidColumnError(col, valid_names, extras)
+
+    def _has_blocked_columns(self, columns: list[str]) -> bool:
+        """Retorna True se alguma coluna esta bloqueada."""
+        return any(col.upper() in self._BLOCKED_COLUMNS for col in columns)
+
+    def _base_list(
+        self,
+        columns: list[str],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 100,
+        **filters: object,
+    ) -> pd.DataFrame:
+        """Implementacao base de list(). Chamado pelas subclasses."""
+        if limit <= 0:
+            raise ValueError(f"limit deve ser > 0, recebido: {limit}")
+
+        self._validate_list_columns(columns)
+
+        # Se coluna bloqueada, retornar DataFrame vazio com colunas solicitadas
+        if self._has_blocked_columns(columns):
+            return pd.DataFrame(columns=[c.upper() for c in columns])
+
+        # Montar SELECT com expressoes SQL dos _LIST_COLUMNS
+        select_parts: list[str] = []
+        canonical_names: list[str] = []
+        has_data_col = False
+        for col in columns:
+            col_upper = col.upper()
+            canonical_names.append(col_upper)
+            expr = self._LIST_COLUMNS[col_upper]
+            if col_upper == "DATA":
+                has_data_col = True
+                select_parts.append(
+                    f"LAST_DAY(MAKE_DATE(CAST({expr}/100 AS INT), "
+                    f"CAST({expr}%100 AS INT), 1)) AS DATA"
+                )
+            else:
+                select_parts.append(f"{expr} AS {col_upper}")
+
+        select_clause = ", ".join(select_parts)
+        from_expr = self._get_list_source(
+            columns=canonical_names,
+            start=start,
+            end=end,
+            **filters,
+        )
+
+        if from_expr is None:
+            return pd.DataFrame(columns=canonical_names)
+
+        conditions = self._build_list_conditions(start=start, end=end, **filters)
+        valid_conditions = [c for c in conditions if c]
+        where_clause = (
+            f"WHERE {' AND '.join(valid_conditions)}" if valid_conditions else ""
+        )
+
+        order_cols = ", ".join(str(i + 1) for i in range(len(select_parts)))
+
+        query = (
+            f"SELECT DISTINCT {select_clause} "
+            f"FROM {from_expr} "
+            f"{where_clause} "
+            f"ORDER BY {order_cols} "
+            f"LIMIT {limit}"
+        )
+
+        self._logger.debug(f"list() query: {query[:120]}...")
+        df = self._qe.sql(query)
+
+        if df.empty:
+            return pd.DataFrame(columns=canonical_names)
+
+        # Converter DATA para datetime64 (consistente com read())
+        if has_data_col and "DATA" in df.columns:
+            df["DATA"] = pd.to_datetime(df["DATA"])
+
+        # Truncation warning
+        if len(df) == limit:
+            extra_hints: list[str] = []
+            if "MUNICIPIO" in canonical_names:
+                extra_hints.append("Filtre com uf='...' para reduzir.")
+            if "DATA" in canonical_names:
+                extra_hints.append("Use start=/end= para filtrar periodo.")
+            msg = f"Resultado truncado em {limit}. Aumente limit= ou adicione filtros."
+            if extra_hints:
+                msg += " " + " ".join(extra_hints)
+            emit_user_warning(
+                TruncatedResultWarning(msg, limit=limit),
+                stacklevel=3,
+            )
+
+        return df
+
+    def _get_list_source(
+        self,
+        columns: list[str],
+        start: str | None = None,
+        end: str | None = None,
+        **filters: object,
+    ) -> str | None:
+        """Retorna expressao SQL FROM para list(). Override em subclasses multi-source."""
+        return self._get_list_path()
+
+    def _get_list_path(self) -> str | None:
+        """Retorna expressao SQL FROM para list(). Default: glob do provider."""
+        if not self._ensure_data_exists():
+            return None
+        path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
+        return f"read_parquet('{path}', union_by_name=true)"
+
+    def _build_list_conditions(
+        self,
+        start: str | None = None,
+        end: str | None = None,
+        **filters: object,
+    ) -> list[str | None]:
+        """Retorna lista de WHERE clauses para list(). Override em subclasses."""
+        return []
 
     def _diagnose_empty_result(
         self,

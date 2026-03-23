@@ -1,5 +1,44 @@
 # Project Changelog
 
+## [2026-03-23 02:12]
+
+### Changed
+- HTTP client migrado de `requests` para `httpx` -- connection pooling via `httpx.Client` no `BaseCollector`, eliminando overhead de conexao TCP por request em coletas com dezenas de periodos
+- `TRANSIENT_EXCEPTIONS` simplificada: `requests.RequestException` + `requests.ConnectionError` + `requests.Timeout` + `urllib3.exceptions.HTTPError` consolidados em `httpx.HTTPError` (que cobre toda a hierarquia de excecoes httpx)
+- Testes de contrato: chamadas que verificavam apenas status code agora usam `httpx.head()` em vez de GET com `stream=True`
+
+### Removed
+- Dependencias `requests` e `urllib3` (transitiva) substituidas por `httpx>=0.28.0`
+
+## [2026-03-22 23:19]
+
+### Added
+- `list()` generico em todos os providers (IFDATA, COSIF, Cadastro): retorna valores distintos para colunas solicitadas via `SELECT DISTINCT` no DuckDB, com filtros categoricos, truncation warning contextual e conversao automatica de DATA para datetime64
+- `cadastro.search()`: busca centralizada de instituicoes com fuzzy matching (via EntityLookup), filtros `fonte=` (ifdata/cosif), `escopo=` com validacao cruzada, e listagem completa sem termo
+- `ifdata.mapeamento()`: rename de `list_mapeamento()` -- acesso direto a tabela de mapeamento COD_INST <-> CNPJ_8 por escopo
+- `stem_ptbr()` em `utils/text.py`: stemming PT-BR para busca singular/plural com pares atomicos e raiz minima de 4 chars
+- `InvalidColumnError` e `TruncatedResultWarning` em `domain/exceptions.py`: excecoes estruturadas para o `list()` generico
+- Infraestrutura de list na `BaseExplorer`: `_base_list()`, `_validate_list_columns()`, hooks `_LIST_COLUMNS`, `_BLOCKED_COLUMNS`, `_get_list_source()`, `_build_list_conditions()` para extensibilidade por provider
+- `describe()` agora inclui key `"columns"` com nomes canonicos aceitos pelo `list()`
+- Testes: search (25 cenarios), list (contratos por provider), stem_ptbr (16 cenarios)
+
+### Changed
+- `list_contas()` IFDATA e COSIF agora usa `stem_ptbr()` para stemming do termo de busca -- "operacao" encontra "Operacoes", "captacao" encontra "Captacoes"
+- `list_contas()` COSIF aplica dedup via `ROW_NUMBER() OVER (PARTITION BY CONTA ORDER BY DATA_BASE DESC)` -- elimina variantes de nome entre eras (ex: UPPERCASE vs Titlecase)
+- COSIF `list()` monta UNION ALL de escopos com coluna ESCOPO literal, verificando `has_glob` antes de incluir cada escopo
+- IFDATA `list()` usa coluna ESCOPO derivada via `CASE TipoInstituicao WHEN 1 THEN 'prudencial' ...`
+- Documento filter no COSIF extraido para `_build_documento_condition()` (DRY: antes duplicado em `_read_single_escopo` e `_build_list_conditions`)
+
+### Removed
+- `bcb.search()` do namespace top-level (centralizado em `cadastro.search()`)
+- `core/api.py` (arquivo deletado, funcionalidade absorvida por `cadastro.search()`)
+- `cadastro.info()`, `cadastro.get_conglomerate_members()` (sugar removido; usar `read()` ou `mapeamento()`)
+- `ifdata.list_instituicoes()`, `cosif.list_instituicoes()` (absorvidos por `cadastro.search(fonte=...)`)
+- `ifdata.list_relatorios()` (absorvido por `ifdata.list(["RELATORIO"])`)
+- `cadastro.list_segmentos()`, `cadastro.list_ufs()` (absorvidos por `cadastro.list(["SEGMENTO"])`, `cadastro.list(["UF"])`)
+- `ifdata.list_mapeamento()` (renomeado para `ifdata.mapeamento()`)
+- Constantes orfas: `_EMPTY_INSTITUTION_COLUMNS`, `_EMPTY_INSTITUTION_COLUMNS_ALL`, `_list_instituicoes_single`
+
 ## [2026-03-22 21:02]
 
 ### Added

@@ -32,11 +32,10 @@ bcb.cosif.collect('2024-01', '2024-12')
 bcb.ifdata.collect('2024-01', '2024-12')
 
 # 2. Buscar instituicao por nome (fuzzy matching)
-bcb.search('Itau')
-bcb.search('Bradesco')
-#    CNPJ_8                       INSTITUICAO  SITUACAO  FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A    ...    100
-# Quando possivel, prioriza resultados com dados disponiveis em FONTES.
+bcb.cadastro.search('Itau')
+bcb.cadastro.search('Bradesco')
+#    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
 
 # 3. Ler dados usando CNPJ de 8 digitos
 # start e OBRIGATORIO (posicional); instituicao e keyword-only e opcional
@@ -71,14 +70,13 @@ df = bcb.ifdata.read(
 )
 
 # Cadastro
-info = bcb.cadastro.info('60872504', start='2024-12')
-
-# Cadastro tambem pode ser filtrado sem instituicao
 df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
 
-# 4. Listar contas e instituicoes disponiveis
+# 4. Listar valores distintos e contas
+bcb.ifdata.list(["RELATORIO"])
+bcb.cosif.list(["DATA", "ESCOPO"])
+bcb.cadastro.list(["SEGMENTO"], uf='SP')
 bcb.cosif.list_contas(escopo='prudencial')
-bcb.cosif.list_instituicoes(escopo='prudencial')
 
 # 5. SQL direto com DuckDB (para analises avancadas)
 from ifdata_bcb.infra import QueryEngine
@@ -152,9 +150,6 @@ bcb.cosif       # COSIFExplorer
 bcb.ifdata      # IFDATAExplorer
 bcb.cadastro    # CadastroExplorer
 
-# Funcoes
-bcb.search(termo, limit=10)  # Busca instituicoes por nome
-
 # Exceptions
 bcb.BacenAnalysisError       # Classe base para todos os erros
 bcb.DataUnavailableError     # Dados nao disponiveis
@@ -168,16 +163,18 @@ Todos os explorers possuem:
 |--------|-----------|
 | `collect(start, end, ...)` | Coleta dados do BCB |
 | `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only) |
+| `list(columns, *, ...)` | Lista valores distintos para colunas (SELECT DISTINCT) |
 | `list_periodos()` | Periodos disponiveis |
+| `describe()` | Metadados do provider (inclui `columns` aceitas por `list()`) |
 | `has_data()` | Verifica se tem dados |
 
 Metodos especificos:
 
 | Explorer | Metodos Adicionais |
 |----------|-------------------|
-| `cosif` | `list_contas()`, `list_instituicoes()` |
-| `ifdata` | `list_contas()`, `list_instituicoes()`, `list_mapeamento()`, `list_relatorios()` |
-| `cadastro` | `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()` |
+| `cosif` | `list_contas()` |
+| `ifdata` | `list_contas()`, `mapeamento()` |
+| `cadastro` | `search()` |
 
 ## Limitacoes Conhecidas
 

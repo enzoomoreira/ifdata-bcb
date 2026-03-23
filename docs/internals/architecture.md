@@ -27,7 +27,6 @@ src/ifdata_bcb/
 |-- __init__.py               # Entry point (lazy loading)
 |-- core/                     # Logica central compartilhada
 |   |-- __init__.py
-|   |-- api.py               # search() publica
 |   |-- entity_lookup.py     # Resolucao de entidades
 |   |-- constants.py         # Configuracoes centralizadas
 |   +-- eras.py              # Deteccao e tratamento de eras de formato BCB
@@ -152,11 +151,6 @@ def __getattr__(name):
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
             _cosif = COSIFExplorer()
         return _cosif
-    if name == "search":
-        if _search is None:
-            from ifdata_bcb.core.api import search as _search_fn
-            _search = _search_fn
-        return _search
     # ... ifdata, cadastro analogos
 ```
 
@@ -316,12 +310,12 @@ Retorna: pd.DataFrame
 ## Fluxo de Busca
 
 ```
-Usuario: bcb.search('Itau')
+Usuario: bcb.cadastro.search('Itau')
     |
     v
-api.search('Itau')
+CadastroExplorer.search('Itau')
     |
-    +-- Lazy-load EntityLookup singleton
+    +-- Delega para EntityLookup.search()
     |
     v
 EntityLookup.search('Itau')
@@ -363,7 +357,6 @@ graph LR
     cosif_exp["COSIFExplorer<br/><i>cosif/explorer.py</i>"]
     ifdata_exp["IFDATAExplorer<br/><i>ifdata/valores/explorer.py</i>"]
     cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro/explorer.py</i>"]
-    api["search()<br/><i>core/api.py</i>"]
 
     base_exp["BaseExplorer<br/><i>providers/base_explorer.py</i>"]
     entity["EntityLookup<br/><i>core/entity_lookup.py</i>"]
@@ -378,17 +371,17 @@ graph LR
     fuzzy["FuzzyMatcher<br/><i>utils/fuzzy.py</i>"]
     text["normalize_accents<br/><i>utils/text.py</i>"]
 
-    init --> cosif_exp & ifdata_exp & cadastro_exp & api
+    init --> cosif_exp & ifdata_exp & cadastro_exp
 
     cosif_exp --> base_exp
     cosif_exp --> cosif_col
     ifdata_exp --> base_exp
+    cadastro_exp --> base_exp & entity
 
     base_exp --> entity & query & exceptions
 
     cosif_col --> base_col & storage & resilience
 
-    api --> entity
     entity --> fuzzy & text
 ```
 

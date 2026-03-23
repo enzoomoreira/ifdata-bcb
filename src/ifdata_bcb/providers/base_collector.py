@@ -6,7 +6,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-import requests
+import httpx
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
@@ -45,6 +45,10 @@ class BaseCollector(ABC):
         self._collect_total = 0
         self._collect_lock = threading.Lock()
         self._duckdb_conn = duckdb.connect()  # Conexao para cursors thread-local
+        self._http = httpx.Client(
+            timeout=DEFAULT_REQUEST_TIMEOUT,
+            follow_redirects=True,
+        )
 
     def _get_cursor(self) -> duckdb.DuckDBPyConnection:
         """Retorna cursor thread-local para operacoes DuckDB."""
@@ -82,10 +86,15 @@ class BaseCollector(ABC):
     @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path) -> bool:
         """Baixa um arquivo da URL e salva em output_path."""
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
+        response = self._http.get(url)
         response.raise_for_status()
         output_path.write_bytes(response.content)
         return True
+
+    def close(self) -> None:
+        """Libera recursos (HTTP client e DuckDB)."""
+        self._http.close()
+        self._duckdb_conn.close()
 
     def _start(self, title: str, num_items: int, verbose: bool = True) -> None:
         self._collect_total = 0

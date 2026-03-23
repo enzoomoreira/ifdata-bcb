@@ -597,10 +597,7 @@ DEFAULT_REQUEST_TIMEOUT = 240
 DEFAULT_PARALLEL_STAGGER = 0.5
 
 TRANSIENT_EXCEPTIONS = (
-    requests.RequestException,
-    requests.ConnectionError,
-    requests.Timeout,
-    urllib3.exceptions.HTTPError,
+    httpx.HTTPError,
     ConnectionError,
     TimeoutError,
     OSError,
@@ -629,8 +626,8 @@ def retry(
 from ifdata_bcb.infra.resilience import retry
 
 @retry(max_attempts=3, delay=2.0)
-def download_data(url):
-    response = requests.get(url, timeout=240)
+def download_data(client: httpx.Client, url: str):
+    response = client.get(url)
     response.raise_for_status()
     return response.content
 ```

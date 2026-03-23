@@ -12,9 +12,6 @@ Uso:
     bcb.cosif.collect('2024-01', '2024-12')
     bcb.ifdata.collect('2024-01', '2024-12')
 
-    # Buscar instituicao
-    bcb.search('Itau')  # Retorna DataFrame com CNPJ_8, INSTITUICAO, FONTES, SCORE
-
     # Consultas usando CNPJ de 8 digitos
     # start sozinho = data unica; start + end = range de datas
     # instituicao e start sao OBRIGATORIOS
@@ -44,12 +41,11 @@ from ifdata_bcb.domain.exceptions import (
 _cosif = None
 _ifdata = None
 _cadastro = None
-_search = None
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy loading dos explorers e da funcao search."""
-    global _cosif, _ifdata, _cadastro, _search
+    """Lazy loading dos explorers."""
+    global _cosif, _ifdata, _cadastro
 
     if name == "cosif":
         if _cosif is None:
@@ -72,13 +68,6 @@ def __getattr__(name: str) -> Any:
             _cadastro = CadastroExplorer()
         return _cadastro
 
-    if name == "search":
-        if _search is None:
-            from ifdata_bcb.core.api import search as _search_fn
-
-            _search = _search_fn
-        return _search
-
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
 
 
@@ -91,8 +80,6 @@ __all__ = [
     "cosif",
     "ifdata",
     "cadastro",
-    # Funcoes de alto nivel
-    "search",
     # Exceptions (BacenAnalysisError = base)
     "BacenAnalysisError",
     "DataUnavailableError",
