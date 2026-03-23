@@ -88,7 +88,7 @@ def emit_user_warning(
         msg = warning
         cat_name = category.__name__
     logger = get_logger("ifdata_bcb.warnings")
-    logger.warning(f"[{cat_name}] {msg}")
+    logger.debug(f"[{cat_name}] {msg}")
 
 
 def get_log_path() -> Path:

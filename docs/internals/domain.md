@@ -34,6 +34,8 @@ Exception
             +-- PartialDataWarning
             +-- ScopeUnavailableWarning
             +-- NullValuesWarning
+            +-- ScopeMigrationWarning
+            +-- DroppedReportWarning
             +-- EmptyFilterWarning
 ```
 
@@ -247,6 +249,39 @@ class NullValuesWarning(UserWarning):
         self.entities = entities  # CNPJs com valores NULL
 ```
 
+### ScopeMigrationWarning
+
+Warning emitido quando um relatorio migrou de escopo entre eras (ex: relatorios de credito migraram de `financeiro` para `prudencial` a partir de 202503):
+
+```python
+class ScopeMigrationWarning(UserWarning):
+    """Relatorio migrou de escopo entre eras."""
+    def __init__(
+        self,
+        message: str,
+        relatorio: str,
+        escopo_pre: str,
+        escopo_post: str,
+        boundary: int,
+    ):
+        self.relatorio = relatorio      # Nome do relatorio afetado
+        self.escopo_pre = escopo_pre    # Escopo antes do boundary (ex: "financeiro")
+        self.escopo_post = escopo_post  # Escopo apos o boundary (ex: "prudencial")
+        self.boundary = boundary        # Periodo boundary (ex: 202503)
+```
+
+### DroppedReportWarning
+
+Warning emitido quando um relatorio foi descontinuado a partir de determinada era:
+
+```python
+class DroppedReportWarning(UserWarning):
+    """Relatorio descontinuado a partir de determinada era."""
+    def __init__(self, message: str, relatorio: str, last_period: int):
+        self.relatorio = relatorio      # Nome do relatorio descontinuado
+        self.last_period = last_period  # Ultimo periodo disponivel (ex: 202412)
+```
+
 ### EmptyFilterWarning
 
 Warning emitido quando um filtro vazio e passado a um parametro (ex: `columns=[]`):
@@ -322,19 +357,29 @@ AccountList(values="TOTAL DO ATIVO").values  # ["TOTAL DO ATIVO"]
 
 ## types.py
 
+### DateScalar
+
+Tipo unitario para um valor de data:
+
+```python
+DateScalar = int | str | date | datetime | pd.Timestamp
+```
+
 ### DateInput
 
 Tipo flexivel para parametros de data:
 
 ```python
-DateInput = int | str | list[int] | list[str]
+DateInput = DateScalar | list[DateScalar]
 ```
 
 Aceita:
 - `int`: 202412
 - `str`: '202412', '2024-12', '2024-12-01'
-- `list[int]`: [202401, 202402, 202403]
-- `list[str]`: ['2024-01', '2024-02', '2024-03']
+- `date`: date(2024, 12, 1)
+- `datetime`: datetime(2024, 12, 1)
+- `pd.Timestamp`: pd.Timestamp('2024-12-01')
+- `list` de qualquer combinacao dos tipos acima
 
 ### AccountInput
 

@@ -3,15 +3,23 @@
 import warnings
 from pathlib import Path
 
-
 from ifdata_bcb.core.eras import (
     COSIF_ERA_BOUNDARY,
     IFDATA_ERA_BOUNDARY,
+    _is_credit_report,
+    _is_stable_report,
+    _match_dropped_report,
+    _normalize_report_name,
     build_cosif_select,
     check_era_boundary,
+    check_ifdata_era,
     detect_cosif_csv_era,
 )
-from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
+from ifdata_bcb.domain.exceptions import (
+    DroppedReportWarning,
+    IncompatibleEraWarning,
+    ScopeMigrationWarning,
+)
 
 
 # =========================================================================
@@ -237,3 +245,325 @@ class TestCheckEraBoundary:
             assert "IFDATA" in msg
             # Nao deve mencionar COSIF quando o source e IFDATA
             assert "COSIF" not in msg
+
+
+# =========================================================================
+# _normalize_report_name
+# =========================================================================
+
+
+class TestNormalizeReportName:
+    def test_removes_accents(self) -> None:
+        assert (
+            _normalize_report_name("Informacoes de Capital") == "informacoes de capital"
+        )
+
+    def test_removes_cedilla_and_tilde(self) -> None:
+        assert (
+            _normalize_report_name("Informacoes de Capital") == "informacoes de capital"
+        )
+
+    def test_lowercase(self) -> None:
+        assert _normalize_report_name("RESUMO") == "resumo"
+
+    def test_strips_whitespace(self) -> None:
+        assert _normalize_report_name("  Ativo  ") == "ativo"
+
+    def test_mixed_accents_and_case(self) -> None:
+        result = _normalize_report_name("Carteira de Credito Ativa")
+        assert result == "carteira de credito ativa"
+
+    def test_empty_string(self) -> None:
+        assert _normalize_report_name("") == ""
+
+
+# =========================================================================
+# _is_credit_report
+# =========================================================================
+
+
+class TestIsCreditReport:
+    def test_exact_prefix_match(self) -> None:
+        assert _is_credit_report("Carteira de credito ativa") is True
+
+    def test_prefix_with_suffix(self) -> None:
+        assert (
+            _is_credit_report(
+                "Carteira de credito ativa - por nivel de risco da operacao"
+            )
+            is True
+        )
+
+    def test_accented_input(self) -> None:
+        assert _is_credit_report("Carteira de credito ativa") is True
+
+    def test_uppercase_input(self) -> None:
+        assert _is_credit_report("CARTEIRA DE CREDITO ATIVA") is True
+
+    def test_non_credit_report(self) -> None:
+        assert _is_credit_report("Resumo") is False
+
+    def test_none_returns_false(self) -> None:
+        assert _is_credit_report(None) is False
+
+
+# =========================================================================
+# _is_stable_report
+# =========================================================================
+
+
+class TestIsStableReport:
+    def test_credit_report_is_stable(self) -> None:
+        assert _is_stable_report("Carteira de credito ativa") is True
+
+    def test_informacoes_capital_is_stable(self) -> None:
+        assert _is_stable_report("Informacoes de Capital") is True
+
+    def test_informacoes_capital_with_accents(self) -> None:
+        assert _is_stable_report("Informacoes de Capital") is True
+
+    def test_resumo_is_not_stable(self) -> None:
+        assert _is_stable_report("Resumo") is False
+
+    def test_ativo_is_not_stable(self) -> None:
+        assert _is_stable_report("Ativo") is False
+
+    def test_none_is_not_stable(self) -> None:
+        assert _is_stable_report(None) is False
+
+
+# =========================================================================
+# _match_dropped_report
+# =========================================================================
+
+
+class TestMatchDroppedReport:
+    def test_matches_dropped_report(self) -> None:
+        result = _match_dropped_report(
+            "Carteira de credito ativa - por nivel de risco da operacao"
+        )
+        assert result == 202412
+
+    def test_accented_input_matches(self) -> None:
+        result = _match_dropped_report(
+            "Carteira de credito ativa - por nivel de risco da operacao"
+        )
+        assert result == 202412
+
+    def test_non_dropped_returns_none(self) -> None:
+        assert _match_dropped_report("Resumo") is None
+
+    def test_credit_prefix_alone_not_dropped(self) -> None:
+        assert _match_dropped_report("Carteira de credito ativa") is None
+
+    def test_none_returns_none(self) -> None:
+        assert _match_dropped_report(None) is None
+
+
+# =========================================================================
+# check_ifdata_era
+# =========================================================================
+
+
+class TestCheckIfdataEra:
+    """Testes para check_ifdata_era -- verificacoes de era IFDATA Valores."""
+
+    # --- Sem warning ---
+
+    def test_none_dates_no_warning(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(None)
+            assert len(w) == 0
+
+    def test_empty_dates_no_warning(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([])
+            assert len(w) == 0
+
+    def test_all_before_boundary_no_warning(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202406, 202412], relatorio="Resumo")
+            assert len(w) == 0
+
+    def test_all_after_boundary_no_warning(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202503, 202506], relatorio="Resumo")
+            assert len(w) == 0
+
+    def test_single_date_no_era_warning(self) -> None:
+        """Single date nao cruza boundary -- sem IncompatibleEra."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412], relatorio="Resumo")
+            assert len(w) == 0
+
+    # --- IncompatibleEraWarning ---
+
+    def test_accounting_report_crossing_boundary_emits_incompatible(self) -> None:
+        """Resumo/Ativo/Passivo/DRE cruzando boundary -> IncompatibleEraWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Resumo")
+            assert len(w) == 1
+            assert issubclass(w[0].category, IncompatibleEraWarning)
+
+    def test_none_relatorio_crossing_boundary_emits_incompatible(self) -> None:
+        """relatorio=None nao e estavel -> emite IncompatibleEraWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio=None)
+            assert len(w) == 1
+            assert issubclass(w[0].category, IncompatibleEraWarning)
+
+    def test_incompatible_warning_has_correct_attributes(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Ativo")
+            msg = w[0].message
+            assert msg.boundary == IFDATA_ERA_BOUNDARY
+            assert msg.source == "IFDATA"
+
+    # --- Stable reports: NO IncompatibleEraWarning ---
+
+    def test_credit_report_crossing_boundary_no_incompatible(self) -> None:
+        """Credit report e estavel -- nao emite IncompatibleEraWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Carteira de credito ativa")
+            incompatible = [
+                x for x in w if issubclass(x.category, IncompatibleEraWarning)
+            ]
+            assert len(incompatible) == 0
+
+    def test_capital_info_crossing_boundary_no_incompatible(self) -> None:
+        """Informacoes de Capital e estavel."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Informacoes de Capital")
+            incompatible = [
+                x for x in w if issubclass(x.category, IncompatibleEraWarning)
+            ]
+            assert len(incompatible) == 0
+
+    # --- ScopeMigrationWarning ---
+
+    def test_credit_financeiro_crossing_boundary_emits_scope_migration(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412, 202503],
+                relatorio="Carteira de credito ativa",
+                escopo="financeiro",
+            )
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            assert len(migration) == 1
+
+    def test_credit_prudencial_crossing_boundary_emits_scope_migration(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412, 202503],
+                relatorio="Carteira de credito ativa",
+                escopo="prudencial",
+            )
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            assert len(migration) == 1
+
+    def test_scope_migration_attributes_financeiro(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412, 202503],
+                relatorio="Carteira de credito ativa",
+                escopo="financeiro",
+            )
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            msg = migration[0].message
+            assert msg.escopo_pre == "financeiro"
+            assert msg.escopo_post == "prudencial"
+            assert msg.boundary == IFDATA_ERA_BOUNDARY
+
+    def test_credit_no_escopo_crossing_boundary_no_scope_migration(self) -> None:
+        """escopo=None nao dispara ScopeMigrationWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412, 202503],
+                relatorio="Carteira de credito ativa",
+                escopo=None,
+            )
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            assert len(migration) == 0
+
+    def test_non_credit_report_no_scope_migration(self) -> None:
+        """Resumo com escopo=financeiro nao dispara ScopeMigrationWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Resumo", escopo="financeiro")
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            assert len(migration) == 0
+
+    # --- DroppedReportWarning ---
+
+    def test_dropped_report_after_last_period_emits_warning(self) -> None:
+        """Periodo apos last_period -> DroppedReportWarning, mesmo sem cruzar boundary."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202503],
+                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
+            )
+            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
+            assert len(dropped) == 1
+            assert dropped[0].message.last_period == 202412
+
+    def test_dropped_report_within_last_period_no_warning(self) -> None:
+        """Periodo <= last_period -> sem DroppedReportWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412],
+                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
+            )
+            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
+            assert len(dropped) == 0
+
+    def test_non_dropped_report_no_dropped_warning(self) -> None:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202503], relatorio="Resumo")
+            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
+            assert len(dropped) == 0
+
+    # --- Combinacao de warnings ---
+
+    def test_dropped_credit_financeiro_crossing_emits_two_warnings(self) -> None:
+        """Dropped credit + escopo financeiro crossing boundary:
+        DroppedReportWarning + ScopeMigrationWarning. Nao IncompatibleEraWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era(
+                [202412, 202503],
+                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
+                escopo="financeiro",
+            )
+            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
+            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
+            incompatible = [
+                x for x in w if issubclass(x.category, IncompatibleEraWarning)
+            ]
+            assert len(dropped) == 1
+            assert len(migration) == 1
+            assert len(incompatible) == 0
+
+    def test_accounting_report_no_escopo_crossing_emits_only_incompatible(self) -> None:
+        """Resumo sem escopo cruzando boundary: apenas IncompatibleEraWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            check_ifdata_era([202412, 202503], relatorio="Resumo", escopo=None)
+            assert len(w) == 1
+            assert issubclass(w[0].category, IncompatibleEraWarning)

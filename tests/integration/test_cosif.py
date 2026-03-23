@@ -1,7 +1,9 @@
 """Testes de integracao -- COSIF read() e list methods."""
 
 import pandas as pd
+import pytest
 
+from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
@@ -162,3 +164,34 @@ class TestCOSIFListMethods:
         df = explorers[0].list_instituicoes(escopo="individual")
         assert not df.empty
         assert list(df.columns) == ["CNPJ_8", "INSTITUICAO"]
+
+
+class TestCOSIFDocumentoValidation:
+    """Validacao do parametro documento em cosif.read()."""
+
+    def test_documento_non_numeric_raises(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """documento com valor nao-numerico deve levantar InvalidScopeError."""
+        with pytest.raises(InvalidScopeError) as exc_info:
+            explorers[0].read(
+                "2023-03", instituicao=BANCO_A_CNPJ, documento="balancete"
+            )
+        assert exc_info.value.scope == "documento"
+
+    def test_documento_numeric_string_accepted(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """documento com string numerica deve ser aceito sem erro."""
+        df = explorers[0].read("2023-03", instituicao=BANCO_A_CNPJ, documento="4010")
+        assert isinstance(df, pd.DataFrame)
+
+    def test_documento_list_with_non_numeric_raises(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """Lista com elemento nao-numerico deve levantar InvalidScopeError."""
+        with pytest.raises(InvalidScopeError) as exc_info:
+            explorers[0].read(
+                "2023-03", instituicao=BANCO_A_CNPJ, documento=["4010", "abc"]
+            )
+        assert exc_info.value.scope == "documento"

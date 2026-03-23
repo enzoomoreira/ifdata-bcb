@@ -35,9 +35,9 @@ DATA_SOURCES: dict[str, dict[str, str]] = {
 # Valores conservadores baseados em testes empiricos (2026-03).
 # Periodos anteriores retornam 404 no BCB.
 FIRST_AVAILABLE_PERIOD: dict[str, int] = {
-    "cosif_individual": 199501,
+    "cosif_individual": 198807,
     "cosif_prudencial": 201407,
-    "ifdata_valores": 200303,
+    "ifdata_valores": 200003,
     "cadastro": 200503,
 }
 

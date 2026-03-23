@@ -180,7 +180,7 @@ class BaseCollector(ABC):
     def _normalize_text_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove newlines e espacos multiplos de colunas de texto dos CSVs do BCB."""
         for col in df.select_dtypes(include=["object"]).columns:
-            df[col] = df[col].apply(normalize_text)
+            df[col] = df[col].map(normalize_text, na_action="ignore")
         return df
 
     # =========================================================================

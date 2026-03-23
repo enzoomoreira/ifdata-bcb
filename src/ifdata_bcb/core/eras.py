@@ -8,21 +8,90 @@ O BCB mudou o formato dos dados COSIF ao longo do tempo:
 Eras 1-2 tem codigos de conta compativeis (strip leading zeros).
 Era 3 tem codigos incompativeis (novo plano contabil, Resolucao CMN 4.966).
 
-IFDATA Valores:
-- 201203-202412: codigos de conta 78182-79665 (69-70 contas).
-- 202503+: codigos renumerados 140198-149619 (98 contas).
-  Nenhuma conta em comum com a era anterior.
-  Boundary: IFDATA_ERA_BOUNDARY = 202503.
+IFDATA Valores (boundary 202503):
+- Relatorios contabeis (Resumo, Ativo, Passivo, DRE): codigos renumerados,
+  incompativeis entre eras.
+- Relatorios de credito (Carteira de credito ativa): codigos estaveis,
+  compativeis entre eras. Migraram de TipoInstituicao=2 (financeiro)
+  para TipoInstituicao=1 (prudencial).
+- Informacoes de Capital: codigos quase identicos (23/24 em comum).
+- Relatorio "por nivel de risco da operacao": descontinuado apos 202412.
 """
 
+import unicodedata
 from pathlib import Path
 
-from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
+from ifdata_bcb.domain.exceptions import (
+    DroppedReportWarning,
+    IncompatibleEraWarning,
+    ScopeMigrationWarning,
+)
 from ifdata_bcb.infra.log import emit_user_warning
 
 # Primeiro periodo com codigos de conta incompativeis (novo plano contabil).
 COSIF_ERA_BOUNDARY: int = 202501
 IFDATA_ERA_BOUNDARY: int = 202503
+
+# ---------------------------------------------------------------------------
+# Metadados de relatorios IFDATA para verificacao cross-era
+# ---------------------------------------------------------------------------
+
+# Prefixo normalizado que identifica relatorios de credito.
+_CREDIT_REPORT_PREFIX = "carteira de credito ativa"
+
+# Relatorios com contas estaveis (identicas ou quase identicas entre eras).
+# Credit reports sao detectados por prefixo, nao precisam estar aqui.
+_STABLE_REPORTS_NORMALIZED: frozenset[str] = frozenset(
+    {
+        "informacoes de capital",
+    }
+)
+
+# Relatorios descontinuados: nome normalizado -> ultimo periodo disponivel.
+_DROPPED_REPORTS_NORMALIZED: dict[str, int] = {
+    "carteira de credito ativa - por nivel de risco da operacao": 202412,
+}
+
+
+def _normalize_report_name(name: str) -> str:
+    """Remove acentos, strip e lowercase para matching robusto."""
+    return (
+        "".join(
+            c
+            for c in unicodedata.normalize("NFD", name)
+            if unicodedata.category(c) != "Mn"
+        )
+        .strip()
+        .lower()
+    )
+
+
+def _is_credit_report(relatorio: str | None) -> bool:
+    if relatorio is None:
+        return False
+    return _normalize_report_name(relatorio).startswith(_CREDIT_REPORT_PREFIX)
+
+
+def _is_stable_report(relatorio: str | None) -> bool:
+    """Report com contas compativeis entre eras (sem renumeracao)."""
+    if relatorio is None:
+        return False
+    norm = _normalize_report_name(relatorio)
+    if norm.startswith(_CREDIT_REPORT_PREFIX):
+        return True
+    return norm in _STABLE_REPORTS_NORMALIZED
+
+
+def _match_dropped_report(relatorio: str | None) -> int | None:
+    """Retorna ultimo periodo disponivel se report foi descontinuado, ou None."""
+    if relatorio is None:
+        return None
+    return _DROPPED_REPORTS_NORMALIZED.get(_normalize_report_name(relatorio))
+
+
+# ---------------------------------------------------------------------------
+# Verificacoes de era
+# ---------------------------------------------------------------------------
 
 
 def detect_cosif_csv_era(csv_path: Path, encoding: str) -> int:
@@ -89,7 +158,10 @@ def check_era_boundary(
     boundary: int,
     source_name: str,
 ) -> None:
-    """Emite IncompatibleEraWarning se dates cruzam o boundary de era."""
+    """Emite IncompatibleEraWarning se dates cruzam o boundary de era.
+
+    Usado pelo COSIF. Para IFDATA, usar check_ifdata_era().
+    """
     if dates is None or len(dates) < 2:
         return
     min_date = min(dates)
@@ -103,6 +175,79 @@ def check_era_boundary(
                 f"Resultados podem misturar contas com codigos distintos.",
                 boundary=boundary,
                 source=source_name,
+            ),
+            stacklevel=3,
+        )
+
+
+def check_ifdata_era(
+    dates: list[int] | None,
+    relatorio: str | None = None,
+    escopo: str | None = None,
+) -> None:
+    """Verificacoes de era especificas para IFDATA Valores.
+
+    Emite ate 3 tipos de warning conforme o cenario:
+    - DroppedReportWarning: relatorio descontinuado apos 202412.
+    - ScopeMigrationWarning: credit report com escopo filtrado (migracao
+      de financeiro para prudencial em 202503).
+    - IncompatibleEraWarning: contas renumeradas (apenas para relatorios
+      cujos codigos mudaram entre eras).
+    """
+    if not dates:
+        return
+
+    boundary = IFDATA_ERA_BOUNDARY
+    max_date = max(dates)
+    crosses_boundary = len(dates) >= 2 and min(dates) < boundary <= max_date
+
+    # 1. Report descontinuado (verifica mesmo sem cruzar boundary)
+    last_period = _match_dropped_report(relatorio)
+    if last_period is not None and max_date > last_period:
+        emit_user_warning(
+            DroppedReportWarning(
+                f"Relatorio '{relatorio}' foi descontinuado apos {last_period}. "
+                f"Periodos posteriores nao terao dados para este relatorio.",
+                relatorio=relatorio or "",
+                last_period=last_period,
+            ),
+            stacklevel=3,
+        )
+
+    if not crosses_boundary:
+        return
+
+    # 2. Migracao de escopo: credit reports de financeiro -> prudencial
+    if _is_credit_report(relatorio) and escopo in ("financeiro", "prudencial"):
+        if escopo == "financeiro":
+            gap = f"Periodos >= {boundary} nao terao dados no escopo 'financeiro'"
+            alt = "prudencial"
+        else:
+            gap = f"Periodos < {boundary} nao terao dados no escopo 'prudencial'"
+            alt = "financeiro"
+        emit_user_warning(
+            ScopeMigrationWarning(
+                f"Relatorios de credito migraram do escopo 'financeiro' para "
+                f"'prudencial' a partir de {boundary}. {gap}. "
+                f"Use escopo='{alt}' ou remova o filtro de escopo.",
+                relatorio=relatorio or "",
+                escopo_pre="financeiro",
+                escopo_post="prudencial",
+                boundary=boundary,
+            ),
+            stacklevel=3,
+        )
+
+    # 3. IncompatibleEraWarning (apenas se report tem contas renumeradas)
+    if not _is_stable_report(relatorio):
+        emit_user_warning(
+            IncompatibleEraWarning(
+                f"Query IFDATA abrange periodos antes e apos {boundary}. "
+                f"Codigos de conta foram renumerados nesta transicao "
+                f"(Resolucao CMN 4.966) e nao sao compativeis entre si. "
+                f"Resultados podem misturar contas com codigos distintos.",
+                boundary=boundary,
+                source="IFDATA",
             ),
             stacklevel=3,
         )

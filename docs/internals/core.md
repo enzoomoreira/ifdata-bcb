@@ -68,9 +68,9 @@ Primeiro periodo disponivel por fonte (YYYYMM). Periodos anteriores retornam 404
 
 ```python
 FIRST_AVAILABLE_PERIOD: dict[str, int] = {
-    "cosif_individual": 199501,
+    "cosif_individual": 198807,
     "cosif_prudencial": 201407,
-    "ifdata_valores": 200303,
+    "ifdata_valores": 200003,
     "cadastro": 200503,
 }
 ```
@@ -698,25 +698,30 @@ def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
     """
 ```
 
-### get_canonical_names_for_cnpjs()
+### get_canonical_names_for_cnpjs() [CACHED]
 
 ```python
 def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
     """
-    Retorna nomes canônicos a partir do cadastro mais recente.
+    Retorna nomes canonicos a partir do cadastro mais recente.
 
     O cadastro e a fonte mestra para nomes de entidades nas leituras
     analiticas. Filtra apenas entidades reais (exclui aliases).
     Se um CNPJ nao existir no cadastro, retorna string vazia.
+    Resultados sao cacheados por sessao para evitar queries repetidas.
     """
 ```
+
+Cache incremental por sessao (`_name_cache`): apenas CNPJs nao vistos geram query SQL. Chamadas subsequentes com mesmos CNPJs (ou subsets) retornam do cache sem hit no DuckDB.
 
 ### clear_cache()
 
 ```python
 def clear_cache(self) -> None:
-    """Limpa caches LRU de get_entity_identifiers()."""
+    """Limpa caches LRU de get_entity_identifiers() e cache de nomes."""
 ```
+
+Limpa tanto o LRU cache de `get_entity_identifiers()` quanto o `_name_cache` de nomes canonicos.
 
 ### Filtragem de Entidades Reais
 
@@ -910,10 +915,30 @@ def check_era_boundary(
     boundary: int,
     source_name: str,
 ) -> None:
-    """Emite IncompatibleEraWarning se dates cruzam o boundary."""
+    """Emite IncompatibleEraWarning se dates cruzam o boundary.
+    Usado pelo COSIF. Para IFDATA, usar check_ifdata_era()."""
 ```
 
 Condicao: `min(dates) < boundary <= max(dates)`. Nao bloqueia a query -- apenas emite `warnings.warn()`.
+
+### check_ifdata_era()
+
+```python
+def check_ifdata_era(
+    dates: list[int] | None,
+    relatorio: str | None = None,
+    escopo: str | None = None,
+) -> None:
+    """Verificacoes de era especificas para IFDATA Valores."""
+```
+
+Emite ate 3 tipos de warning conforme o cenario:
+
+1. **`DroppedReportWarning`**: Relatorio descontinuado apos 202412 (ex: "Carteira de credito ativa - por nivel de risco da operacao").
+2. **`ScopeMigrationWarning`**: Relatorios de credito com escopo filtrado -- migraram de `financeiro` para `prudencial` a partir de 202503. Emitido quando `escopo` e `"financeiro"` ou `"prudencial"` e a query cruza o boundary.
+3. **`IncompatibleEraWarning`**: Contas renumeradas entre eras. **Nao emitido** para relatorios com contas estaveis (credit reports, "Informacoes de Capital").
+
+A deteccao de tipo de relatorio usa normalizacao Unicode (remove acentos, lowercase) para matching robusto.
 
 ---
 

@@ -1,5 +1,29 @@
 # Project Changelog
 
+## [2026-03-22 21:02]
+
+### Added
+- `check_ifdata_era()` em `core/eras.py`: verificacao de era especifica para IFDATA Valores com logica por tipo de relatorio
+  - Detecta relatorios descontinuados (ex: "por nivel de risco da operacao" apos 202412) via `DroppedReportWarning`
+  - Detecta migracao de escopo em relatorios de credito (financeiro -> prudencial a partir de 202503) via `ScopeMigrationWarning`
+  - Emite `IncompatibleEraWarning` apenas para relatorios com contas renumeradas (skip para credit reports e "Informacoes de Capital" que sao estaveis entre eras)
+- `ScopeMigrationWarning` e `DroppedReportWarning` em `domain/exceptions.py`: warnings estruturados para os novos cenarios de era IFDATA
+- `DateScalar` type alias e `DateInput` expandido para aceitar `date`, `datetime` e `pd.Timestamp` alem de int/str -- permite passar datas nativas do Python e pandas diretamente para `read()`, `collect()`, etc.
+- `format_entity_labels()` extraido para `utils/text.py` para formatacao de CNPJs com nomes em mensagens de warning
+- Testes para `check_ifdata_era` (25 cenarios), cache de nomes canonicos (5), `format_entity_labels` (8), novos tipos de data (12), validacao de documento COSIF (3), warnings estruturados (2)
+
+### Changed
+- `IFDATAExplorer.read()` agora usa `check_ifdata_era()` com contexto de relatorio/escopo em vez do generico `check_era_boundary()` -- warnings mais precisos e acionaveis
+- `FIRST_AVAILABLE_PERIOD` ajustado: cosif_individual recuado para 198807 (era 198501), ifdata_valores recuado para 200003 (era 200303) -- amplia cobertura historica disponivel
+- `emit_user_warning()` log level rebaixado de `warning` para `debug` -- reduz ruido no log para warnings que ja sao emitidos via `warnings.warn()`
+- **Otimizacao de leitura prudencial/financeiro**: queries DuckDB consolidadas por batch de periodos em `_collect_resolved_groups()` -- antes cada conglomerado gerava um `read_glob` separado (~100ms cada), agora grupos com mesmos periodos sao lidos em uma unica query com `CodInst IN (...)`. Leitura prudencial ~2x mais rapida (p50: 706ms -> 466ms single, 919ms -> 450ms cross-era)
+- **Cache de nomes canonicos**: `EntityLookup.get_canonical_names_for_cnpjs()` agora cacheia resultados em `_name_cache` por sessao -- queries subsequentes com mesmos CNPJs (ou subsets) retornam do cache sem hit no DuckDB (~50-100ms economizados por chamada repetida). `clear_cache()` limpa tambem este cache
+- `_normalize_text_fields` usa `.map(na_action="ignore")` em vez de `.apply()` -- semanticamente correto e evita warning de depreciacao futuro
+- Enrichment cadastral: CAST para VARCHAR em SQL de `NOME_CONGL_PRUD` e uso de `pd.Series(..., dtype="string")` para colunas ausentes -- evita colunas com dtype object/mixed
+
+### Fixed
+- `_parse_date_input()` agora rejeita `pd.NaT` e `None` com `InvalidDateFormatError` -- antes `pd.NaT` propagava silenciosamente (`isinstance(pd.NaT, datetime)` e `True`) e produzia `nan` downstream
+
 ## [2026-03-19 18:37]
 
 ### Changed

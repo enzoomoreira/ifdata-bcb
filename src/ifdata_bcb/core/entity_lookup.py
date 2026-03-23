@@ -36,6 +36,7 @@ class EntityLookup:
         self._qe = query_engine or QueryEngine()
         self._logger = get_logger(__name__)
         self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
+        self._name_cache: dict[str, str] = {}
 
     @property
     def query_engine(self) -> QueryEngine:
@@ -490,28 +491,38 @@ class EntityLookup:
 
         O cadastro e a fonte mestra para nomes de entidades nas leituras
         analiticas. Se um CNPJ nao existir no cadastro, retorna string vazia.
+        Resultados sao cacheados por sessao para evitar queries repetidas.
         """
         if not cnpjs:
             return {}
 
-        cnpjs_str = build_in_clause(cnpjs)
-        sql = self._latest_cadastro_sql(
-            inner_cols="CNPJ_8, NomeInstituicao AS NOME",
-            outer_cols="CNPJ_8, NOME",
-            extra_where=f"NomeInstituicao IS NOT NULL AND CNPJ_8 IN ({cnpjs_str})",
-        )
+        missing = [c for c in cnpjs if c not in self._name_cache]
 
-        try:
-            df = self._qe.sql(sql)
-        except Exception as e:
-            self._logger.warning(f"get_canonical_names_for_cnpjs query failed: {e}")
-            return {cnpj: "" for cnpj in cnpjs}
+        if missing:
+            cnpjs_str = build_in_clause(missing)
+            sql = self._latest_cadastro_sql(
+                inner_cols="CNPJ_8, NomeInstituicao AS NOME",
+                outer_cols="CNPJ_8, NOME",
+                extra_where=f"NomeInstituicao IS NOT NULL AND CNPJ_8 IN ({cnpjs_str})",
+            )
 
-        cnpj_to_name = dict(
-            zip(df["CNPJ_8"].astype(str).values, df["NOME"].astype(str).values)
-        )
-        return {cnpj: cnpj_to_name.get(cnpj, "") for cnpj in cnpjs}
+            try:
+                df = self._qe.sql(sql)
+            except Exception as e:
+                self._logger.warning(f"get_canonical_names_for_cnpjs query failed: {e}")
+                for cnpj in missing:
+                    self._name_cache[cnpj] = ""
+                return {cnpj: self._name_cache.get(cnpj, "") for cnpj in cnpjs}
+
+            fetched = dict(
+                zip(df["CNPJ_8"].astype(str).values, df["NOME"].astype(str).values)
+            )
+            for cnpj in missing:
+                self._name_cache[cnpj] = fetched.get(cnpj, "")
+
+        return {cnpj: self._name_cache.get(cnpj, "") for cnpj in cnpjs}
 
     def clear_cache(self) -> None:
-        """Limpa caches LRU."""
+        """Limpa caches LRU e cache de nomes."""
         self.get_entity_identifiers.cache_clear()
+        self._name_cache.clear()

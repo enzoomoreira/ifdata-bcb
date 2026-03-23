@@ -27,7 +27,7 @@ from ifdata_bcb.providers.enrichment import (
     validate_cadastro_columns,
 )
 from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
-from ifdata_bcb.providers.ifdata.valores.temporal import TemporalResolver
+from ifdata_bcb.providers.ifdata.valores.temporal import TemporalGroup, TemporalResolver
 from ifdata_bcb.utils.text import format_entity_labels
 
 
@@ -221,26 +221,15 @@ class IFDATAExplorer(BaseExplorer):
                 if unavailable:
                     self._warn_escopo_unavailable(unavailable, esc, periodos)
 
-                for group in groups:
-                    codes = cnpjs if esc == "individual" else [group.cod_inst]
-                    conditions = [
-                        build_string_condition("CodInst", codes),
-                        build_int_condition("TipoInstituicao", [tipo_inst]),
-                        build_int_condition("AnoMes", group.periodos),
-                    ] + extra_conditions
-
-                    df = self._read_glob(
-                        pattern=self._get_pattern(),
-                        subdir=self._get_subdir(),
-                        columns=storage_columns,
-                        where=join_conditions(conditions),
-                    )
-                    if df.empty:
-                        continue
-                    df = df.copy()
-                    df["ESCOPO"] = esc
-                    df = TemporalResolver.add_cnpj_mapping(df, group.cnpj_map)
-                    frames.append(df)
+                self._collect_resolved_groups(
+                    groups,
+                    esc,
+                    tipo_inst,
+                    cnpjs,
+                    extra_conditions,
+                    storage_columns,
+                    frames,
+                )
             else:
                 conditions = [
                     build_int_condition("TipoInstituicao", [tipo_inst]),
@@ -262,6 +251,74 @@ class IFDATAExplorer(BaseExplorer):
                 frames.append(df)
 
         return frames
+
+    def _collect_resolved_groups(
+        self,
+        groups: list[TemporalGroup],
+        escopo: str,
+        tipo_inst: int,
+        cnpjs: list[str],
+        extra_conditions: list[str],
+        storage_columns: list[str] | None,
+        frames: list[pd.DataFrame],
+    ) -> None:
+        """Consolida TemporalGroups com mesmos periodos em queries unicas."""
+        if not groups:
+            return
+
+        if escopo == "individual":
+            # Individual: todos os CNPJs na mesma query (ja era assim)
+            group = groups[0]
+            conditions = [
+                build_string_condition("CodInst", cnpjs),
+                build_int_condition("TipoInstituicao", [tipo_inst]),
+                build_int_condition("AnoMes", group.periodos),
+            ] + extra_conditions
+
+            df = self._read_glob(
+                pattern=self._get_pattern(),
+                subdir=self._get_subdir(),
+                columns=storage_columns,
+                where=join_conditions(conditions),
+            )
+            if not df.empty:
+                df = df.copy()
+                df["ESCOPO"] = escopo
+                df = TemporalResolver.add_cnpj_mapping(df, group.cnpj_map)
+                frames.append(df)
+            return
+
+        # Conglomerado: agrupar groups por set de periodos para
+        # consolidar em uma unica query por batch.
+        batches: dict[tuple[int, ...], list] = {}
+        for group in groups:
+            key = tuple(group.periodos)
+            batches.setdefault(key, []).append(group)
+
+        for periodos_key, batch in batches.items():
+            all_codes = [g.cod_inst for g in batch]
+            merged_cnpj_map: dict[str, list[str]] = {}
+            for g in batch:
+                merged_cnpj_map.update(g.cnpj_map)
+
+            conditions = [
+                build_string_condition("CodInst", all_codes),
+                build_int_condition("TipoInstituicao", [tipo_inst]),
+                build_int_condition("AnoMes", list(periodos_key)),
+            ] + extra_conditions
+
+            df = self._read_glob(
+                pattern=self._get_pattern(),
+                subdir=self._get_subdir(),
+                columns=storage_columns,
+                where=join_conditions(conditions),
+            )
+            if df.empty:
+                continue
+            df = df.copy()
+            df["ESCOPO"] = escopo
+            df = TemporalResolver.add_cnpj_mapping(df, merged_cnpj_map)
+            frames.append(df)
 
     def read(
         self,
@@ -298,12 +355,12 @@ class IFDATAExplorer(BaseExplorer):
         columns = self._validate_columns(columns)
         validate_cadastro_columns(cadastro)
 
-        from ifdata_bcb.core.eras import IFDATA_ERA_BOUNDARY, check_era_boundary
+        from ifdata_bcb.core.eras import check_ifdata_era
 
-        check_era_boundary(
+        check_ifdata_era(
             self._resolve_date_range(start, end, trimestral=True),
-            IFDATA_ERA_BOUNDARY,
-            "IFDATA",
+            relatorio=relatorio,
+            escopo=escopo,
         )
         self._logger.debug(f"IFDATA read: instituicao={instituicao}, escopo={escopo}")
 

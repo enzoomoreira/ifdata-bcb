@@ -91,16 +91,19 @@ def normalize_text(text: str) -> str:
 Converte qualquer formato de data para inteiro YYYYMM:
 
 ```python
-def normalize_date_to_int(date_val: int | str) -> int:
+def normalize_date_to_int(date_val: int | str | date | datetime | pd.Timestamp) -> int:
     """
     Formatos aceitos:
     - int: 202412 -> 202412
     - str: "202412" -> 202412
     - str: "2024-12" -> 202412
     - str: "2024-12-01" -> 202412
+    - date: date(2024, 12, 1) -> 202412
+    - datetime: datetime(2024, 12, 1) -> 202412
+    - pd.Timestamp: pd.Timestamp('2024-12-01') -> 202412
 
     Raises:
-        InvalidDateFormatError: Se formato invalido ou mes fora de 1-12
+        InvalidDateFormatError: Se formato invalido, mes fora de 1-12, ou pd.NaT/None
     """
 ```
 
@@ -109,7 +112,7 @@ def normalize_date_to_int(date_val: int | str) -> int:
 Gera lista de meses consecutivos:
 
 ```python
-def generate_month_range(start: int | str, end: int | str) -> list[int]:
+def generate_month_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
     """
     Gera meses entre start e end (inclusive).
 
@@ -129,7 +132,7 @@ def generate_month_range(start: int | str, end: int | str) -> list[int]:
 Gera lista de fins de trimestre:
 
 ```python
-def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
+def generate_quarter_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
     """
     Gera fins de trimestre (03, 06, 09, 12) no range.
 

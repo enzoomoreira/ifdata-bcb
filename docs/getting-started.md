@@ -212,10 +212,16 @@ df = bcb.ifdata.read('2024-12', instituicao='60872504')
 A biblioteca aceita datas nos formatos:
 
 ```python
+from datetime import date, datetime
+import pandas as pd
+
 # Formatos aceitos para start/end
-start = '2024-12'      # String YYYY-MM
-start = '202412'       # String YYYYMM
-start = 202412         # Inteiro YYYYMM
+start = '2024-12'              # String YYYY-MM
+start = '202412'               # String YYYYMM
+start = 202412                 # Inteiro YYYYMM
+start = date(2024, 12, 1)     # date do Python
+start = datetime(2024, 12, 1)  # datetime do Python
+start = pd.Timestamp('2024-12-01')  # pd.Timestamp
 ```
 
 Comportamento:

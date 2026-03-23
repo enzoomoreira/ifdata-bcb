@@ -417,16 +417,35 @@ Mapeamento para colunas de apresentacao:
 | NomeRelatorio | RELATORIO |
 | Grupo | GRUPO |
 
-### Warning de Compatibilidade
+### Warnings de Compatibilidade entre Eras
 
-A partir de 202503 (marco/2025), o BCB renumerou os codigos de conta no IFDATA. Ao consultar periodos que cruzam essa fronteira, um `IncompatibleEraWarning` e emitido automaticamente:
+A partir de 202503 (marco/2025), o BCB mudou a estrutura dos dados IFDATA. A biblioteca detecta automaticamente cenarios problematicos e emite warnings especificos:
+
+**IncompatibleEraWarning**: Codigos de conta renumerados em relatorios contabeis (Resumo, Ativo, Passivo, DRE):
 
 ```python
 # Emite IncompatibleEraWarning: codigos de conta foram renumerados
-df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504')
+df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', relatorio='Resumo')
 ```
 
-O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
+**ScopeMigrationWarning**: Relatorios de credito migraram de escopo `financeiro` para `prudencial` a partir de 202503:
+
+```python
+# Emite ScopeMigrationWarning: periodos < 202503 nao tem dados no escopo prudencial
+df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', escopo='prudencial',
+                     relatorio='Carteira de credito ativa')
+```
+
+**DroppedReportWarning**: Relatorio descontinuado (ex: "por nivel de risco da operacao" apos 202412):
+
+```python
+# Emite DroppedReportWarning: relatorio descontinuado
+df = bcb.ifdata.read('2025-03', relatorio='Carteira de credito ativa - por nivel de risco da operacao')
+```
+
+Relatorios com contas estaveis entre eras (credit reports, "Informacoes de Capital") **nao** emitem `IncompatibleEraWarning`.
+
+Nenhum warning bloqueia a query -- apenas alertam sobre potenciais incompatibilidades nos resultados.
 
 ## Diferenca Entre COSIF e IFDATA
 

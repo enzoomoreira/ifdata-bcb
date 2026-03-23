@@ -8,10 +8,12 @@ import warnings
 
 
 from ifdata_bcb.domain.exceptions import (
+    DroppedReportWarning,
     EmptyFilterWarning,
     IncompatibleEraWarning,
     NullValuesWarning,
     PartialDataWarning,
+    ScopeMigrationWarning,
     ScopeUnavailableWarning,
 )
 from ifdata_bcb.infra.log import emit_user_warning
@@ -54,6 +56,30 @@ class TestWarningAttributes:
     def test_empty_filter_has_parameter(self) -> None:
         w = EmptyFilterWarning("msg", parameter="columns")
         assert w.parameter == "columns"
+
+    def test_scope_migration_has_all_attributes(self) -> None:
+        w = ScopeMigrationWarning(
+            "msg",
+            relatorio="Carteira de credito ativa",
+            escopo_pre="financeiro",
+            escopo_post="prudencial",
+            boundary=202503,
+        )
+        assert w.relatorio == "Carteira de credito ativa"
+        assert w.escopo_pre == "financeiro"
+        assert w.escopo_post == "prudencial"
+        assert w.boundary == 202503
+        assert str(w) == "msg"
+
+    def test_dropped_report_has_all_attributes(self) -> None:
+        w = DroppedReportWarning(
+            "msg",
+            relatorio="Carteira de credito ativa - por nivel de risco",
+            last_period=202412,
+        )
+        assert w.relatorio == "Carteira de credito ativa - por nivel de risco"
+        assert w.last_period == 202412
+        assert str(w) == "msg"
 
 
 class TestEmitUserWarningDualMode:

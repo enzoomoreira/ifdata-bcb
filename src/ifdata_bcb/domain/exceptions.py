@@ -113,6 +113,33 @@ class NullValuesWarning(UserWarning):
         super().__init__(message)
 
 
+class ScopeMigrationWarning(UserWarning):
+    """Relatorio migrou de escopo entre eras (ex: credito de financeiro para prudencial)."""
+
+    def __init__(
+        self,
+        message: str,
+        relatorio: str,
+        escopo_pre: str,
+        escopo_post: str,
+        boundary: int,
+    ):
+        self.relatorio = relatorio
+        self.escopo_pre = escopo_pre
+        self.escopo_post = escopo_post
+        self.boundary = boundary
+        super().__init__(message)
+
+
+class DroppedReportWarning(UserWarning):
+    """Relatorio descontinuado a partir de determinada era."""
+
+    def __init__(self, message: str, relatorio: str, last_period: int):
+        self.relatorio = relatorio
+        self.last_period = last_period
+        super().__init__(message)
+
+
 class EmptyFilterWarning(UserWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
 

@@ -83,7 +83,7 @@ def _derive_nome_congl_prud(
         df_lookup = df_cad
 
     sql = """
-        SELECT c.*, l.NOME_CONGL_PRUD
+        SELECT c.*, CAST(l.NOME_CONGL_PRUD AS VARCHAR) AS NOME_CONGL_PRUD
         FROM _cadastro c
         LEFT JOIN (
             SELECT DATA, COD_CONGL_PRUD, INSTITUICAO as NOME_CONGL_PRUD
@@ -97,7 +97,7 @@ def _derive_nome_congl_prud(
     try:
         return query_engine.sql_with_df(sql, _cadastro=df_cad, _lookup=df_lookup)
     except Exception:
-        df_cad["NOME_CONGL_PRUD"] = None
+        df_cad["NOME_CONGL_PRUD"] = pd.Series([None] * len(df_cad), dtype="string")
         return df_cad
 
 
@@ -146,7 +146,7 @@ def enrich_with_cadastro(
 
     if df_cad.empty:
         for col in cadastro_columns:
-            df[col] = None
+            df[col] = pd.Series([None] * len(df), dtype="string")
         return df
 
     # Derivar NOME_CONGL_PRUD antes de filtrar colunas

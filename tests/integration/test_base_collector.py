@@ -122,8 +122,8 @@ class TestGeneratePeriodsWithCutoff:
 
         periods = collector._generate_periods("2002-01", "2004-12")
 
-        assert periods[0] == 200303
-        assert all(p >= 200303 for p in periods)
+        assert periods[0] == 200203
+        assert all(p >= 200003 for p in periods)
 
 
 # =========================================================================

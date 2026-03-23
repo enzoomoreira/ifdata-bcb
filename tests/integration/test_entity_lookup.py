@@ -111,6 +111,77 @@ class TestGetCanonicalNames:
         lookup = _make_lookup(populated_cache)
         assert lookup.get_canonical_names_for_cnpjs([]) == {}
 
+    def test_cache_reuses_previous_results(self, populated_cache: Path) -> None:
+        """Segunda chamada com mesmos CNPJs nao deve executar query SQL."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+
+        # Substituir sql() por um que falha -- se cache funciona, nao sera chamado
+        original_sql = lookup._qe.sql
+        lookup._qe.sql = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            RuntimeError("sql() nao deveria ser chamado com cache preenchido")
+        )
+        try:
+            names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+            assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_cache_partial_hit_queries_only_missing(
+        self, populated_cache: Path
+    ) -> None:
+        """Com subset ja cacheado, apenas CNPJs novos devem gerar query."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+
+        # Agora pedir A + B: A ja esta no cache, so B precisa de query
+        calls: list[str] = []
+        original_sql = lookup._qe.sql
+
+        def tracking_sql(query: str) -> object:
+            calls.append(query)
+            return original_sql(query)
+
+        lookup._qe.sql = tracking_sql  # type: ignore[assignment]
+        try:
+            names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ, BANCO_B_CNPJ])
+            assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+            assert names[BANCO_B_CNPJ] == "BANCO BETA S.A."
+            # Query deve conter apenas BANCO_B, nao BANCO_A
+            assert len(calls) == 1
+            assert BANCO_B_CNPJ in calls[0]
+            assert BANCO_A_CNPJ not in calls[0]
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_cache_unknown_cnpj_not_retried(self, populated_cache: Path) -> None:
+        """CNPJ desconhecido cacheado como '' nao gera query repetida."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs(["99999999"])
+
+        original_sql = lookup._qe.sql
+        lookup._qe.sql = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            RuntimeError("sql() nao deveria ser chamado")
+        )
+        try:
+            names = lookup.get_canonical_names_for_cnpjs(["99999999"])
+            assert names["99999999"] == ""
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_clear_cache_forces_fresh_query(self, populated_cache: Path) -> None:
+        """Apos clear_cache(), proxima chamada deve consultar o banco."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+        assert BANCO_A_CNPJ in lookup._name_cache
+
+        lookup.clear_cache()
+        assert lookup._name_cache == {}
+
+        # Deve funcionar normalmente apos clear
+        names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+        assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+
 
 # =========================================================================
 # search
