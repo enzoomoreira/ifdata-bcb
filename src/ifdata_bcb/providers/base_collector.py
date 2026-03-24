@@ -352,8 +352,3 @@ class BaseCollector(ABC):
                 )
 
         return pd.DataFrame(status_data)
-
-    def periodos_disponiveis(self) -> list[tuple[int, int]]:
-        return self.dm.get_periodos_disponiveis(
-            self._get_file_prefix(), self._get_subdir()
-        )

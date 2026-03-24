@@ -18,6 +18,7 @@ from ifdata_bcb.infra.log import emit_user_warning
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     build_account_condition,
+    build_in_clause,
     build_int_condition,
     build_like_condition,
     build_string_condition,
@@ -35,20 +36,7 @@ from ifdata_bcb.utils.text import format_entity_labels, stem_ptbr
 
 EscopoIFDATA = Literal["individual", "prudencial", "financeiro"]
 
-# Colunas padrao para retorno vazio
-_EMPTY_COLUMNS = [
-    "DATA",
-    "CNPJ_8",
-    "INSTITUICAO",
-    "ESCOPO",
-    "COD_INST",
-    "COD_CONTA",
-    "CONTA",
-    "VALOR",
-    "RELATORIO",
-    "GRUPO",
-]
-_EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
+_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
 
 
 class IFDATAExplorer(BaseExplorer):
@@ -259,9 +247,72 @@ class IFDATAExplorer(BaseExplorer):
                 df["ESCOPO"] = esc
                 if esc == "individual":
                     df["CNPJ_8"] = df["CodInst"]
+                else:
+                    # CodInst numerico = inst. independente (CNPJ direto)
+                    # CodInst nao-numerico = conglomerado (precisa lookup)
+                    is_numeric = df["CodInst"].str.match(r"^\d+$", na=False)
+                    df.loc[is_numeric, "CNPJ_8"] = df.loc[is_numeric, "CodInst"]
+
+                    congl_codes = df.loc[~is_numeric, "CodInst"].unique().tolist()
+                    if congl_codes:
+                        cnpj_map = self._resolve_bulk_conglomerate_cnpjs(
+                            congl_codes, esc
+                        )
+                        df.loc[~is_numeric, "CNPJ_8"] = df.loc[
+                            ~is_numeric, "CodInst"
+                        ].map(cnpj_map)
                 frames.append(df)
 
         return frames
+
+    def _resolve_bulk_conglomerate_cnpjs(
+        self,
+        cod_insts: list[str],
+        escopo: str,
+    ) -> dict[str, str]:
+        """Resolve codigos de conglomerado para CNPJ lider via cadastro.
+
+        Para bulk prudencial/financeiro, CodInst e um codigo de conglomerado
+        (ex: C0080329). Este metodo faz o mapeamento reverso para o CNPJ
+        da instituicao lider, permitindo resolucao de nomes.
+        """
+        if not cod_insts:
+            return {}
+
+        cod_col = (
+            "CodConglomeradoPrudencial"
+            if escopo == "prudencial"
+            else "CodConglomeradoFinanceiro"
+        )
+        cadastro_path = self._resolver._source_path("cadastro")
+        cod_str = build_in_clause(cod_insts)
+
+        sql = f"""
+        SELECT COD_INST, CNPJ_LIDER_8
+        FROM (
+            SELECT {cod_col} AS COD_INST, CNPJ_LIDER_8,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY {cod_col} ORDER BY Data DESC
+                   ) AS rn
+            FROM read_parquet('{cadastro_path}', union_by_name=true)
+            WHERE {cod_col} IN ({cod_str})
+              AND CNPJ_LIDER_8 IS NOT NULL
+              AND {self._resolver.real_entity_condition()}
+        )
+        WHERE rn = 1
+        """
+
+        try:
+            df = self._qe.sql(sql)
+            return dict(
+                zip(
+                    df["COD_INST"].astype(str).values,
+                    df["CNPJ_LIDER_8"].astype(str).values,
+                )
+            )
+        except Exception as e:
+            self._logger.warning(f"Bulk conglomerate CNPJ resolution failed: {e}")
+            return {}
 
     def _collect_resolved_groups(
         self,
@@ -382,7 +433,7 @@ class IFDATAExplorer(BaseExplorer):
         )
         periodos = self._resolve_date_range(start, end, trimestral=True)
         if not periodos:
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
+            return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         frames = self._collect_frames(
             escopos, periodos, instituicao, conta, relatorio, grupo, columns
@@ -395,7 +446,7 @@ class IFDATAExplorer(BaseExplorer):
                 had_conta_filter=conta is not None,
                 had_institution_filter=instituicao is not None,
             )
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
+            return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         df = pd.concat(frames, ignore_index=True)
         df = self._apply_canonical_names(df)
@@ -522,7 +573,7 @@ class IFDATAExplorer(BaseExplorer):
         if limit <= 0:
             raise ValueError(f"limit deve ser > 0, recebido: {limit}")
         if not self._ensure_data_exists():
-            return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS)
+            return pd.DataFrame(columns=_ACCOUNT_COLUMNS)
 
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
 

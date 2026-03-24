@@ -6,8 +6,8 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 
 ```mermaid
 graph TD
-    API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro, search()<br/><i>lazy loading</i>"]
-    CORE["<b>CORE (core/)</b><br/>EntityLookup<br/>constants<br/>eras<br/>api.search()"]
+    API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro<br/><i>lazy loading</i>"]
+    CORE["<b>CORE (core/)</b><br/>EntityLookup<br/>constants<br/>eras"]
     DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>Type aliases<br/>Validation models"]
     PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/valores/: IFDATAValoresCollector, IFDATAExplorer<br/>ifdata/cadastro/: IFDATACadastroCollector, CadastroExplorer"]
     INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
@@ -83,15 +83,14 @@ src/ifdata_bcb/
 
 - Ponto de entrada da biblioteca
 - Lazy loading de explorers (`cosif`, `ifdata`, `cadastro`)
-- Exporta `search()` para busca de instituicoes
 - Exporta excecoes para tratamento de erros
+- Busca de instituicoes via `bcb.cadastro.search()`
 
 ### Core (`core/`)
 
 - **EntityLookup**: Busca e resolucao de entidades (nome -> CNPJ)
 - **constants**: Mapeamentos centralizados (DATA_SOURCES, TIPO_INST_MAP)
 - **eras**: Deteccao e tratamento de eras de formato BCB
-- **api**: Funcao `search()` de alto nivel
 
 ### Domain (`domain/`)
 
@@ -137,15 +136,14 @@ src/ifdata_bcb/
 
 ### Lazy Loading
 
-Explorers e `search` sao carregados sob demanda para startup rapido (~17ms):
+Explorers sao carregados sob demanda para startup rapido (~17ms):
 
 ```python
 # Em __init__.py
 _cosif = None
-_search = None
 
 def __getattr__(name):
-    global _cosif, _search
+    global _cosif
     if name == "cosif":
         if _cosif is None:
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
@@ -161,16 +159,17 @@ Define esqueleto da coleta, subclasses implementam detalhes:
 ```python
 class BaseCollector(ABC):
     def collect(self, start, end):
-        periods = self._generate_periods(start, end)  # Template
-        for period in periods:
-            data = self._download_period(period)       # Abstract
-            df = self._process_to_parquet(data)        # Abstract
-            self.dm.save(df, filename, subdir)         # Template
+        periods = self._generate_periods(start, end)      # Template
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for period in periods:  # Paralelo via executor.submit()
+                data = self._download_period(period, work_dir)  # Abstract
+                df = self._process_to_parquet(data, period)     # Abstract
+                self.dm.save(df, filename, subdir)              # Template
 
     @abstractmethod
-    def _download_period(self, period): ...
+    def _download_period(self, period, work_dir): ...
     @abstractmethod
-    def _process_to_parquet(self, data_path): ...
+    def _process_to_parquet(self, data_path, period): ...
 ```
 
 ### Builder Pattern (Condicoes SQL)

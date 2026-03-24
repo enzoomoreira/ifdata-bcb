@@ -538,8 +538,8 @@ Modulo de enriquecimento cadastral inline. Permite adicionar colunas cadastrais 
 
 ```python
 VALID_CADASTRO_COLUMNS = {
-    "SEGMENTO", "COD_CONGL_PRUD", "COD_CONGL_FIN", "SITUACAO",
-    "ATIVIDADE", "TCB", "TD", "TC", "UF", "MUNICIPIO", "SR",
+    "SEGMENTO", "COD_CONGL_PRUD", "COD_CONGL_FIN", "CNPJ_LIDER_8",
+    "SITUACAO", "ATIVIDADE", "TCB", "TD", "TC", "UF", "MUNICIPIO", "SR",
     "DATA_INICIO_ATIVIDADE", "NOME_CONGL_PRUD",
 }
 
@@ -566,8 +566,8 @@ def enrich_with_cadastro(
     Para data unica: LEFT JOIN com ROW_NUMBER para pegar registro mais recente.
     Para time-series: ASOF LEFT JOIN via DuckDB SQL.
 
-    Suporta coluna derivada NOME_CONGL_PRUD: nome da instituicao lider
-    do conglomerado prudencial, resolvida via lookup SQL interno.
+    Suporta coluna derivada NOME_CONGL_PRUD: nome oficial do conglomerado
+    prudencial, resolvido a partir das alias rows do cadastro.
     """
 ```
 

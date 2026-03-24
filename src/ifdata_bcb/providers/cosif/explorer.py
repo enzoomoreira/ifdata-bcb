@@ -24,18 +24,8 @@ from ifdata_bcb.ui.display import get_display
 
 EscopoCOSIF = Literal["individual", "prudencial"]
 
-_EMPTY_COLUMNS = [
-    "DATA",
-    "CNPJ_8",
-    "INSTITUICAO",
-    "ESCOPO",
-    "COD_CONTA",
-    "CONTA",
-    "DOCUMENTO",
-    "VALOR",
-]
-_EMPTY_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
-_EMPTY_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPOS"]
+_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
+_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPOS"]
 
 
 class COSIFExplorer(BaseExplorer):
@@ -301,7 +291,7 @@ class COSIFExplorer(BaseExplorer):
                 had_conta_filter=conta is not None,
                 had_institution_filter=instituicao is not None,
             )
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
+            return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         df = pd.concat(results, ignore_index=True)
         self._logger.debug(f"COSIF result: {len(df)} rows")
@@ -450,7 +440,7 @@ class COSIFExplorer(BaseExplorer):
             df["_escopo"] = esc
             dfs.append(df)
         if not dfs:
-            return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS_ALL)
+            return pd.DataFrame(columns=_ACCOUNT_COLUMNS_ALL)
 
         combined = pd.concat(dfs, ignore_index=True)
         result = (
@@ -474,7 +464,7 @@ class COSIFExplorer(BaseExplorer):
         cfg = self._get_escopo_config(escopo)
         pattern = self._get_pattern_for_escopo(escopo)
         if not self._qe.has_glob(pattern, cfg["subdir"]):
-            return pd.DataFrame(columns=_EMPTY_ACCOUNT_COLUMNS)
+            return pd.DataFrame(columns=_ACCOUNT_COLUMNS)
 
         path = self._qe.cache_path / cfg["subdir"] / pattern
 

@@ -104,7 +104,7 @@ class NovoCollector(BaseCollector):
         output_path = work_dir / f"novo_{period}.csv"
 
         try:
-            self._download_single(url, output_path, period)
+            self._download_single(url, output_path)
             return output_path
         except PeriodUnavailableError:
             raise  # Re-raise para marcar como indisponivel
@@ -173,9 +173,6 @@ from ifdata_bcb.core.entity_lookup import EntityLookup
 from ifdata_bcb.providers.novo.collector import NovoCollector
 
 
-_EMPTY_COLUMNS = ["DATA", "CNPJ_8", "INSTITUICAO", "VALOR"]
-
-
 class NovoExplorer(BaseExplorer):
     """
     Explorer para dados do Novo Provider.
@@ -183,7 +180,7 @@ class NovoExplorer(BaseExplorer):
     Exemplo:
         explorer = NovoExplorer()
         explorer.collect('2024-01', '2024-12')
-        df = explorer.read('60872504', start='2024-12')
+        df = explorer.read('2024-12', instituicao='60872504')
     """
 
     # Mapeamento de colunas storage -> apresentacao
@@ -191,6 +188,9 @@ class NovoExplorer(BaseExplorer):
         "DATA": "DATA",
         "COLUNA_NORMALIZADA": "CONTA",
     }
+
+    # Ordem das colunas no output (tambem usado como fallback para DataFrame vazio)
+    _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "VALOR"]
 
     def __init__(
         self,
@@ -274,7 +274,7 @@ class NovoExplorer(BaseExplorer):
         )
 
         if df.empty:
-            return pd.DataFrame(columns=_EMPTY_COLUMNS)
+            return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         return self._finalize_read(df)
 
@@ -429,9 +429,11 @@ def _get_file_prefix(self) -> str:
 ```python
 _COLUMN_MAP: dict[str, str] = {}      # Mapeamento storage -> apresentacao
 _DERIVED_COLUMNS: set[str] = set()     # Colunas adicionadas pos-query por Python
+_PASSTHROUGH_COLUMNS: set[str] = set() # Colunas nativas do parquet aceitas em columns= sem _COLUMN_MAP
 _DROP_COLUMNS: list[str] = []          # Colunas a remover antes do mapeamento
 _COLUMN_ORDER: list[str] = []          # Ordem desejada das colunas no output
 _VALID_ESCOPOS: list[str] = []         # Escopos validos para _validate_escopo
+_DATE_COLUMN: str | None = None        # Coluna YYYYMM int para conversao automatica em datetime
 ```
 
 #### Metodos Auxiliares Fornecidos
@@ -528,13 +530,25 @@ collector = COSIFCollector("individual", data_manager=dm)
 
 ```
 BacenAnalysisError (base)
-  InvalidScopeError        # Escopo invalido
-  DataUnavailableError     # Dados nao disponiveis
-  InvalidIdentifierError   # CNPJ invalido (nao tem 8 digitos)
+  InvalidScopeError              # Escopo invalido
+  DataUnavailableError           # Dados nao disponiveis
+  InvalidIdentifierError         # CNPJ invalido (nao tem 8 digitos)
   MissingRequiredParameterError  # Param obrigatorio faltando
-  InvalidDateRangeError    # start > end
-  InvalidDateFormatError   # Formato de data invalido
-  PeriodUnavailableError   # Periodo nao disponivel na fonte (404)
+  InvalidDateRangeError          # start > end
+  InvalidDateFormatError         # Formato de data invalido
+  PeriodUnavailableError         # Periodo nao disponivel na fonte (404)
+  DataProcessingError            # Falha no processamento de dados
+  InvalidColumnError             # Coluna invalida para list()
+
+UserWarning
+  IncompatibleEraWarning         # Query cruza fronteira de era
+  PartialDataWarning             # Resultado incompleto
+  ScopeUnavailableWarning        # Escopo indisponivel para entidade
+  NullValuesWarning              # Valores financeiros NULL
+  ScopeMigrationWarning          # Relatorio migrou de escopo entre eras
+  DroppedReportWarning           # Relatorio descontinuado
+  EmptyFilterWarning             # Filtro vazio (ex: columns=[])
+  TruncatedResultWarning         # Resultado truncado pelo limit
 ```
 
 ### Uso
@@ -553,8 +567,9 @@ except BacenAnalysisError as e:
     print(f"Erro: {e}")
 
 # Capturar especificas
+from pathlib import Path
 try:
-    collector._download_period(202499)
+    collector._download_period(202499, Path("/tmp/work"))
 except PeriodUnavailableError:
     print("Periodo nao disponivel")
 ```
@@ -564,8 +579,9 @@ except PeriodUnavailableError:
 **Localizacao:** `src/ifdata_bcb/domain/types.py`
 
 ```python
-DateInput = int | str | list[int] | list[str]
-# Aceita: 202412, '202412', '2024-12', [202412, 202501], etc.
+DateScalar = int | str | date | datetime | pd.Timestamp
+DateInput = DateScalar | list[DateScalar]
+# Aceita: 202412, '202412', '2024-12', date(2024,12,1), pd.Timestamp(...), ou lista de qualquer um
 
 AccountInput = str | list[str]
 # Aceita: 'TOTAL ATIVO', ['ATIVO', 'PASSIVO']
@@ -615,7 +631,7 @@ class BaseCollector:
 class BaseExplorer:
     def __init__(self, query_engine=None, entity_lookup=None):
         self._qe = query_engine or QueryEngine()
-        self._resolver = entity_lookup or EntityLookup()
+        self._resolver = entity_lookup or EntityLookup(query_engine=self._qe)
 ```
 
 ### Decorator

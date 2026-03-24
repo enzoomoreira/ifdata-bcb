@@ -180,7 +180,7 @@ Metodos especificos:
 
 - **Dependencia de APIs do BCB**: a coleta depende da disponibilidade dos endpoints publicos do Banco Central. Se a API estiver fora do ar ou mudar seu schema, a coleta pode falhar.
 - **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periodos()` para verificar disponibilidade.
-- **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz requisicoes HTTP sequenciais ao BCB.
+- **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz multiplas requisicoes HTTP ao BCB (paralelas com 4 workers).
 - **Cache sem invalidacao automatica**: dados coletados ficam em cache local indefinidamente. Para atualizar, colete novamente o periodo desejado.
 - **Sem suporte offline**: a coleta requer conexao com a internet. A leitura funciona offline se os dados ja estiverem em cache.
 

@@ -360,7 +360,9 @@ def _storage_columns_for_query(
 def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica nomes canonicos do cadastro a coluna INSTITUICAO.
-    Se a coluna ja existe, substitui apenas onde o canonico nao eh vazio.
+    Se INSTITUICAO ja existe no DataFrame, retorna sem alteracao
+    (nomes do parquet sao mantidos). Caso contrario, resolve
+    nomes a partir do CNPJ_8 via EntityLookup.
     """
 ```
 

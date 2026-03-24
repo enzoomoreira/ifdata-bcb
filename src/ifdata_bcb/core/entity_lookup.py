@@ -340,25 +340,19 @@ class EntityLookup:
         limit: int,
     ) -> pd.DataFrame:
         """Dedup, enriquecimento (sources/situacao), filtragem e sort."""
-        matched_cnpjs: list[str] = []
-        seen_cnpjs: set[str] = set()
-        for nome_norm, _ in matches:
-            cnpj = nome_to_cnpj[nome_norm]
-            if cnpj not in seen_cnpjs:
-                seen_cnpjs.add(cnpj)
-                matched_cnpjs.append(cnpj)
-
-        cnpj_sources = self._get_data_sources_for_cnpjs(matched_cnpjs)
-        cnpj_situacao = self._get_latest_situacao(matched_cnpjs)
-
-        results = []
-        seen_cnpjs = set()
+        # Unico loop: dedup por CNPJ preservando o melhor score (primeiro match)
+        cnpj_scores: dict[str, int] = {}
         for nome_norm, score in matches:
             cnpj = nome_to_cnpj[nome_norm]
-            if cnpj in seen_cnpjs:
-                continue
-            seen_cnpjs.add(cnpj)
+            if cnpj not in cnpj_scores:
+                cnpj_scores[cnpj] = score
 
+        cnpj_list = list(cnpj_scores)
+        cnpj_sources = self._get_data_sources_for_cnpjs(cnpj_list)
+        cnpj_situacao = self._get_latest_situacao(cnpj_list)
+
+        results = []
+        for cnpj, score in cnpj_scores.items():
             data = cnpj_data[cnpj]
             fontes = cnpj_sources.get(cnpj, set())
             situacao = cnpj_situacao.get(cnpj, "")

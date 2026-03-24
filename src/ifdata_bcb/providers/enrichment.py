@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pandas as pd
 
+from ifdata_bcb.core.constants import get_pattern, get_subdir
 from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb.domain.exceptions import InvalidScopeError, PartialDataWarning
+from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
+from ifdata_bcb.infra.sql import build_in_clause
 
-if TYPE_CHECKING:
-    from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+logger = get_logger(__name__)
 
 VALID_CADASTRO_COLUMNS = {
     "SEGMENTO",
     "COD_CONGL_PRUD",
     "COD_CONGL_FIN",
+    "CNPJ_LIDER_8",
     "SITUACAO",
     "ATIVIDADE",
     "TCB",
@@ -54,49 +55,71 @@ def _subtract_months(year: int, month: int, months: int) -> tuple[int, int]:
 
 def _derive_nome_congl_prud(
     df_cad: pd.DataFrame,
-    cadastro_explorer: CadastroExplorer,
-    start_str: str,
-    end_str: str,
     query_engine: QueryEngine,
 ) -> pd.DataFrame:
-    """Deriva NOME_CONGL_PRUD: nome da instituicao lider do conglomerado prudencial.
+    """Deriva NOME_CONGL_PRUD a partir das alias rows do cadastro.
 
-    Para cada COD_CONGL_PRUD, encontra a instituicao onde CNPJ_8 == CNPJ_LIDER_8
-    (a lider do conglomerado) e usa seu nome (INSTITUICAO) como NOME_CONGL_PRUD.
+    O BCB armazena os nomes oficiais dos conglomerados em linhas com CodInst
+    nao-numerico (ex: C0080714 -> "GOLDMAN SACHS - PRUDENCIAL"). Essas linhas
+    sao filtradas pelo real_entity_condition nas queries normais, mas contem
+    o nome correto do conglomerado.
     """
-    required = {"COD_CONGL_PRUD", "CNPJ_LIDER_8", "INSTITUICAO", "CNPJ_8"}
-    if not required.issubset(df_cad.columns):
+    if "COD_CONGL_PRUD" not in df_cad.columns:
         df_cad["NOME_CONGL_PRUD"] = None
         return df_cad
 
-    # Buscar lideres ausentes no dataset atual
-    lider_cnpjs = set(df_cad["CNPJ_LIDER_8"].dropna().unique())
-    cnpjs_presentes = set(df_cad["CNPJ_8"].dropna().unique())
-    ausentes = lider_cnpjs - cnpjs_presentes
+    cod_pruds = [str(c) for c in df_cad["COD_CONGL_PRUD"].dropna().unique()]
+    if not cod_pruds:
+        df_cad["NOME_CONGL_PRUD"] = None
+        return df_cad
 
-    if ausentes:
-        df_lider = cadastro_explorer.read(
-            start_str, end_str, instituicao=list(ausentes)
-        )
-        df_lookup = pd.concat([df_cad, df_lider], ignore_index=True)
-    else:
-        df_lookup = df_cad
+    cadastro_path = (
+        query_engine.cache_path / get_subdir("cadastro") / get_pattern("cadastro")
+    )
+    cod_str = build_in_clause(cod_pruds)
 
-    sql = """
-        SELECT c.*, CAST(l.NOME_CONGL_PRUD AS VARCHAR) AS NOME_CONGL_PRUD
-        FROM _cadastro c
-        LEFT JOIN (
-            SELECT DATA, COD_CONGL_PRUD, INSTITUICAO as NOME_CONGL_PRUD
-            FROM _lookup
-            WHERE CNPJ_8 = CNPJ_LIDER_8
-            QUALIFY ROW_NUMBER() OVER (
-                PARTITION BY DATA, COD_CONGL_PRUD ORDER BY ROWID
-            ) = 1
-        ) l USING (DATA, COD_CONGL_PRUD)
+    sql = f"""
+    SELECT COD_CONGL_PRUD, NOME_CONGL_PRUD
+    FROM (
+        SELECT CodInst AS COD_CONGL_PRUD,
+               NomeInstituicao AS NOME_CONGL_PRUD,
+               ROW_NUMBER() OVER (
+                   PARTITION BY CodInst ORDER BY Data DESC
+               ) AS rn
+        FROM read_parquet('{cadastro_path}', union_by_name=true)
+        WHERE CodInst IN ({cod_str})
+          AND NomeInstituicao IS NOT NULL
+    )
+    WHERE rn = 1
     """
+
     try:
-        return query_engine.sql_with_df(sql, _cadastro=df_cad, _lookup=df_lookup)
-    except Exception:
+        df_names = query_engine.sql(sql)
+        if df_names.empty:
+            df_cad["NOME_CONGL_PRUD"] = None
+            return df_cad
+
+        nome_map = dict(
+            zip(
+                df_names["COD_CONGL_PRUD"].astype(str).values,
+                df_names["NOME_CONGL_PRUD"].astype(str).values,
+            )
+        )
+        df_cad = df_cad.copy()
+        df_cad["NOME_CONGL_PRUD"] = df_cad["COD_CONGL_PRUD"].map(nome_map)
+
+        resolved = df_cad["NOME_CONGL_PRUD"].notna().sum()
+        logger.debug(
+            "enrichment NOME_CONGL_PRUD: %d/%d resolvidos", resolved, len(df_cad)
+        )
+        return df_cad
+    except Exception as e:
+        emit_user_warning(
+            PartialDataWarning(
+                f"Falha ao derivar NOME_CONGL_PRUD: {e}. Coluna preenchida com NULL.",
+                reason="enrichment_derivation_failed",
+            )
+        )
         df_cad["NOME_CONGL_PRUD"] = pd.Series([None] * len(df_cad), dtype="string")
         return df_cad
 
@@ -113,8 +136,8 @@ def enrich_with_cadastro(
     cada linha financeira recebe os atributos cadastrais do trimestre
     mais recente <= sua data.
 
-    Suporta coluna derivada NOME_CONGL_PRUD: nome da instituicao lider
-    do conglomerado prudencial, resolvida internamente via lookup no cadastro.
+    Suporta coluna derivada NOME_CONGL_PRUD: nome oficial do conglomerado
+    prudencial, resolvido a partir das alias rows do cadastro.
     """
     if df.empty:
         return df
@@ -151,9 +174,7 @@ def enrich_with_cadastro(
 
     # Derivar NOME_CONGL_PRUD antes de filtrar colunas
     if "NOME_CONGL_PRUD" in cadastro_columns:
-        df_cad = _derive_nome_congl_prud(
-            df_cad, cadastro_explorer, start_str, end_str, query_engine
-        )
+        df_cad = _derive_nome_congl_prud(df_cad, query_engine)
 
     cad_cols = ["CNPJ_8", "DATA"] + cadastro_columns
     df_cad = df_cad[[c for c in cad_cols if c in df_cad.columns]]

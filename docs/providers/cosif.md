@@ -107,7 +107,7 @@ bcb.cosif.read(
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos. Se None, retorna todas (bulk)
     escopo: str | None = None,              # 'individual', 'prudencial', ou None (TODOS)
     conta: str | list[str] | None = None,   # Nome ou codigo da conta (case-insensitive)
-    documento: str | list[str] | None = None,  # Tipo de documento (ex: balancete, semestral). Deve ser numerico
+    documento: str | list[str] | None = None,  # Codigo numerico do documento (ex: 4010, 4016, 4060)
     columns: list[str] | None = None,       # Colunas especificas
     cadastro: list[str] | None = None       # Colunas cadastrais para enriquecer o resultado
 ) -> pd.DataFrame
@@ -304,7 +304,7 @@ df = bcb.cosif.read(
 # Resultado inclui colunas SEGMENTO, UF e TCB
 ```
 
-Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `CNPJ_LIDER_8`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
 
 Para dados mensais (COSIF), o alinhamento temporal e automatico: cada mes recebe os atributos cadastrais do trimestre mais recente.
 

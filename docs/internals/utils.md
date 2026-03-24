@@ -355,23 +355,20 @@ class BaseExplorer:
     # Conversao DATA int -> datetime agora feita no DuckDB via _read_glob(date_column=...)
 ```
 
-### BaseCollector usa period.py
+### BaseCollector usa DataManager (que usa period.py internamente)
 
 ```python
-from ifdata_bcb.utils import extract_periods_from_files
-
 class BaseCollector:
     def _get_missing_periods(self, start, end):
-        # Periodos ja coletados
-        files = self._qe.list_files(self._get_subdir())
-        existing = extract_periods_from_files(files, self._get_file_prefix())
-
-        # Periodos necessarios
-        required = self._generate_periods(start, end)
+        # Periodos ja coletados (via DataManager)
+        all_periods = self._generate_periods(start, end)
+        existing = self.dm.get_periodos_disponiveis(
+            self._get_file_prefix(), self._get_subdir()
+        )
 
         # Diferenca
-        existing_set = {y * 100 + m for y, m in existing}
-        return [p for p in required if p not in existing_set]
+        existing_ints = {y * 100 + m for y, m in existing}
+        return [p for p in all_periods if p not in existing_ints]
 ```
 
 ---

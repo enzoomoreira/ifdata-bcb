@@ -124,8 +124,8 @@ class MissingRequiredParameterError(BacenAnalysisError):
         self.param_name = param_name
 
 # Uso
-raise MissingRequiredParameterError(param_name="instituicao")
-# Mensagem: "Parametro obrigatorio ausente: 'instituicao'."
+raise MissingRequiredParameterError(param_name="start")
+# Mensagem: "Parametro obrigatorio ausente: 'start'."
 ```
 
 ### InvalidDateRangeError
@@ -140,7 +140,7 @@ class InvalidDateRangeError(BacenAnalysisError):
 
 # Uso
 raise InvalidDateRangeError(start="2024-12", end="2024-01")
-# Mensagem: "Range de datas invalido: start='2024-12' > end='2024-01'."
+# Mensagem: "Data inicial (2024-12) maior que data final (2024-01)."
 ```
 
 ### InvalidDateFormatError
@@ -498,7 +498,6 @@ __all__ = [
     "cosif",
     "ifdata",
     "cadastro",
-    "search",
     "BacenAnalysisError",
     "DataUnavailableError",
 ]

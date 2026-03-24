@@ -265,7 +265,7 @@ info = bcb.ifdata.describe()
 | Coluna | Tipo | Descricao |
 |--------|------|-----------|
 | `DATA` | datetime | Periodo de referencia (trimestral) |
-| `CNPJ_8` | str | CNPJ de 8 digitos da consulta original |
+| `CNPJ_8` | str | CNPJ de 8 digitos (resolvido automaticamente para conglomerados em bulk reads) |
 | `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
 | `ESCOPO` | str | Escopo dos dados (individual, prudencial, financeiro) |
 | `COD_INST` | str | Codigo da instituicao no BCB |
@@ -312,7 +312,7 @@ df = bcb.ifdata.read(
 # Resultado inclui colunas TCB, TC e SEGMENTO
 ```
 
-Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
+Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `CNPJ_LIDER_8`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
 
 ## Exemplos Avancados
 
