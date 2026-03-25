@@ -11,7 +11,7 @@ from ifdata_bcb.core.constants import (
     TIPO_INST_MAP,
     get_subdir,
 )
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import ScopeUnavailableWarning
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.log import emit_user_warning
@@ -248,19 +248,19 @@ class IFDATAExplorer(BaseExplorer):
                 if esc == "individual":
                     df["CNPJ_8"] = df["CodInst"]
                 else:
-                    # CodInst numerico = inst. independente (CNPJ direto)
-                    # CodInst nao-numerico = conglomerado (precisa lookup)
-                    is_numeric = df["CodInst"].str.match(r"^\d+$", na=False)
-                    df.loc[is_numeric, "CNPJ_8"] = df.loc[is_numeric, "CodInst"]
+                    # CodInst com 8 digitos = CNPJ (inst. independente)
+                    # Demais (numerico curto ou nao-numerico) = conglomerado
+                    is_cnpj = df["CodInst"].str.match(r"^\d{8}$", na=False)
+                    df.loc[is_cnpj, "CNPJ_8"] = df.loc[is_cnpj, "CodInst"]
 
-                    congl_codes = df.loc[~is_numeric, "CodInst"].unique().tolist()
+                    congl_codes = df.loc[~is_cnpj, "CodInst"].unique().tolist()
                     if congl_codes:
                         cnpj_map = self._resolve_bulk_conglomerate_cnpjs(
                             congl_codes, esc
                         )
-                        df.loc[~is_numeric, "CNPJ_8"] = df.loc[
-                            ~is_numeric, "CodInst"
-                        ].map(cnpj_map)
+                        df.loc[~is_cnpj, "CNPJ_8"] = df.loc[~is_cnpj, "CodInst"].map(
+                            cnpj_map
+                        )
                 frames.append(df)
 
         return frames

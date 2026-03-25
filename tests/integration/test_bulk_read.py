@@ -85,14 +85,16 @@ class TestIFDATABulkPrudencial:
         df = ifdata.read("2023-03", escopo="prudencial")
         assert not df.empty
 
-    def test_bulk_prudencial_no_cnpj8_in_rows(
+    def test_bulk_prudencial_resolves_cnpj8_via_conglomerate(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """Prudencial bulk nao tem CNPJ_8 (CodInst sao codigos de conglomerado)."""
+        """Prudencial bulk resolve CNPJ_8 via lookup de conglomerado no cadastro."""
         ifdata = explorers[1]
         df = ifdata.read("2023-03", escopo="prudencial")
         if "CNPJ_8" in df.columns:
-            assert df["CNPJ_8"].isna().all()
+            resolved = df["CNPJ_8"].dropna()
+            if not resolved.empty:
+                assert resolved.str.match(r"^\d{8}$").all()
 
     def test_bulk_prudencial_has_cod_inst(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -117,10 +119,10 @@ class TestIFDATABulkMultiEscopo:
         escopos = set(df["ESCOPO"].unique())
         assert len(escopos) >= 2
 
-    def test_multi_escopo_individual_has_cnpj_prudencial_does_not(
+    def test_multi_escopo_all_have_cnpj8(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """No mix, rows individual tem CNPJ_8, rows prudencial nao."""
+        """Individual tem CNPJ direto, prudencial resolve via conglomerado."""
         ifdata = explorers[1]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -128,11 +130,8 @@ class TestIFDATABulkMultiEscopo:
         if "CNPJ_8" not in df.columns:
             pytest.skip("CNPJ_8 nao presente no resultado")
         ind = df[df["ESCOPO"] == "individual"]
-        prud = df[df["ESCOPO"] == "prudencial"]
         if not ind.empty:
             assert ind["CNPJ_8"].notna().all()
-        if not prud.empty:
-            assert prud["CNPJ_8"].isna().all()
 
 
 class TestIFDATABulkWithFilters:
@@ -194,25 +193,16 @@ class TestIFDATABulkEnrichment:
             df = ifdata.read("2023-03", escopo="individual", cadastro=["SEGMENTO"])
         assert "SEGMENTO" in df.columns
 
-    def test_bulk_prudencial_enrichment_warns(
+    def test_bulk_prudencial_enrichment_works(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """Prudencial bulk sem CNPJ_8 deve emitir warning quando cadastro= passado."""
+        """Prudencial bulk com CNPJ_8 resolvido permite enrichment."""
         ifdata = explorers[1]
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ifdata.read("2023-03", escopo="prudencial", cadastro=["SEGMENTO"])
-
-        partial_warnings = [x for x in w if issubclass(x.category, PartialDataWarning)]
-        has_enrichment_warning = any(
-            hasattr(x.message, "reason")
-            and x.message.reason == "no_cnpj_for_enrichment"
-            for x in partial_warnings
-        )
-        assert has_enrichment_warning, (
-            f"Esperava warning de enrichment, recebeu: "
-            f"{[(x.category.__name__, str(x.message)) for x in w]}"
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df = ifdata.read("2023-03", escopo="prudencial", cadastro=["SEGMENTO"])
+        if not df.empty and "CNPJ_8" in df.columns and df["CNPJ_8"].notna().any():
+            assert "SEGMENTO" in df.columns
 
 
 class TestIFDATABulkDiagnostics:

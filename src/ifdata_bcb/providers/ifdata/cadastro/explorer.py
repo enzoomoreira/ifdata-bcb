@@ -4,18 +4,17 @@ from __future__ import annotations
 
 import pandas as pd
 
-from ifdata_bcb.core.constants import DATA_SOURCES, TIPO_INST_MAP, get_subdir
-from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.domain.types import InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
-    build_in_clause,
     build_string_condition,
     join_conditions,
 )
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
+from ifdata_bcb.providers.ifdata.cadastro.search import CadastroSearch
 
 
 class CadastroExplorer(BaseExplorer):
@@ -87,6 +86,11 @@ class CadastroExplorer(BaseExplorer):
     ):
         super().__init__(query_engine, entity_lookup)
         self._collector: IFDATACadastroCollector | None = None
+        self._cadastro_search = CadastroSearch(
+            query_engine=self._qe,
+            entity_lookup=self._resolver,
+            entity_search=EntitySearch(self._resolver),
+        )
 
     def _get_subdir(self) -> str:
         return get_subdir("cadastro")
@@ -285,23 +289,6 @@ class CadastroExplorer(BaseExplorer):
 
         return conditions
 
-    # ------------------------------------------------------------------
-    # search()
-    # ------------------------------------------------------------------
-
-    _VALID_FONTES = ("ifdata", "cosif")
-    _COSIF_ESCOPOS = ("individual", "prudencial")
-    _IFDATA_ESCOPOS = ("individual", "prudencial", "financeiro")
-
-    _SEARCH_COLUMNS = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES"]
-    _SEARCH_COLUMNS_WITH_SCORE = [
-        "CNPJ_8",
-        "INSTITUICAO",
-        "SITUACAO",
-        "FONTES",
-        "SCORE",
-    ]
-
     def search(
         self,
         termo: str | None = None,
@@ -325,243 +312,6 @@ class CadastroExplorer(BaseExplorer):
         Raises:
             InvalidScopeError: Se fonte ou escopo invalidos.
         """
-        if limit <= 0:
-            raise ValueError(f"limit deve ser > 0, recebido: {limit}")
-
-        self._validate_search_params(fonte, escopo)
-
-        if termo is not None:
-            return self._search_with_termo(
-                termo, fonte=fonte, escopo=escopo, limit=limit
-            )
-        return self._search_without_termo(fonte=fonte, escopo=escopo, limit=limit)
-
-    def _validate_search_params(self, fonte: str | None, escopo: str | None) -> None:
-        """Valida combinacao fonte/escopo para search()."""
-        if fonte is not None:
-            fonte_lower = fonte.lower()
-            if fonte_lower not in self._VALID_FONTES:
-                raise InvalidScopeError("fonte", fonte, list(self._VALID_FONTES))
-
-        if escopo is not None:
-            escopo_lower = escopo.lower()
-            if fonte is not None and fonte.lower() == "cosif":
-                if escopo_lower not in self._COSIF_ESCOPOS:
-                    raise InvalidScopeError("escopo", escopo, list(self._COSIF_ESCOPOS))
-            else:
-                # fonte=None or fonte="ifdata": use IFDATA escopos
-                if escopo_lower not in self._IFDATA_ESCOPOS:
-                    raise InvalidScopeError(
-                        "escopo", escopo, list(self._IFDATA_ESCOPOS)
-                    )
-
-    def _search_with_termo(
-        self,
-        termo: str,
-        *,
-        fonte: str | None,
-        escopo: str | None,
-        limit: int,
-    ) -> pd.DataFrame:
-        """Busca com fuzzy matching, filtrando por fonte/escopo."""
-        empty = pd.DataFrame(columns=self._SEARCH_COLUMNS_WITH_SCORE)
-
-        # Fetch more than needed so filtering doesn't exhaust results
-        fetch_limit = limit * 5 if (fonte or escopo) else limit
-        df = self._resolver.search(termo, limit=fetch_limit)
-
-        if df.empty:
-            return empty
-
-        df = self._apply_fonte_filter(df, fonte)
-        df = self._apply_escopo_filter(df, fonte, escopo)
-
-        df = df.head(limit).reset_index(drop=True)
-        return df[self._SEARCH_COLUMNS_WITH_SCORE] if not df.empty else empty
-
-    def _search_without_termo(
-        self,
-        *,
-        fonte: str | None,
-        escopo: str | None,
-        limit: int,
-    ) -> pd.DataFrame:
-        """Lista todas as instituicoes com dados, sem fuzzy matching."""
-        empty = pd.DataFrame(columns=self._SEARCH_COLUMNS)
-
-        all_entities = self._get_all_entities()
-        if all_entities.empty:
-            return empty
-
-        cnpjs = all_entities["CNPJ_8"].tolist()
-        cnpj_sources = self._resolver._get_data_sources_for_cnpjs(cnpjs)
-
-        rows: list[dict[str, str]] = []
-        for _, row in all_entities.iterrows():
-            cnpj = row["CNPJ_8"]
-            fontes = cnpj_sources.get(cnpj, set())
-            if not fontes:
-                continue
-            rows.append(
-                {
-                    "CNPJ_8": cnpj,
-                    "INSTITUICAO": row["INSTITUICAO"],
-                    "SITUACAO": row["SITUACAO"],
-                    "FONTES": ",".join(sorted(fontes)),
-                }
-            )
-
-        if not rows:
-            return empty
-
-        df = pd.DataFrame(rows)
-        df = self._apply_fonte_filter(df, fonte)
-        df = self._apply_escopo_filter(df, fonte, escopo)
-
-        df = (
-            df.sort_values(by=["SITUACAO", "INSTITUICAO"], ascending=[True, True])
-            .reset_index(drop=True)
-            .head(limit)
-            .reset_index(drop=True)
+        return self._cadastro_search.search(
+            termo, fonte=fonte, escopo=escopo, start=start, end=end, limit=limit
         )
-
-        return df[self._SEARCH_COLUMNS] if not df.empty else empty
-
-    def _get_all_entities(self) -> pd.DataFrame:
-        """Retorna todas as entidades do cadastro (linha mais recente por CNPJ)."""
-        sql = self._resolver._latest_cadastro_sql(
-            inner_cols="CNPJ_8, NomeInstituicao AS INSTITUICAO, Situacao AS SITUACAO",
-            outer_cols="CNPJ_8, INSTITUICAO, SITUACAO",
-            extra_where="NomeInstituicao IS NOT NULL",
-        )
-        try:
-            df = self._qe.sql(sql)
-            if not df.empty:
-                df["CNPJ_8"] = df["CNPJ_8"].astype(str)
-                df["INSTITUICAO"] = df["INSTITUICAO"].astype(str)
-                df["SITUACAO"] = df["SITUACAO"].astype(str)
-            return df
-        except Exception as e:
-            self._logger.warning(f"search: failed to query cadastro: {e}")
-            return pd.DataFrame(columns=["CNPJ_8", "INSTITUICAO", "SITUACAO"])
-
-    def _apply_fonte_filter(self, df: pd.DataFrame, fonte: str | None) -> pd.DataFrame:
-        """Filtra DataFrame de resultados por fonte de dados."""
-        if fonte is None or df.empty:
-            return df
-        fonte_lower = fonte.lower()
-        mask = df["FONTES"].str.contains(fonte_lower, na=False)
-        return df[mask].copy()
-
-    def _apply_escopo_filter(
-        self,
-        df: pd.DataFrame,
-        fonte: str | None,
-        escopo: str | None,
-    ) -> pd.DataFrame:
-        """Filtra por escopo verificando disponibilidade real nos dados."""
-        if escopo is None or df.empty:
-            return df
-
-        escopo_lower = escopo.lower()
-        cnpjs = df["CNPJ_8"].tolist()
-
-        if fonte is not None and fonte.lower() == "cosif":
-            valid_cnpjs = self._get_cnpjs_with_cosif_escopo(cnpjs, escopo_lower)
-        else:
-            valid_cnpjs = self._get_cnpjs_with_ifdata_escopo(cnpjs, escopo_lower)
-
-        return df[df["CNPJ_8"].isin(valid_cnpjs)].copy()
-
-    def _get_cnpjs_with_cosif_escopo(self, cnpjs: list[str], escopo: str) -> set[str]:
-        """Retorna CNPJs que tem dados no COSIF para o escopo especificado."""
-        source_key = f"cosif_{escopo}"
-        path = self._resolver._source_path(source_key)
-        cnpjs_str = build_in_clause(cnpjs)
-        sql = f"""
-        SELECT DISTINCT CNPJ_8 FROM '{path}'
-        WHERE CNPJ_8 IN ({cnpjs_str})
-        """
-        try:
-            df = self._qe.sql(sql)
-            return set(df["CNPJ_8"].astype(str))
-        except Exception as e:
-            self._logger.warning(f"search: COSIF escopo check failed ({escopo}): {e}")
-            return set()
-
-    def _get_cnpjs_with_ifdata_escopo(self, cnpjs: list[str], escopo: str) -> set[str]:
-        """Retorna CNPJs que tem dados no IFDATA para o escopo especificado."""
-        tipo_inst = TIPO_INST_MAP.get(escopo)
-        if tipo_inst is None:
-            return set()
-
-        if escopo == "individual":
-            return self._get_cnpjs_ifdata_individual(cnpjs, tipo_inst)
-
-        return self._get_cnpjs_ifdata_conglomerate(cnpjs, escopo)
-
-    def _get_cnpjs_ifdata_individual(
-        self, cnpjs: list[str], tipo_inst: int
-    ) -> set[str]:
-        """Verifica quais CNPJs tem dados individuais no IFDATA."""
-        ifdata_path = self._resolver._source_path("ifdata_valores")
-        cnpjs_str = build_in_clause(cnpjs)
-        sql = f"""
-        SELECT DISTINCT CodInst FROM '{ifdata_path}'
-        WHERE TipoInstituicao = {tipo_inst}
-          AND CodInst IN ({cnpjs_str})
-        """
-        try:
-            df = self._qe.sql(sql)
-            return set(df["CodInst"].astype(str))
-        except Exception as e:
-            self._logger.warning(f"search: IFDATA individual escopo check failed: {e}")
-            return set()
-
-    def _get_cnpjs_ifdata_conglomerate(self, cnpjs: list[str], escopo: str) -> set[str]:
-        """Verifica quais CNPJs tem dados prudenciais/financeiros no IFDATA."""
-        cadastro_path = self._resolver._source_path("cadastro")
-        ifdata_path = self._resolver._source_path("ifdata_valores")
-        cnpjs_str = build_in_clause(cnpjs)
-
-        cod_col = (
-            "CodConglomeradoPrudencial"
-            if escopo == "prudencial"
-            else "CodConglomeradoFinanceiro"
-        )
-
-        sql = f"""
-        SELECT DISTINCT CNPJ_8, {cod_col} AS cod_congl
-        FROM read_parquet('{cadastro_path}', union_by_name=true)
-        WHERE CNPJ_8 IN ({cnpjs_str})
-          AND {self._resolver.real_entity_condition()}
-          AND {cod_col} IS NOT NULL
-        """
-        try:
-            df_congl = self._qe.sql(sql)
-            if df_congl.empty:
-                return set()
-
-            cod_to_cnpjs: dict[str, list[str]] = {}
-            for cnpj, cod in zip(
-                df_congl["CNPJ_8"].astype(str).values,
-                df_congl["cod_congl"].astype(str).values,
-            ):
-                cod_to_cnpjs.setdefault(cod, []).append(cnpj)
-
-            cods_str = build_in_clause(list(cod_to_cnpjs.keys()))
-            sql_ifdata = f"""
-            SELECT DISTINCT CodInst FROM '{ifdata_path}'
-            WHERE CodInst IN ({cods_str})
-            """
-            df_ifdata = self._qe.sql(sql_ifdata)
-
-            result: set[str] = set()
-            for cod in df_ifdata["CodInst"].astype(str):
-                result.update(cod_to_cnpjs.get(cod, []))
-            return result
-        except Exception as e:
-            self._logger.warning(
-                f"search: IFDATA conglomerate escopo check failed ({escopo}): {e}"
-            )
-            return set()

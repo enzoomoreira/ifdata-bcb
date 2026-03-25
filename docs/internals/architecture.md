@@ -7,7 +7,7 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 ```mermaid
 graph TD
     API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro<br/><i>lazy loading</i>"]
-    CORE["<b>CORE (core/)</b><br/>EntityLookup<br/>constants<br/>eras"]
+    CORE["<b>CORE (core/)</b><br/>EntityLookup | EntitySearch<br/>constants<br/>eras"]
     DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>Type aliases<br/>Validation models"]
     PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/valores/: IFDATAValoresCollector, IFDATAExplorer<br/>ifdata/cadastro/: IFDATACadastroCollector, CadastroExplorer"]
     INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
@@ -27,7 +27,10 @@ src/ifdata_bcb/
 |-- __init__.py               # Entry point (lazy loading)
 |-- core/                     # Logica central compartilhada
 |   |-- __init__.py
-|   |-- entity_lookup.py     # Resolucao de entidades
+|   |-- entity/              # Resolucao e busca de entidades
+|   |   |-- __init__.py      # Re-exports: EntityLookup, EntitySearch
+|   |   |-- lookup.py        # EntityLookup (metadados, source checking)
+|   |   +-- search.py        # EntitySearch (fuzzy matching)
 |   |-- constants.py         # Configuracoes centralizadas
 |   +-- eras.py              # Deteccao e tratamento de eras de formato BCB
 |-- domain/                   # Modelos e tipos
@@ -49,7 +52,8 @@ src/ifdata_bcb/
 |       |-- cadastro/        # Dados cadastrais
 |       |   |-- __init__.py
 |       |   |-- collector.py # IFDATACadastroCollector
-|       |   +-- explorer.py  # CadastroExplorer
+|       |   |-- explorer.py  # CadastroExplorer
+|       |   +-- search.py    # CadastroSearch (busca com filtros fonte/escopo)
 |       +-- valores/         # Dados financeiros (valores)
 |           |-- __init__.py
 |           |-- collector.py # IFDATAValoresCollector
@@ -88,7 +92,8 @@ src/ifdata_bcb/
 
 ### Core (`core/`)
 
-- **EntityLookup**: Busca e resolucao de entidades (nome -> CNPJ)
+- **EntityLookup**: Resolucao de metadados, source checking, canonical names
+- **EntitySearch**: Busca fuzzy de entidades por nome (via FuzzyMatcher)
 - **constants**: Mapeamentos centralizados (DATA_SOURCES, TIPO_INST_MAP)
 - **eras**: Deteccao e tratamento de eras de formato BCB
 
@@ -314,10 +319,17 @@ Usuario: bcb.cadastro.search('Itau')
     v
 CadastroExplorer.search('Itau')
     |
-    +-- Delega para EntityLookup.search()
+    +-- Delega para CadastroSearch.search()
+    |       (cadastro/search.py -- filtros fonte/escopo)
     |
     v
-EntityLookup.search('Itau')
+CadastroSearch.search('Itau')
+    |
+    +-- Delega fuzzy matching para EntitySearch.search()
+    |       (core/entity/search.py)
+    |
+    v
+EntitySearch.search('Itau')
     |
     +-- normalize_accents('Itau'.upper()) --> 'ITAU'
     |
@@ -333,15 +345,18 @@ EntityLookup.search('Itau')
     |   +-- token_set_ratio scorer
     |   +-- Filtra score >= threshold_suggest, ordena desc(score) + asc(nome)
     |
-    +-- _get_data_sources_for_cnpjs(cnpjs)
+    +-- _get_data_sources_for_cnpjs(cnpjs) (via EntityLookup)
     |   +-- Verifica presenca em COSIF e IFDATA
     |
-    +-- _get_latest_situacao(cnpjs)
+    +-- _get_latest_situacao(cnpjs) (via EntityLookup)
     |   +-- Window function para situacao mais recente
     |
     +-- Filtra: se ha matches com FONTES, descarta sem dados
     |
     +-- Ordena (ativas, score, nome) e aplica limit
+    |
+    v
+CadastroSearch aplica filtros fonte/escopo sobre resultados
     |
     v
 Retorna: DataFrame[CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE]
@@ -358,7 +373,7 @@ graph LR
     cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro/explorer.py</i>"]
 
     base_exp["BaseExplorer<br/><i>providers/base_explorer.py</i>"]
-    entity["EntityLookup<br/><i>core/entity_lookup.py</i>"]
+    entity["EntityLookup + EntitySearch<br/><i>core/entity/</i>"]
     query["QueryEngine<br/><i>infra/query.py</i>"]
     exceptions["exceptions<br/><i>domain/exceptions.py</i>"]
 

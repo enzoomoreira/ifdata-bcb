@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 import pandas as pd
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import (
     EmptyFilterWarning,
     InvalidColumnError,

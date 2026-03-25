@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 
@@ -89,7 +89,7 @@ class TestEmptyCacheExperience:
     def test_search_empty(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)
         el = EntityLookup(query_engine=qe)
-        df = el.search("Itau")
+        df = EntitySearch(el).search("Itau")
         assert df.empty
 
 

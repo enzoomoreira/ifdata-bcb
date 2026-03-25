@@ -7,7 +7,7 @@ from typing import Literal, cast
 import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine

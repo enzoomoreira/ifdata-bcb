@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
@@ -114,3 +114,8 @@ def qa_cadastro(qa_cache: Path) -> CadastroExplorer:
 def qa_lookup(qa_cache: Path) -> EntityLookup:
     qe = QueryEngine(base_path=qa_cache)
     return EntityLookup(query_engine=qe)
+
+
+@pytest.fixture
+def qa_search(qa_lookup: EntityLookup) -> EntitySearch:
+    return EntitySearch(qa_lookup)

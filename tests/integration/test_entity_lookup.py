@@ -1,10 +1,10 @@
-"""Testes para EntityLookup -- resolucao de entidades, escopos e busca fuzzy."""
+"""Testes para EntityLookup e EntitySearch -- resolucao de entidades e busca fuzzy."""
 
 from pathlib import Path
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from tests.conftest import (
     BANCO_A_CNPJ,
@@ -17,6 +17,11 @@ from tests.conftest import (
 def _make_lookup(cache_dir: Path) -> EntityLookup:
     qe = QueryEngine(base_path=cache_dir)
     return EntityLookup(query_engine=qe)
+
+
+def _make_search(cache_dir: Path) -> EntitySearch:
+    lookup = _make_lookup(cache_dir)
+    return EntitySearch(lookup)
 
 
 # =========================================================================
@@ -190,41 +195,41 @@ class TestGetCanonicalNames:
 
 class TestSearch:
     def test_finds_by_exact_name(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("BANCO ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("BANCO ALFA")
 
         assert not df.empty
         assert BANCO_A_CNPJ in df["CNPJ_8"].values
 
     def test_finds_by_partial_name(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert not df.empty
         assert BANCO_A_CNPJ in df["CNPJ_8"].values
 
     def test_returns_score_column(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert "SCORE" in df.columns
         assert all(df["SCORE"] > 0)
 
     def test_returns_situacao(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert "SITUACAO" in df.columns
 
     def test_respects_limit(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("BANCO", limit=1)
+        search = _make_search(populated_cache)
+        df = search.search("BANCO", limit=1)
 
         assert len(df) <= 1
 
     def test_empty_term_returns_empty(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("   ")
+        search = _make_search(populated_cache)
+        df = search.search("   ")
 
         assert df.empty
         assert list(df.columns) == [
@@ -236,15 +241,15 @@ class TestSearch:
         ]
 
     def test_no_match_returns_empty(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("XYZNONEXISTENT")
+        search = _make_search(populated_cache)
+        df = search.search("XYZNONEXISTENT")
 
         assert df.empty
 
     def test_invalid_limit_raises(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
+        search = _make_search(populated_cache)
         with pytest.raises(ValueError, match="limit"):
-            lookup.search("ALFA", limit=0)
+            search.search("ALFA", limit=0)
 
 
 # =========================================================================
@@ -299,8 +304,8 @@ class TestGetEntityIdentifiersFinNull:
 
 class TestSearchByCnpj:
     def test_search_by_cnpj_exact_match(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search(BANCO_A_CNPJ)
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_A_CNPJ)
 
         assert not df.empty
         assert df.iloc[0]["CNPJ_8"] == BANCO_A_CNPJ
@@ -308,21 +313,21 @@ class TestSearchByCnpj:
 
     def test_search_by_cnpj_unknown_returns_empty(self, populated_cache: Path) -> None:
         """CNPJ desconhecido de 8 digitos sem match fuzzy retorna vazio."""
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("99999999")
+        search = _make_search(populated_cache)
+        df = search.search("99999999")
 
         assert df.empty
 
     def test_search_by_cnpj_has_correct_columns(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search(BANCO_A_CNPJ)
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_A_CNPJ)
 
         expected_cols = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
         assert list(df.columns) == expected_cols
 
     def test_search_by_name_still_works(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("BANCO ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("BANCO ALFA")
 
         assert not df.empty
         assert BANCO_A_CNPJ in df["CNPJ_8"].values
@@ -331,7 +336,7 @@ class TestSearchByCnpj:
         self, populated_cache: Path
     ) -> None:
         """CNPJ no cadastro mas sem dados em nenhuma fonte retorna vazio."""
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search(BANCO_B_CNPJ)
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_B_CNPJ)
         if not df.empty:
             assert (df["FONTES"] != "").all()

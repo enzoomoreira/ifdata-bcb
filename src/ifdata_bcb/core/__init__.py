@@ -1,5 +1,6 @@
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 
 __all__ = [
     "EntityLookup",
+    "EntitySearch",
 ]

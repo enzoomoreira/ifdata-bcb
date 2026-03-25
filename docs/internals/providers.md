@@ -19,7 +19,8 @@ src/ifdata_bcb/providers/
     |-- cadastro/            # Dados cadastrais
     |   |-- __init__.py
     |   |-- collector.py    # IFDATACadastroCollector
-    |   +-- explorer.py     # CadastroExplorer
+    |   |-- explorer.py     # CadastroExplorer
+    |   +-- search.py       # CadastroSearch (busca com filtros fonte/escopo)
     +-- valores/             # Dados financeiros (valores)
         |-- __init__.py
         |-- collector.py    # IFDATAValoresCollector
@@ -451,7 +452,7 @@ Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo (apenas IFDATA):
 
 ---
 
-## ifdata/cadastro/explorer.py (CadastroExplorer)
+## ifdata/cadastro/ (CadastroExplorer + CadastroSearch)
 
 ### Especificidades
 
@@ -507,8 +508,12 @@ class CadastroExplorer(BaseExplorer):
         """Lista valores distintos para colunas solicitadas."""
 
     def search(self, termo: str | None = None, *, fonte=None, escopo=None, ...) -> pd.DataFrame:
-        """Busca instituicoes por nome ou lista todas com dados."""
+        """Delega para CadastroSearch (cadastro/search.py)."""
 ```
+
+A logica de busca (fuzzy matching, filtros fonte/escopo, verificacao de disponibilidade por escopo)
+vive em `CadastroSearch` (`cadastro/search.py`), que por sua vez usa `EntitySearch` para o fuzzy
+matching basico e `EntityLookup` para resolucao de metadados.
 
 ### Colunas Disponiveis
 

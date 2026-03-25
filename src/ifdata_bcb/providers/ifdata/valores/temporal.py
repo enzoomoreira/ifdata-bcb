@@ -9,7 +9,7 @@ from ifdata_bcb.core.constants import (
     get_pattern,
     get_subdir,
 )
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.validation import NormalizedDates
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine

@@ -169,7 +169,7 @@ from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import build_string_condition, join_conditions
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.providers.novo.collector import NovoCollector
 
 
@@ -502,16 +502,17 @@ qe = QueryEngine(base_path="/dados/bcb")
 explorer = COSIFExplorer(query_engine=qe)
 ```
 
-### EntityLookup Customizado
+### EntityLookup e EntitySearch Customizados
 
 ```python
-from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 
-# Lookup com threshold ajustado
-lookup = EntityLookup(fuzzy_threshold_suggest=80)
+# Lookup padrao
+lookup = EntityLookup()
 
-explorer = IFDATAExplorer(entity_lookup=lookup)
+# Search com threshold ajustado
+search = EntitySearch(lookup, fuzzy_threshold_suggest=80)
+df = search.search("Itau")
 ```
 
 ### DataManager Customizado

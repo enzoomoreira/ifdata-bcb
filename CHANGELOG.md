@@ -1,5 +1,15 @@
 # Project Changelog
 
+## [2026-03-24 20:55]
+
+### Changed
+- `EntityLookup` decomposto em pacote `core/entity/`: `lookup.py` (resolucao de metadados, ~300 linhas) e `search.py` (busca fuzzy via `EntitySearch`, ~200 linhas) -- responsabilidades separadas com dependencia unidirecional
+- `CadastroExplorer.search()` extraido para `cadastro/search.py` (`CadastroSearch`, ~280 linhas) -- explorer reduzido de 567 para ~290 linhas, search com filtros fonte/escopo isolado em classe propria
+- Bulk prudencial CNPJ resolution: regex `^\d+$` corrigido para `^\d{8}$` -- codigos de conglomerado numericos curtos (ex: "40") agora vao para o lookup de conglomerado em vez de serem tratados como CNPJ direto
+
+### Removed
+- `core/entity_lookup.py` (523 linhas) substituido pelo pacote `core/entity/` com mesma API publica via re-exports
+
 ## [2026-03-23 02:12]
 
 ### Changed

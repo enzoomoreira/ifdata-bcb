@@ -2,7 +2,7 @@
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntitySearch
 from ifdata_bcb.domain.exceptions import (
     InvalidDateFormatError,
     InvalidDateRangeError,
@@ -115,30 +115,30 @@ class TestPassthroughColumns:
 
 
 class TestSearchResilience:
-    def test_search_sql_injection(self, qa_lookup: EntityLookup) -> None:
-        df = qa_lookup.search("'; DROP TABLE--")
+    def test_search_sql_injection(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("'; DROP TABLE--")
         assert df.empty or isinstance(df.empty, bool)
 
-    def test_search_10k_chars(self, qa_lookup: EntityLookup) -> None:
-        df = qa_lookup.search("A" * 10000)
+    def test_search_10k_chars(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("A" * 10000)
         assert df.empty
 
-    def test_search_unicode_special(self, qa_lookup: EntityLookup) -> None:
+    def test_search_unicode_special(self, qa_search: EntitySearch) -> None:
         for term in ["\x00\x01\x02", "\ud800", "banco"]:
             try:
-                qa_lookup.search(term)
+                qa_search.search(term)
             except (UnicodeError, ValueError):
                 pass  # Erros de encoding sao aceitaveis
 
-    def test_search_with_quotes_in_term(self, qa_lookup: EntityLookup) -> None:
+    def test_search_with_quotes_in_term(self, qa_search: EntitySearch) -> None:
         """Aspas no termo de busca nao crasheiam a query SQL."""
         import pandas as pd
 
-        df = qa_lookup.search("BANCO 'ALFA'")
+        df = qa_search.search("BANCO 'ALFA'")
         assert isinstance(df, pd.DataFrame)
 
-    def test_search_empty_term_returns_empty(self, qa_lookup: EntityLookup) -> None:
-        df = qa_lookup.search("")
+    def test_search_empty_term_returns_empty(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("")
         assert df.empty
 
 

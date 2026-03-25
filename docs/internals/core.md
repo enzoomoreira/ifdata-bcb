@@ -6,8 +6,11 @@ O modulo `core` concentra a logica central compartilhada entre todos os provider
 
 ```
 src/ifdata_bcb/core/
-|-- __init__.py           # Exports publicos
-|-- entity_lookup.py     # Resolucao e busca de entidades
+|-- __init__.py           # Exports publicos (EntityLookup, EntitySearch)
+|-- entity/              # Resolucao e busca de entidades
+|   |-- __init__.py      # Re-exports: EntityLookup, EntitySearch
+|   |-- lookup.py        # EntityLookup (metadados, source checking, canonical names)
+|   +-- search.py        # EntitySearch (fuzzy matching, corpus building)
 |-- constants.py         # Configuracoes centralizadas
 +-- eras.py              # Deteccao e tratamento de eras de formato BCB
 ```
@@ -607,41 +610,48 @@ def describe(self, source: str | None = None) -> dict:
 
 ---
 
-## entity_lookup.py
+## entity/ (pacote)
 
-### Responsabilidades
+O pacote `entity/` contem duas classes com responsabilidades distintas:
 
-O `EntityLookup` centraliza toda logica de busca e resolucao de entidades:
+- **`EntityLookup`** (`lookup.py`): resolucao de metadados, source checking, canonical names
+- **`EntitySearch`** (`search.py`): busca fuzzy de entidades por nome
 
-1. **Busca fuzzy**: Encontra instituicoes por nome parcial
-2. **Resolucao de escopos**: Resolve CNPJ para codigo IFDATA
-3. **Cache**: LRU cache para evitar re-queries
-4. **Uniao de fontes**: Agrega dados de cadastro, COSIF individual e prudencial
+Dependencia unidirecional: `EntitySearch` depende de `EntityLookup`, mas nao o inverso.
 
-### Construtor
+### EntityLookup (lookup.py)
+
+Resolucao de entidades e metadados via queries DuckDB:
+
+1. **Verificacao de disponibilidade**: Quais fontes (cosif/ifdata) tem dados para cada CNPJ
+2. **Resolucao de identificadores**: CNPJ, conglomerado, lider
+3. **Nomes canonicos**: Cache de nomes a partir do cadastro
+4. **Cache**: LRU cache para `get_entity_identifiers`, session cache para nomes
 
 ```python
 def __init__(
     self,
     query_engine: QueryEngine | None = None,
-    fuzzy_threshold_suggest: int = 78,
 ):
     self._qe = query_engine or QueryEngine()
-    self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 ```
 
-- `threshold_suggest`: Score >= 78 aparece em sugestoes
+### EntitySearch (search.py)
 
-### query_engine (property)
+Busca fuzzy de entidades por nome. Recebe `EntityLookup` no construtor.
 
 ```python
-@property
-def query_engine(self) -> QueryEngine:
-    """QueryEngine usada para consultas."""
-    return self._qe
+class EntitySearch:
+    def __init__(
+        self,
+        lookup: EntityLookup,
+        fuzzy_threshold_suggest: int = 78,
+    ):
+        self._lookup = lookup
+        self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 ```
 
-### search()
+### EntitySearch.search()
 
 ```python
 def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
@@ -672,12 +682,12 @@ Fluxo interno:
 2. Carrega entidades reais do cadastro (filtra aliases com `real_entity_condition()`)
 3. Carrega aliases pesquisaveis (incluindo nomes prudenciais/financeiros), resolvidos para CNPJ real
 4. Fuzzy match com token_set_ratio sobre todos os aliases
-5. Verifica fontes de dados para CNPJs encontrados
-6. Busca situacao mais recente
+5. Verifica fontes de dados para CNPJs encontrados (via `EntityLookup`)
+6. Busca situacao mais recente (via `EntityLookup`)
 7. Se houver matches com fontes disponiveis, filtra resultados sem `FONTES`
 8. Ordena (ativas primeiro, score desc, nome asc) e aplica limit
 
-### get_entity_identifiers() [CACHED]
+### EntityLookup.get_entity_identifiers() [CACHED]
 
 ```python
 @cached(maxsize=256)
@@ -699,7 +709,7 @@ def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
     """
 ```
 
-### get_canonical_names_for_cnpjs() [CACHED]
+### EntityLookup.get_canonical_names_for_cnpjs() [CACHED]
 
 ```python
 def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
@@ -715,7 +725,7 @@ def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
 
 Cache incremental por sessao (`_name_cache`): apenas CNPJs nao vistos geram query SQL. Chamadas subsequentes com mesmos CNPJs (ou subsets) retornam do cache sem hit no DuckDB.
 
-### clear_cache()
+### EntityLookup.clear_cache()
 
 ```python
 def clear_cache(self) -> None:
@@ -753,7 +763,7 @@ def resolved_entity_cnpj_expr(
     """Resolve aliases prudenciais para o CNPJ da entidade lider."""
 ```
 
-### SQL Interno
+### SQL Interno do EntitySearch
 
 O `search()` usa duas queries separadas:
 
@@ -816,7 +826,7 @@ class COSIFExplorer(BaseExplorer):
 ```python
 from ifdata_bcb.core.constants import get_pattern, get_subdir
 
-class EntityLookup:
+class EntityLookup:  # em core/entity/lookup.py
     def _source_path(self, source_key: str) -> str:
         """Retorna path completo para glob de arquivos de uma fonte."""
         return f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
@@ -911,10 +921,11 @@ A deteccao de tipo de relatorio usa normalizacao Unicode (remove acentos, lowerc
 
 ```python
 # core/__init__.py
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 
 __all__ = [
     "EntityLookup",
+    "EntitySearch",
 ]
 ```
 

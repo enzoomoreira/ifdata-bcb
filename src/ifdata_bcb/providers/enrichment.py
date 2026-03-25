@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from ifdata_bcb.core.constants import get_pattern, get_subdir
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError, PartialDataWarning
 from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
