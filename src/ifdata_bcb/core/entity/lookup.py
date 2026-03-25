@@ -92,27 +92,50 @@ class EntityLookup:
         WHERE rn = 1
         """
 
-    def _get_data_sources_for_cnpjs(self, cnpjs: list[str]) -> dict[str, set[str]]:
+    @staticmethod
+    def _date_filter(col: str, date_range: tuple[int, int] | None) -> str:
+        """Clausula SQL AND para filtro de periodo. Vazio se date_range=None."""
+        if date_range is None:
+            return ""
+        return f" AND {col} BETWEEN {date_range[0]} AND {date_range[1]}"
+
+    def _get_data_sources_for_cnpjs(
+        self,
+        cnpjs: list[str],
+        date_range: tuple[int, int] | None = None,
+    ) -> dict[str, set[str]]:
         """
         Verifica quais fontes de dados estao disponiveis para cada CNPJ.
+
+        Args:
+            cnpjs: Lista de CNPJs de 8 digitos.
+            date_range: Tupla (min_yyyymm, max_yyyymm) para restringir
+                a verificacao a um intervalo de periodos. Se None, verifica
+                todos os periodos disponiveis.
 
         Retorna dict {cnpj: {fontes}} onde fontes pode ser 'cosif' e/ou 'ifdata'.
         """
         result: dict[str, set[str]] = {cnpj: set() for cnpj in cnpjs}
         cnpjs_str = build_in_clause(cnpjs)
-        self._check_cosif_sources(cnpjs_str, result)
-        self._check_ifdata_individual_sources(cnpjs_str, result)
-        self._check_ifdata_conglomerate_sources(cnpjs, cnpjs_str, result)
+        self._check_cosif_sources(cnpjs_str, result, date_range)
+        self._check_ifdata_individual_sources(cnpjs_str, result, date_range)
+        self._check_ifdata_conglomerate_sources(cnpjs, cnpjs_str, result, date_range)
         return result
 
-    def _check_cosif_sources(self, cnpjs_str: str, result: dict[str, set[str]]) -> None:
+    def _check_cosif_sources(
+        self,
+        cnpjs_str: str,
+        result: dict[str, set[str]],
+        date_range: tuple[int, int] | None = None,
+    ) -> None:
         cosif_ind_path = self._source_path("cosif_individual")
         cosif_prud_path = self._source_path("cosif_prudencial")
+        date_cond = self._date_filter("DATA_BASE", date_range)
         sql = f"""
         SELECT DISTINCT CNPJ_8 FROM (
-            SELECT CNPJ_8 FROM '{cosif_ind_path}' WHERE CNPJ_8 IN ({cnpjs_str})
+            SELECT CNPJ_8 FROM '{cosif_ind_path}' WHERE CNPJ_8 IN ({cnpjs_str}){date_cond}
             UNION
-            SELECT CNPJ_8 FROM '{cosif_prud_path}' WHERE CNPJ_8 IN ({cnpjs_str})
+            SELECT CNPJ_8 FROM '{cosif_prud_path}' WHERE CNPJ_8 IN ({cnpjs_str}){date_cond}
         )
         """
         try:
@@ -123,12 +146,16 @@ class EntityLookup:
             self._logger.warning(f"Data source check failed (cosif): {e}")
 
     def _check_ifdata_individual_sources(
-        self, cnpjs_str: str, result: dict[str, set[str]]
+        self,
+        cnpjs_str: str,
+        result: dict[str, set[str]],
+        date_range: tuple[int, int] | None = None,
     ) -> None:
         ifdata_path = self._source_path("ifdata_valores")
+        date_cond = self._date_filter("AnoMes", date_range)
         sql = f"""
         SELECT DISTINCT CodInst FROM '{ifdata_path}'
-        WHERE TipoInstituicao = {TIPO_INST_MAP["individual"]} AND CodInst IN ({cnpjs_str})
+        WHERE TipoInstituicao = {TIPO_INST_MAP["individual"]} AND CodInst IN ({cnpjs_str}){date_cond}
         """
         try:
             df = self._qe.sql(sql)
@@ -142,6 +169,7 @@ class EntityLookup:
         cnpjs: list[str],
         cnpjs_str: str,
         result: dict[str, set[str]],
+        date_range: tuple[int, int] | None = None,
     ) -> None:
         cadastro_path = self._source_path("cadastro")
         ifdata_path = self._source_path("ifdata_valores")
@@ -170,9 +198,10 @@ class EntityLookup:
 
                 if cod_to_cnpjs:
                     cods_str = build_in_clause(list(cod_to_cnpjs.keys()))
+                    date_cond = self._date_filter("AnoMes", date_range)
                     sql_ifdata = f"""
                     SELECT DISTINCT CodInst FROM '{ifdata_path}'
-                    WHERE CodInst IN ({cods_str})
+                    WHERE CodInst IN ({cods_str}){date_cond}
                     """
                     df_ifdata = self._qe.sql(sql_ifdata)
                     for cod in df_ifdata["CodInst"].astype(str):

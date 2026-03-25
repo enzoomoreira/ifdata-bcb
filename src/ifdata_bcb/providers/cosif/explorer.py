@@ -263,8 +263,6 @@ class COSIFExplorer(BaseExplorer):
         check_era_boundary(
             self._resolve_date_range(start, end), COSIF_ERA_BOUNDARY, "COSIF"
         )
-        self._logger.debug(f"COSIF read: escopo={escopo}, instituicao={instituicao}")
-
         escopos: list[EscopoCOSIF] = (
             [self._validate_escopo(escopo)]  # type: ignore[misc]
             if escopo
@@ -294,7 +292,9 @@ class COSIFExplorer(BaseExplorer):
             return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         df = pd.concat(results, ignore_index=True)
-        self._logger.debug(f"COSIF result: {len(df)} rows")
+        self._logger.info(
+            f"COSIF read: escopo={escopo}, instituicao={instituicao} -> {len(df):,} rows"
+        )
         df = self._finalize_read(df)
         self._check_null_value_instituicoes(df)
         df = self._apply_canonical_names(df)

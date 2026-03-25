@@ -43,9 +43,21 @@ class EntitySearch:
         self._logger = get_logger(__name__)
         self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 
-    def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
+    def search(
+        self,
+        termo: str,
+        limit: int = 10,
+        date_range: tuple[int, int] | None = None,
+    ) -> pd.DataFrame:
         """
         Busca entidades por nome com fuzzy matching.
+
+        Args:
+            termo: Termo de busca.
+            limit: Maximo de resultados.
+            date_range: Tupla (min_yyyymm, max_yyyymm) para restringir
+                a verificacao de disponibilidade de dados. Se None,
+                verifica todos os periodos.
 
         Retorna DataFrame com CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE.
         Ordenado por ativas primeiro, depois por score.
@@ -65,7 +77,7 @@ class EntitySearch:
             return empty
         cnpj_data, nome_to_cnpj = corpus
 
-        exact = self._search_exact_cnpj(termo_norm, cnpj_data)
+        exact = self._search_exact_cnpj(termo_norm, cnpj_data, date_range)
         if exact is not None:
             return exact
 
@@ -77,7 +89,9 @@ class EntitySearch:
         if not matches:
             return empty
 
-        return self._assemble_search_results(matches, nome_to_cnpj, cnpj_data, limit)
+        return self._assemble_search_results(
+            matches, nome_to_cnpj, cnpj_data, limit, date_range
+        )
 
     def _build_search_corpus(
         self,
@@ -132,7 +146,10 @@ class EntitySearch:
         return cnpj_data, nome_to_cnpj
 
     def _search_exact_cnpj(
-        self, termo_norm: str, cnpj_data: dict[str, dict]
+        self,
+        termo_norm: str,
+        cnpj_data: dict[str, dict],
+        date_range: tuple[int, int] | None = None,
     ) -> pd.DataFrame | None:
         """Match exato por CNPJ de 8 digitos. Retorna None se nao aplicavel."""
         if len(termo_norm) != 8 or not termo_norm.isdigit():
@@ -140,7 +157,9 @@ class EntitySearch:
         if termo_norm not in cnpj_data:
             return None
 
-        cnpj_sources = self._lookup._get_data_sources_for_cnpjs([termo_norm])
+        cnpj_sources = self._lookup._get_data_sources_for_cnpjs(
+            [termo_norm], date_range=date_range
+        )
         fontes = cnpj_sources.get(termo_norm, set())
         if not fontes:
             return pd.DataFrame(columns=self._SEARCH_RESULT_COLUMNS)
@@ -165,6 +184,7 @@ class EntitySearch:
         nome_to_cnpj: dict[str, str],
         cnpj_data: dict[str, dict],
         limit: int,
+        date_range: tuple[int, int] | None = None,
     ) -> pd.DataFrame:
         """Dedup, enriquecimento (sources/situacao), filtragem e sort."""
         cnpj_scores: dict[str, int] = {}
@@ -174,7 +194,9 @@ class EntitySearch:
                 cnpj_scores[cnpj] = score
 
         cnpj_list = list(cnpj_scores)
-        cnpj_sources = self._lookup._get_data_sources_for_cnpjs(cnpj_list)
+        cnpj_sources = self._lookup._get_data_sources_for_cnpjs(
+            cnpj_list, date_range=date_range
+        )
         cnpj_situacao = self._lookup._get_latest_situacao(cnpj_list)
 
         results = []
@@ -194,7 +216,9 @@ class EntitySearch:
 
         result_df = pd.DataFrame(results)
 
-        if not result_df.empty and (result_df["FONTES"] != "").any():
+        if date_range is not None:
+            result_df = result_df[result_df["FONTES"] != ""].copy()
+        elif not result_df.empty and (result_df["FONTES"] != "").any():
             result_df = result_df[result_df["FONTES"] != ""].copy()
 
         result_df = result_df.sort_values(

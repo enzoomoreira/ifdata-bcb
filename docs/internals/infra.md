@@ -454,9 +454,16 @@ def configure_logging(
 WARNING  | Mensagem de aviso
 
 # Arquivo (Logs/ifdata_YYYY-MM-DD.log)
-[2024-01-15 10:30:45] DEBUG    [ifdata_bcb.infra.query] Query: ...
-[2024-01-15 10:30:46] INFO     [ifdata_bcb.providers.base_collector] Saved: ...
+[2024-01-15 10:30:45] INFO     [ifdata_bcb.providers.cosif.explorer] COSIF read: escopo=prudencial, instituicao=60872504 -> 301 rows
+[2024-01-15 10:30:46] INFO     [ifdata_bcb.infra.storage] Saved: cosif/prudencial/cosif_prud_202412.parquet (1,234 rows)
+[2024-01-15 10:30:47] DEBUG    [ifdata_bcb.providers.enrichment] enrichment NOME_CONGL_PRUD: 605/1380 resolvidos
 ```
+
+**Filosofia de niveis**:
+- **ERROR**: operacao nao pode continuar (CSV corrompido, falha de processamento)
+- **WARNING**: operacao continuou com resultado parcial ou fallback (query falhou, fonte indisponivel)
+- **INFO**: evento de negocio (o que o usuario pediu, resultado da operacao, coleta iniciada/concluida)
+- **DEBUG**: detalhe interno de resolucao (ratios de mapeamento, retry/backoff, mirror de warnings)
 
 **Configuracao de arquivo**:
 - Rotacao: 10 MB por arquivo

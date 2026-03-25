@@ -1,5 +1,18 @@
 # Project Changelog
 
+## [2026-03-25 20:33]
+
+### Added
+- `cadastro.search(start=, end=)` agora filtra por disponibilidade de dados no periodo -- parametros que antes eram aceitos mas ignorados agora restringem resultados a instituicoes com dados (COSIF/IFDATA) no intervalo solicitado
+- Log de resolucao bulk CNPJ em leituras prudencial/financeiro: ratio de conglomerados resolvidos registrado em DEBUG para rastreabilidade de falhas parciais
+
+### Changed
+- Filosofia de logging redefinida: log interno (.log AppData) limpo de ruido (~78% de reducao). Removidos logs de parsing de datas, SQL de rotina truncado e contagem de globs. Reads agora geram 1 linha INFO com request + resultado (`COSIF read: escopo=prudencial -> 301 rows`)
+- Reads promovidos de DEBUG para INFO: COSIF, IFDATA e Cadastro agora registram parametros da requisicao e contagem de rows no nivel INFO
+
+### Fixed
+- Log de enrichment NOME_CONGL_PRUD usava printf-style (`%d/%d`) com loguru, imprimindo literal em vez dos valores -- corrigido para f-string
+
 ## [2026-03-24 20:55]
 
 ### Changed

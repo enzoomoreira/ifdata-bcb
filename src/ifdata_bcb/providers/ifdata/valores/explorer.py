@@ -261,6 +261,11 @@ class IFDATAExplorer(BaseExplorer):
                         df.loc[~is_cnpj, "CNPJ_8"] = df.loc[~is_cnpj, "CodInst"].map(
                             cnpj_map
                         )
+                        resolved = len(cnpj_map)
+                        total = len(congl_codes)
+                        self._logger.debug(
+                            f"Bulk {esc} CNPJ resolution: {resolved}/{total} conglomerados resolvidos"
+                        )
                 frames.append(df)
 
         return frames
@@ -424,8 +429,6 @@ class IFDATAExplorer(BaseExplorer):
             relatorio=relatorio,
             escopo=escopo,
         )
-        self._logger.debug(f"IFDATA read: instituicao={instituicao}, escopo={escopo}")
-
         escopos = (
             [self._validate_escopo(escopo)]
             if escopo
@@ -449,6 +452,9 @@ class IFDATAExplorer(BaseExplorer):
             return pd.DataFrame(columns=self._COLUMN_ORDER)
 
         df = pd.concat(frames, ignore_index=True)
+        self._logger.info(
+            f"IFDATA read: escopo={escopo}, instituicao={instituicao} -> {len(df):,} rows"
+        )
         df = self._apply_canonical_names(df)
         df = self._finalize_read(df)
         self._check_null_value_instituicoes(df)

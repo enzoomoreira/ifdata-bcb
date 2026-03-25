@@ -109,9 +109,7 @@ def _derive_nome_congl_prud(
         df_cad["NOME_CONGL_PRUD"] = df_cad["COD_CONGL_PRUD"].map(nome_map)
 
         resolved = df_cad["NOME_CONGL_PRUD"].notna().sum()
-        logger.debug(
-            "enrichment NOME_CONGL_PRUD: %d/%d resolvidos", resolved, len(df_cad)
-        )
+        logger.debug(f"enrichment NOME_CONGL_PRUD: {resolved}/{len(df_cad)} resolvidos")
         return df_cad
     except Exception as e:
         emit_user_warning(

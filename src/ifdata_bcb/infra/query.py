@@ -103,8 +103,6 @@ class QueryEngine:
         if where:
             query += f" WHERE {where}"
 
-        self._logger.debug(f"Glob: {subdir}/{pattern} ({len(matching_files)} files)")
-
         try:
             return self._conn.sql(query).df()
         except Exception as e:
@@ -125,10 +123,6 @@ class QueryEngine:
     def sql(self, query: str) -> pd.DataFrame:
         """Executa SQL com substituicao de {cache} pelo path do cache."""
         query = query.replace("{cache}", str(self._cache_path))
-
-        query_preview = query.strip().replace("\n", " ")[:80]
-        self._logger.debug(f"SQL: {query_preview}...")
-
         return self._conn.sql(query).df()
 
     def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
@@ -140,9 +134,6 @@ class QueryEngine:
         try:
             for name, df in tables.items():
                 self._conn.register(name, df)
-
-            query_preview = query.strip().replace("\n", " ")[:80]
-            self._logger.debug(f"SQL (df): {query_preview}...")
 
             return self._conn.sql(query).df()
         finally:

@@ -185,6 +185,8 @@ bcb.cadastro.search(
 
 **Filtro `escopo=`**: filtra por escopo disponivel na fonte (ex: `fonte="cosif", escopo="prudencial"`).
 
+**Filtro `start=`/`end=`**: restringe a verificacao de disponibilidade a um intervalo de periodos. Aceita formatos `'YYYY-MM'` ou `YYYYMM`. Quando `start` e fornecido sem `end`, filtra periodo unico. Apenas instituicoes com dados (COSIF e/ou IFDATA) no intervalo solicitado aparecem no resultado, e a coluna `FONTES` reflete a disponibilidade naquele periodo.
+
 **Retorna**: DataFrame com colunas `CNPJ_8`, `INSTITUICAO`, `SITUACAO`, `FONTES`, e `SCORE` (quando `termo` fornecido).
 
 **Raises**: `InvalidScopeError` se fonte ou escopo invalidos.
@@ -203,6 +205,12 @@ bcb.cadastro.search(fonte='cosif', escopo='prudencial')
 
 # Buscar + filtrar por fonte
 bcb.cadastro.search('Bradesco', fonte='cosif')
+
+# Buscar com filtro temporal -- so instituicoes com dados em 2025
+bcb.cadastro.search('Itau', start='2025-03', end='2025-12')
+
+# Listar todas com dados no IFDATA em Q2 2025
+bcb.cadastro.search(fonte='ifdata', start='2025-06')
 ```
 
 ## Colunas Disponiveis

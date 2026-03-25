@@ -170,9 +170,7 @@ class BaseExplorer(ABC):
 
     def _normalize_datas(self, datas: DateInput) -> list[int]:
         """Aceita int, str, ou lista. Formatos: 202412, '202412', '2024-12'."""
-        result = NormalizedDates(values=datas).values
-        self._logger.debug(f"Dates: {datas} -> {result}")
-        return result
+        return NormalizedDates(values=datas).values
 
     def _normalize_contas(self, contas: AccountInput | None) -> list[str] | None:
         if contas is None:
@@ -224,9 +222,7 @@ class BaseExplorer(ABC):
         Excecoes:
             InvalidIdentifierError: Se nao for CNPJ de 8 digitos.
         """
-        validated = ValidatedCnpj8(value=identificador).value
-        self._logger.debug(f"Entity validated: {validated}")
-        return validated
+        return ValidatedCnpj8(value=identificador).value
 
     def _validate_required_params(
         self,
@@ -612,7 +608,6 @@ class BaseExplorer(ABC):
             f"LIMIT {limit}"
         )
 
-        self._logger.debug(f"list() query: {query[:120]}...")
         df = self._qe.sql(query)
 
         if df.empty:

@@ -7,12 +7,13 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from ifdata_bcb.core.constants import TIPO_INST_MAP
+from ifdata_bcb.core.entity.lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.sql import build_in_clause
+from ifdata_bcb.utils.date import normalize_date_to_int
 
 if TYPE_CHECKING:
-    from ifdata_bcb.core.entity.lookup import EntityLookup
     from ifdata_bcb.core.entity.search import EntitySearch
     from ifdata_bcb.infra.query import QueryEngine
 
@@ -51,6 +52,18 @@ class CadastroSearch:
         self._search = entity_search
         self._logger = get_logger(__name__)
 
+    @staticmethod
+    def _resolve_date_range(
+        start: str | None,
+        end: str | None,
+    ) -> tuple[int, int] | None:
+        """Converte start/end em tupla (min_yyyymm, max_yyyymm) para filtro."""
+        if start is None:
+            return None
+        s = normalize_date_to_int(start)
+        e = normalize_date_to_int(end) if end is not None else s
+        return (s, e)
+
     def search(
         self,
         termo: str | None = None,
@@ -67,8 +80,10 @@ class CadastroSearch:
             termo: Termo de busca (fuzzy matching). Se None, lista todas.
             fonte: Filtra por fonte de dados ("ifdata", "cosif", ou None=todas).
             escopo: Filtra por escopo disponivel na fonte.
-            start: Periodo inicial para verificacao de disponibilidade.
-            end: Periodo final para verificacao de disponibilidade.
+            start: Periodo inicial para verificacao de disponibilidade (YYYYMM
+                ou YYYY-MM). Retorna apenas instituicoes com dados neste
+                intervalo.
+            end: Periodo final. Se None com start, filtra periodo unico.
             limit: Maximo de resultados.
 
         Raises:
@@ -78,12 +93,16 @@ class CadastroSearch:
             raise ValueError(f"limit deve ser > 0, recebido: {limit}")
 
         self._validate_search_params(fonte, escopo)
+        date_range = self._resolve_date_range(start, end)
 
         if termo is not None:
             return self._search_with_termo(
-                termo, fonte=fonte, escopo=escopo, limit=limit
+                termo, fonte=fonte, escopo=escopo, limit=limit,
+                date_range=date_range,
             )
-        return self._search_without_termo(fonte=fonte, escopo=escopo, limit=limit)
+        return self._search_without_termo(
+            fonte=fonte, escopo=escopo, limit=limit, date_range=date_range,
+        )
 
     def _validate_search_params(self, fonte: str | None, escopo: str | None) -> None:
         """Valida combinacao fonte/escopo para search()."""
@@ -110,18 +129,19 @@ class CadastroSearch:
         fonte: str | None,
         escopo: str | None,
         limit: int,
+        date_range: tuple[int, int] | None = None,
     ) -> pd.DataFrame:
-        """Busca com fuzzy matching, filtrando por fonte/escopo."""
+        """Busca com fuzzy matching, filtrando por fonte/escopo/periodo."""
         empty = pd.DataFrame(columns=self._SEARCH_COLUMNS_WITH_SCORE)
 
-        fetch_limit = limit * 5 if (fonte or escopo) else limit
-        df = self._search.search(termo, limit=fetch_limit)
+        fetch_limit = limit * 5 if (fonte or escopo or date_range) else limit
+        df = self._search.search(termo, limit=fetch_limit, date_range=date_range)
 
         if df.empty:
             return empty
 
         df = self._apply_fonte_filter(df, fonte)
-        df = self._apply_escopo_filter(df, fonte, escopo)
+        df = self._apply_escopo_filter(df, fonte, escopo, date_range)
 
         df = df.head(limit).reset_index(drop=True)
         return df[self._SEARCH_COLUMNS_WITH_SCORE] if not df.empty else empty
@@ -132,6 +152,7 @@ class CadastroSearch:
         fonte: str | None,
         escopo: str | None,
         limit: int,
+        date_range: tuple[int, int] | None = None,
     ) -> pd.DataFrame:
         """Lista todas as instituicoes com dados, sem fuzzy matching."""
         empty = pd.DataFrame(columns=self._SEARCH_COLUMNS)
@@ -141,7 +162,9 @@ class CadastroSearch:
             return empty
 
         cnpjs = all_entities["CNPJ_8"].tolist()
-        cnpj_sources = self._lookup._get_data_sources_for_cnpjs(cnpjs)
+        cnpj_sources = self._lookup._get_data_sources_for_cnpjs(
+            cnpjs, date_range=date_range
+        )
 
         rows: list[dict[str, str]] = []
         for _, row in all_entities.iterrows():
@@ -163,7 +186,7 @@ class CadastroSearch:
 
         df = pd.DataFrame(rows)
         df = self._apply_fonte_filter(df, fonte)
-        df = self._apply_escopo_filter(df, fonte, escopo)
+        df = self._apply_escopo_filter(df, fonte, escopo, date_range)
 
         df = (
             df.sort_values(by=["SITUACAO", "INSTITUICAO"], ascending=[True, True])
@@ -205,6 +228,7 @@ class CadastroSearch:
         df: pd.DataFrame,
         fonte: str | None,
         escopo: str | None,
+        date_range: tuple[int, int] | None = None,
     ) -> pd.DataFrame:
         """Filtra por escopo verificando disponibilidade real nos dados."""
         if escopo is None or df.empty:
@@ -214,20 +238,30 @@ class CadastroSearch:
         cnpjs = df["CNPJ_8"].tolist()
 
         if fonte is not None and fonte.lower() == "cosif":
-            valid_cnpjs = self._get_cnpjs_with_cosif_escopo(cnpjs, escopo_lower)
+            valid_cnpjs = self._get_cnpjs_with_cosif_escopo(
+                cnpjs, escopo_lower, date_range
+            )
         else:
-            valid_cnpjs = self._get_cnpjs_with_ifdata_escopo(cnpjs, escopo_lower)
+            valid_cnpjs = self._get_cnpjs_with_ifdata_escopo(
+                cnpjs, escopo_lower, date_range
+            )
 
         return df[df["CNPJ_8"].isin(valid_cnpjs)].copy()
 
-    def _get_cnpjs_with_cosif_escopo(self, cnpjs: list[str], escopo: str) -> set[str]:
+    def _get_cnpjs_with_cosif_escopo(
+        self,
+        cnpjs: list[str],
+        escopo: str,
+        date_range: tuple[int, int] | None = None,
+    ) -> set[str]:
         """Retorna CNPJs que tem dados no COSIF para o escopo especificado."""
         source_key = f"cosif_{escopo}"
         path = self._lookup._source_path(source_key)
         cnpjs_str = build_in_clause(cnpjs)
+        date_cond = EntityLookup._date_filter("DATA_BASE", date_range)
         sql = f"""
         SELECT DISTINCT CNPJ_8 FROM '{path}'
-        WHERE CNPJ_8 IN ({cnpjs_str})
+        WHERE CNPJ_8 IN ({cnpjs_str}){date_cond}
         """
         try:
             df = self._qe.sql(sql)
@@ -236,27 +270,36 @@ class CadastroSearch:
             self._logger.warning(f"search: COSIF escopo check failed ({escopo}): {e}")
             return set()
 
-    def _get_cnpjs_with_ifdata_escopo(self, cnpjs: list[str], escopo: str) -> set[str]:
+    def _get_cnpjs_with_ifdata_escopo(
+        self,
+        cnpjs: list[str],
+        escopo: str,
+        date_range: tuple[int, int] | None = None,
+    ) -> set[str]:
         """Retorna CNPJs que tem dados no IFDATA para o escopo especificado."""
         tipo_inst = TIPO_INST_MAP.get(escopo)
         if tipo_inst is None:
             return set()
 
         if escopo == "individual":
-            return self._get_cnpjs_ifdata_individual(cnpjs, tipo_inst)
+            return self._get_cnpjs_ifdata_individual(cnpjs, tipo_inst, date_range)
 
-        return self._get_cnpjs_ifdata_conglomerate(cnpjs, escopo)
+        return self._get_cnpjs_ifdata_conglomerate(cnpjs, escopo, date_range)
 
     def _get_cnpjs_ifdata_individual(
-        self, cnpjs: list[str], tipo_inst: int
+        self,
+        cnpjs: list[str],
+        tipo_inst: int,
+        date_range: tuple[int, int] | None = None,
     ) -> set[str]:
         """Verifica quais CNPJs tem dados individuais no IFDATA."""
         ifdata_path = self._lookup._source_path("ifdata_valores")
         cnpjs_str = build_in_clause(cnpjs)
+        date_cond = EntityLookup._date_filter("AnoMes", date_range)
         sql = f"""
         SELECT DISTINCT CodInst FROM '{ifdata_path}'
         WHERE TipoInstituicao = {tipo_inst}
-          AND CodInst IN ({cnpjs_str})
+          AND CodInst IN ({cnpjs_str}){date_cond}
         """
         try:
             df = self._qe.sql(sql)
@@ -265,7 +308,12 @@ class CadastroSearch:
             self._logger.warning(f"search: IFDATA individual escopo check failed: {e}")
             return set()
 
-    def _get_cnpjs_ifdata_conglomerate(self, cnpjs: list[str], escopo: str) -> set[str]:
+    def _get_cnpjs_ifdata_conglomerate(
+        self,
+        cnpjs: list[str],
+        escopo: str,
+        date_range: tuple[int, int] | None = None,
+    ) -> set[str]:
         """Verifica quais CNPJs tem dados prudenciais/financeiros no IFDATA."""
         cadastro_path = self._lookup._source_path("cadastro")
         ifdata_path = self._lookup._source_path("ifdata_valores")
@@ -297,9 +345,10 @@ class CadastroSearch:
                 cod_to_cnpjs.setdefault(cod, []).append(cnpj)
 
             cods_str = build_in_clause(list(cod_to_cnpjs.keys()))
+            date_cond = EntityLookup._date_filter("AnoMes", date_range)
             sql_ifdata = f"""
             SELECT DISTINCT CodInst FROM '{ifdata_path}'
-            WHERE CodInst IN ({cods_str})
+            WHERE CodInst IN ({cods_str}){date_cond}
             """
             df_ifdata = self._qe.sql(sql_ifdata)
 

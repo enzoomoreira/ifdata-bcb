@@ -153,10 +153,6 @@ class CadastroExplorer(BaseExplorer):
         """
         self._validate_required_params(start)
         columns = self._validate_columns(columns)
-        self._logger.debug(
-            f"Cadastro read: instituicao={instituicao}, segmento={segmento}"
-        )
-
         conditions = [
             self._build_cnpj_condition(instituicao),
             self._build_date_condition(start, end, trimestral=True),
@@ -191,6 +187,9 @@ class CadastroExplorer(BaseExplorer):
             subdir=self._get_subdir(),
             columns=self._translate_columns(columns),
             where=join_conditions(conditions),
+        )
+        self._logger.info(
+            f"Cadastro read: instituicao={instituicao}, segmento={segmento} -> {len(df):,} rows"
         )
         return self._finalize_read(df)
 
