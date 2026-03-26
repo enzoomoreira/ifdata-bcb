@@ -11,6 +11,7 @@ Uso:
     # Coleta de dados
     bcb.cosif.collect('2024-01', '2024-12')
     bcb.ifdata.collect('2024-01', '2024-12')
+    bcb.cadastro.collect('2024-01', '2024-12')  # necessario para cadastro= no read()
 
     # Consultas usando CNPJ de 8 digitos
     # start e OBRIGATORIO; instituicao e opcional (None = todas)

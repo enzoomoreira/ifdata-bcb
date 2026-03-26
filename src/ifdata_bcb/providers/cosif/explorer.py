@@ -249,6 +249,9 @@ class COSIFExplorer(BaseExplorer):
             documento: Filtro por documento COSIF.
             columns: Colunas a retornar. Se None, retorna todas.
             cadastro: Colunas cadastrais para enriquecer o resultado.
+                Validas: ATIVIDADE, CNPJ_LIDER_8, COD_CONGL_FIN,
+                COD_CONGL_PRUD, DATA_INICIO_ATIVIDADE, MUNICIPIO,
+                NOME_CONGL_PRUD, SEGMENTO, SITUACAO, SR, TC, TCB, TD, UF.
 
         Raises:
             MissingRequiredParameterError: Se start nao fornecido.
