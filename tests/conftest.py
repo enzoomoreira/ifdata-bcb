@@ -31,9 +31,12 @@ def tmp_cache_dir(workspace_tmp_dir: Path) -> Path:
 # Entidades de teste
 BANCO_A_CNPJ = "60872504"  # Entidade individual com conglomerado
 BANCO_B_CNPJ = "90400888"  # Entidade individual sem conglomerado
+BANCO_C_CNPJ = "33333333"  # Entidade que muda de conglomerado
 LIDER_CNPJ = "60872504"  # Lider do conglomerado
 COD_CONGL_PRUD = "40"
 COD_CONGL_FIN = "50"
+COD_CONGL_PRUD_OLD = "C0001"
+COD_CONGL_PRUD_NEW = "C0002"
 
 
 def _make_cadastro_df() -> pd.DataFrame:
@@ -235,6 +238,254 @@ def populated_cache(tmp_cache_dir: Path) -> Path:
         tmp_cache_dir,
         "cosif/prudencial",
         "cosif_prud_202303",
+    )
+    _save_parquet(
+        _make_ifdata_valores_df(), tmp_cache_dir, "ifdata/valores", "ifdata_val_202303"
+    )
+    return tmp_cache_dir
+
+
+# =========================================================================
+# Fixtures temporais -- entidade que muda de conglomerado entre periodos
+# =========================================================================
+
+
+def _make_cadastro_temporal_df() -> pd.DataFrame:
+    """Cadastro onde BANCO_C muda de conglomerado entre periodos.
+
+    202303: BANCO_A em COD_CONGL_PRUD, BANCO_C em COD_CONGL_PRUD_OLD
+    202306: BANCO_A em COD_CONGL_PRUD, BANCO_C em COD_CONGL_PRUD_NEW
+    """
+    return pd.DataFrame(
+        {
+            "Data": pd.array([202303, 202303, 202306, 202306], dtype="Int64"),
+            "CodInst": [BANCO_A_CNPJ, BANCO_C_CNPJ, BANCO_A_CNPJ, BANCO_C_CNPJ],
+            "CNPJ_8": [BANCO_A_CNPJ, BANCO_C_CNPJ, BANCO_A_CNPJ, BANCO_C_CNPJ],
+            "NomeInstituicao": [
+                "BANCO ALFA S.A.",
+                "BANCO GAMMA S.A.",
+                "BANCO ALFA S.A.",
+                "BANCO GAMMA S.A.",
+            ],
+            "SegmentoTb": ["S1", "S1", "S1", "S1"],
+            "CodConglomeradoPrudencial": [
+                COD_CONGL_PRUD,
+                COD_CONGL_PRUD_OLD,
+                COD_CONGL_PRUD,
+                COD_CONGL_PRUD_NEW,
+            ],
+            "CodConglomeradoFinanceiro": [COD_CONGL_FIN, None, COD_CONGL_FIN, None],
+            "CNPJ_LIDER_8": [LIDER_CNPJ, None, LIDER_CNPJ, None],
+            "Situacao": ["A", "A", "A", "A"],
+            "Atividade": ["001", "001", "001", "001"],
+            "Tcb": ["0001", "0001", "0001", "0001"],
+            "Td": ["01", "01", "01", "01"],
+            "Tc": ["1", "1", "1", "1"],
+            "Uf": ["SP", "SP", "SP", "SP"],
+            "Municipio": ["Sao Paulo", "Sao Paulo", "Sao Paulo", "Sao Paulo"],
+            "Sr": ["01", "01", "01", "01"],
+            "DataInicioAtividade": [
+                "19900101",
+                "20000101",
+                "19900101",
+                "20000101",
+            ],
+        }
+    )
+
+
+def _make_ifdata_temporal_df() -> pd.DataFrame:
+    """IFDATA valores com dados para ambos os codigos de conglomerado antigo e novo.
+
+    Inclui individual para BANCO_A e BANCO_C,
+    e prudencial para COD_CONGL_PRUD, COD_CONGL_PRUD_OLD (202303),
+    COD_CONGL_PRUD_NEW (202306).
+    """
+    return pd.DataFrame(
+        {
+            "AnoMes": pd.array(
+                [
+                    202303,
+                    202303,
+                    202303,
+                    202303,
+                    202306,
+                    202306,
+                    202306,
+                    202306,
+                ],
+                dtype="Int64",
+            ),
+            "CodInst": [
+                BANCO_A_CNPJ,
+                BANCO_C_CNPJ,
+                COD_CONGL_PRUD,
+                COD_CONGL_PRUD_OLD,
+                BANCO_A_CNPJ,
+                BANCO_C_CNPJ,
+                COD_CONGL_PRUD,
+                COD_CONGL_PRUD_NEW,
+            ],
+            "TipoInstituicao": pd.array([3, 3, 1, 1, 3, 3, 1, 1], dtype="Int64"),
+            "Conta": [
+                "10100",
+                "10100",
+                "10100",
+                "10100",
+                "10100",
+                "10100",
+                "10100",
+                "10100",
+            ],
+            "NomeColuna": [
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+                "ATIVO TOTAL",
+            ],
+            "Saldo": [
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                110.0,
+                210.0,
+                310.0,
+                410.0,
+            ],
+            "NomeRelatorio": ["Resumo"] * 8,
+            "Grupo": ["Balanco"] * 8,
+        }
+    )
+
+
+def _make_cadastro_heterogeneous() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Dois DataFrames com tipos conflitantes para CodConglomeradoPrudencial.
+
+    df1: CodConglomeradoPrudencial como float (DOUBLE no parquet)
+    df2: CodConglomeradoPrudencial como string (VARCHAR no parquet)
+
+    Simula o problema real onde BCB muda tipo de coluna entre periodos.
+    """
+    base = {
+        "Data": pd.array([202303], dtype="Int64"),
+        "CodInst": [BANCO_A_CNPJ],
+        "CNPJ_8": [BANCO_A_CNPJ],
+        "NomeInstituicao": ["BANCO ALFA S.A."],
+        "SegmentoTb": ["S1"],
+        "CodConglomeradoFinanceiro": [COD_CONGL_FIN],
+        "CNPJ_LIDER_8": [LIDER_CNPJ],
+        "Situacao": ["A"],
+        "Atividade": ["001"],
+        "Tcb": ["0001"],
+        "Td": ["01"],
+        "Tc": ["1"],
+        "Uf": ["SP"],
+        "Municipio": ["Sao Paulo"],
+        "Sr": ["01"],
+        "DataInicioAtividade": ["19900101"],
+    }
+
+    df1 = pd.DataFrame({**base, "CodConglomeradoPrudencial": [40.0]})
+    df2_base = {**base, "CodConglomeradoPrudencial": [COD_CONGL_PRUD]}
+    df2_base["Data"] = pd.array([202306], dtype="Int64")
+    df2 = pd.DataFrame(df2_base)
+    return df1, df2
+
+
+def _make_cadastro_fin_disappeared_df() -> pd.DataFrame:
+    """Cadastro onde CodConglFin e NULL no periodo recente (simula 2025).
+
+    202303: BANCO_A tem cod_congl_fin = 50
+    202306: BANCO_A tem cod_congl_fin = NULL
+    """
+    return pd.DataFrame(
+        {
+            "Data": pd.array([202303, 202306], dtype="Int64"),
+            "CodInst": [BANCO_A_CNPJ, BANCO_A_CNPJ],
+            "CNPJ_8": [BANCO_A_CNPJ, BANCO_A_CNPJ],
+            "NomeInstituicao": ["BANCO ALFA S.A.", "BANCO ALFA S.A."],
+            "SegmentoTb": ["S1", "S1"],
+            "CodConglomeradoPrudencial": [COD_CONGL_PRUD, COD_CONGL_PRUD],
+            "CodConglomeradoFinanceiro": [COD_CONGL_FIN, None],
+            "CNPJ_LIDER_8": [LIDER_CNPJ, LIDER_CNPJ],
+            "Situacao": ["A", "A"],
+            "Atividade": ["001", "001"],
+            "Tcb": ["0001", "0001"],
+            "Td": ["01", "01"],
+            "Tc": ["1", "1"],
+            "Uf": ["SP", "SP"],
+            "Municipio": ["Sao Paulo", "Sao Paulo"],
+            "Sr": ["01", "01"],
+            "DataInicioAtividade": ["19900101", "19900101"],
+        }
+    )
+
+
+@pytest.fixture
+def populated_cache_temporal(tmp_cache_dir: Path) -> Path:
+    """Cache com dados de resolucao temporal (BANCO_A estavel + BANCO_C muda)."""
+    cad = _make_cadastro_temporal_df()
+    _save_parquet(
+        cad[cad["Data"] == 202303],
+        tmp_cache_dir,
+        "ifdata/cadastro",
+        "ifdata_cad_202303",
+    )
+    _save_parquet(
+        cad[cad["Data"] == 202306],
+        tmp_cache_dir,
+        "ifdata/cadastro",
+        "ifdata_cad_202306",
+    )
+    val = _make_ifdata_temporal_df()
+    _save_parquet(
+        val[val["AnoMes"] == 202303],
+        tmp_cache_dir,
+        "ifdata/valores",
+        "ifdata_val_202303",
+    )
+    _save_parquet(
+        val[val["AnoMes"] == 202306],
+        tmp_cache_dir,
+        "ifdata/valores",
+        "ifdata_val_202306",
+    )
+    return tmp_cache_dir
+
+
+@pytest.fixture
+def heterogeneous_cache(tmp_cache_dir: Path) -> Path:
+    """Cache com schemas heterogeneos (DOUBLE vs VARCHAR para CodConglPrud)."""
+    df1, df2 = _make_cadastro_heterogeneous()
+    _save_parquet(df1, tmp_cache_dir, "ifdata/cadastro", "ifdata_cad_202303")
+    _save_parquet(df2, tmp_cache_dir, "ifdata/cadastro", "ifdata_cad_202306")
+    # Valores IFDATA minimos para leitura funcionar
+    _save_parquet(
+        _make_ifdata_valores_df(), tmp_cache_dir, "ifdata/valores", "ifdata_val_202303"
+    )
+    return tmp_cache_dir
+
+
+@pytest.fixture
+def fin_disappeared_cache(tmp_cache_dir: Path) -> Path:
+    """Cache onde CodConglFin e NULL no periodo recente."""
+    cad = _make_cadastro_fin_disappeared_df()
+    _save_parquet(
+        cad[cad["Data"] == 202303],
+        tmp_cache_dir,
+        "ifdata/cadastro",
+        "ifdata_cad_202303",
+    )
+    _save_parquet(
+        cad[cad["Data"] == 202306],
+        tmp_cache_dir,
+        "ifdata/cadastro",
+        "ifdata_cad_202306",
     )
     _save_parquet(
         _make_ifdata_valores_df(), tmp_cache_dir, "ifdata/valores", "ifdata_val_202303"

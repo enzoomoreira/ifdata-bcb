@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 import pytest
-import requests
+import httpx
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.resilience import (
@@ -31,7 +31,7 @@ class TestRetrySuccess:
         def fail_twice_then_ok() -> str:
             counter["calls"] += 1
             if counter["calls"] < 3:
-                raise requests.ConnectionError("transient")
+                raise httpx.ConnectError("transient")
             return "recovered"
 
         result = fail_twice_then_ok()
@@ -61,9 +61,9 @@ class TestRetryExhaustion:
         @retry(max_attempts=3, delay=0.01, jitter=False)
         def always_fail() -> None:
             counter["calls"] += 1
-            raise requests.ConnectionError("persistent")
+            raise httpx.ConnectError("persistent")
 
-        with pytest.raises(requests.ConnectionError, match="persistent"):
+        with pytest.raises(httpx.ConnectError, match="persistent"):
             always_fail()
 
         assert counter["calls"] == 3
@@ -91,9 +91,9 @@ class TestRetryTransientExceptions:
     @pytest.mark.parametrize(
         "exc_class",
         [
-            requests.ConnectionError,
-            requests.Timeout,
-            requests.RequestException,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.HTTPError,
             ConnectionError,
             TimeoutError,
             OSError,
@@ -177,10 +177,8 @@ class TestRetryJitter:
 class TestTransientExceptionsTuple:
     """TRANSIENT_EXCEPTIONS: valida composicao da tupla."""
 
-    def test_contains_requests_exceptions(self) -> None:
-        assert requests.RequestException in TRANSIENT_EXCEPTIONS
-        assert requests.ConnectionError in TRANSIENT_EXCEPTIONS
-        assert requests.Timeout in TRANSIENT_EXCEPTIONS
+    def test_contains_httpx_exceptions(self) -> None:
+        assert httpx.HTTPError in TRANSIENT_EXCEPTIONS
 
     def test_contains_builtin_network_exceptions(self) -> None:
         assert ConnectionError in TRANSIENT_EXCEPTIONS

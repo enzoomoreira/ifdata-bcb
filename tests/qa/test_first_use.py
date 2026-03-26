@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 
@@ -24,13 +24,8 @@ class TestImport:
         import ifdata_bcb
 
         d = dir(ifdata_bcb)
-        for name in ("cosif", "ifdata", "cadastro", "search"):
+        for name in ("cosif", "ifdata", "cadastro"):
             assert name in d
-
-    def test_from_import_search(self) -> None:
-        from ifdata_bcb import search  # noqa: F401
-
-        assert callable(search)
 
     def test_import_nonexistent_raises(self) -> None:
         with pytest.raises(ImportError):
@@ -69,12 +64,12 @@ class TestConfiguration:
 
 
 class TestEmptyCacheExperience:
-    def test_list_periods_empty(self, tmp_cache_dir: Path) -> None:
+    def test_list_periodos_empty(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)
         cosif = COSIFExplorer(
             query_engine=qe, entity_lookup=EntityLookup(query_engine=qe)
         )
-        assert cosif.list_periods() == []
+        assert cosif.list_periodos() == []
 
     def test_has_data_false(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)
@@ -94,7 +89,7 @@ class TestEmptyCacheExperience:
     def test_search_empty(self, tmp_cache_dir: Path) -> None:
         qe = QueryEngine(base_path=tmp_cache_dir)
         el = EntityLookup(query_engine=qe)
-        df = el.search("Itau")
+        df = EntitySearch(el).search("Itau")
         assert df.empty
 
 

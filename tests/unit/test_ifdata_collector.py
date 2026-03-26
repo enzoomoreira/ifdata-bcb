@@ -5,10 +5,8 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from ifdata_bcb.providers.ifdata.collector import (
-    IFDATACadastroCollector,
-    IFDATAValoresCollector,
-)
+from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
+from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
 
 
 # =========================================================================

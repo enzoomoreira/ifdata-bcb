@@ -24,24 +24,6 @@ class DataUnavailableError(BacenAnalysisError):
         super().__init__(msg)
 
 
-class EntityNotFoundError(BacenAnalysisError):
-    def __init__(self, identifier: str):
-        self.identifier = identifier
-        super().__init__(f"Entidade nao encontrada: '{identifier}'.")
-
-
-class AmbiguousIdentifierError(BacenAnalysisError):
-    def __init__(self, identifier: str, matches: list[str]):
-        self.identifier = identifier
-        self.matches = matches
-        matches_str = ", ".join(repr(m) for m in matches[:5])
-        if len(matches) > 5:
-            matches_str += f" (e mais {len(matches) - 5})"
-        super().__init__(
-            f"Identificador '{identifier}' ambiguo. Encontrados: {matches_str}."
-        )
-
-
 class InvalidIdentifierError(BacenAnalysisError):
     def __init__(self, identificador: str):
         self.identificador = identificador
@@ -91,3 +73,97 @@ class DataProcessingError(BacenAnalysisError):
 
 class IncompatibleEraWarning(UserWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
+
+    def __init__(self, message: str, boundary: int, source: str):
+        self.boundary = boundary
+        self.source = source
+        super().__init__(message)
+
+
+class PartialDataWarning(UserWarning):
+    """Resultado incompleto - alguns periodos/entidades sem dados."""
+
+    def __init__(self, message: str, reason: str = "", detail: dict | None = None):
+        self.reason = reason
+        self.detail = detail
+        super().__init__(message)
+
+
+class ScopeUnavailableWarning(UserWarning):
+    """Escopo indisponivel para entidade em parte do range temporal."""
+
+    def __init__(
+        self,
+        message: str,
+        entities: list[str],
+        escopo: str,
+        periodos: list[int],
+    ):
+        self.entities = entities
+        self.escopo = escopo
+        self.periodos = periodos
+        super().__init__(message)
+
+
+class NullValuesWarning(UserWarning):
+    """Entidade presente nos dados mas com todos os valores financeiros NULL."""
+
+    def __init__(self, message: str, entities: list[str]):
+        self.entities = entities
+        super().__init__(message)
+
+
+class ScopeMigrationWarning(UserWarning):
+    """Relatorio migrou de escopo entre eras (ex: credito de financeiro para prudencial)."""
+
+    def __init__(
+        self,
+        message: str,
+        relatorio: str,
+        escopo_pre: str,
+        escopo_post: str,
+        boundary: int,
+    ):
+        self.relatorio = relatorio
+        self.escopo_pre = escopo_pre
+        self.escopo_post = escopo_post
+        self.boundary = boundary
+        super().__init__(message)
+
+
+class DroppedReportWarning(UserWarning):
+    """Relatorio descontinuado a partir de determinada era."""
+
+    def __init__(self, message: str, relatorio: str, last_period: int):
+        self.relatorio = relatorio
+        self.last_period = last_period
+        super().__init__(message)
+
+
+class EmptyFilterWarning(UserWarning):
+    """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
+
+    def __init__(self, message: str, parameter: str):
+        self.parameter = parameter
+        super().__init__(message)
+
+
+class InvalidColumnError(BacenAnalysisError):
+    """Coluna invalida para list()."""
+
+    def __init__(self, column: str, valid_columns: list[str], extras: str = ""):
+        self.column = column
+        self.valid_columns = valid_columns
+        valid_str = ", ".join(valid_columns)
+        msg = f"Coluna '{column}' invalida. Disponiveis: {valid_str}."
+        if extras:
+            msg += f" {extras}"
+        super().__init__(msg)
+
+
+class TruncatedResultWarning(UserWarning):
+    """Resultado truncado pelo limit."""
+
+    def __init__(self, message: str, limit: int):
+        self.limit = limit
+        super().__init__(message)

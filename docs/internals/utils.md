@@ -11,6 +11,7 @@ src/ifdata_bcb/utils/
 |-- date.py              # Processamento de datas
 |-- fuzzy.py             # Busca fuzzy
 |-- cnpj.py              # Padronizacao de CNPJ
+|-- nulls.py             # Check escalar de nulidade (is_valid)
 +-- period.py            # Extracao de periodos de arquivos
 ```
 
@@ -40,6 +41,56 @@ def normalize_accents(text: str) -> str:
 1. Aplica normalizacao Unicode NFKD (separa base de modificadores)
 2. Filtra caracteres nao-combinadores (`unicodedata.combining()`)
 
+### stem_ptbr()
+
+Stemming simples PT-BR para busca singular/plural:
+
+```python
+def stem_ptbr(term: str) -> str:
+    """
+    Remove sufixos comuns para unificar formas singular/plural.
+
+    Usa pares atomicos (singular, plural) com raiz minima de 4 chars
+    para evitar falsos positivos.
+
+    Exemplos:
+        "operacao"  -> "opera"   (match com "operacoes")
+        "captacao"  -> "capta"   (match com "captacoes")
+        "capital"   -> "capit"   (match com "capitais")
+        "credito"   -> "credito" (sem inflexao, passthrough)
+        "cao"       -> "cao"     (raiz < 4 chars, passthrough)
+    """
+```
+
+**Pares suportados**: `(icao, icoes)`, `(ucao, ucoes)`, `(cao, coes)`, `(sao, soes)`, `(ao, oes)`, `(al, ais)`, `(el, eis)`.
+
+Usado internamente por `list_contas()` no IFDATA e COSIF para stemming do termo de busca.
+
+### format_entity_labels()
+
+Formata lista de CNPJs com nomes canonicos para mensagens de warning:
+
+```python
+def format_entity_labels(
+    cnpjs: list[str],
+    nomes: dict[str, str],
+    limit: int = 5,
+) -> str:
+    """
+    Se count <= limit, retorna labels separados por virgula.
+    Caso contrario, retorna '{count} entidades'.
+
+    Exemplos:
+        format_entity_labels(["60872504"], {"60872504": "ITAU UNIBANCO S.A."})
+        -> "60872504 (ITAU UNIBANCO S.A.)"
+
+        format_entity_labels(["60872504"], {})
+        -> "60872504"
+    """
+```
+
+Extraido de `BaseExplorer` e `IFDATAExplorer` para reuso entre warning formatters.
+
 ### normalize_text()
 
 Normaliza whitespace:
@@ -66,16 +117,19 @@ def normalize_text(text: str) -> str:
 Converte qualquer formato de data para inteiro YYYYMM:
 
 ```python
-def normalize_date_to_int(date_val: int | str) -> int:
+def normalize_date_to_int(date_val: int | str | date | datetime | pd.Timestamp) -> int:
     """
     Formatos aceitos:
     - int: 202412 -> 202412
     - str: "202412" -> 202412
     - str: "2024-12" -> 202412
     - str: "2024-12-01" -> 202412
+    - date: date(2024, 12, 1) -> 202412
+    - datetime: datetime(2024, 12, 1) -> 202412
+    - pd.Timestamp: pd.Timestamp('2024-12-01') -> 202412
 
     Raises:
-        InvalidDateFormatError: Se formato invalido ou mes fora de 1-12
+        InvalidDateFormatError: Se formato invalido, mes fora de 1-12, ou pd.NaT/None
     """
 ```
 
@@ -84,7 +138,7 @@ def normalize_date_to_int(date_val: int | str) -> int:
 Gera lista de meses consecutivos:
 
 ```python
-def generate_month_range(start: int | str, end: int | str) -> list[int]:
+def generate_month_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
     """
     Gera meses entre start e end (inclusive).
 
@@ -104,7 +158,7 @@ def generate_month_range(start: int | str, end: int | str) -> list[int]:
 Gera lista de fins de trimestre:
 
 ```python
-def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
+def generate_quarter_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
     """
     Gera fins de trimestre (03, 06, 09, 12) no range.
 
@@ -117,17 +171,19 @@ def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
     """
 ```
 
-### yyyymm_to_datetime()
+### align_to_quarter_end()
 
-Converte inteiro YYYYMM para pandas Timestamp:
+Alinha YYYYMM para o fim do trimestre correspondente:
 
 ```python
-def yyyymm_to_datetime(value: int) -> pd.Timestamp:
+def align_to_quarter_end(yyyymm: int) -> int:
     """
-    Converte para Timestamp no ultimo dia do mes.
+    Alinha para fim do trimestre (03, 06, 09, 12).
 
-    Exemplo:
-        yyyymm_to_datetime(202412) -> Timestamp('2024-12-31')
+    Exemplos:
+        align_to_quarter_end(202401) -> 202403
+        align_to_quarter_end(202405) -> 202406
+        align_to_quarter_end(202412) -> 202412
     """
 ```
 
@@ -141,14 +197,9 @@ Classe para busca fuzzy usando `thefuzz`:
 
 ```python
 class FuzzyMatcher:
-    def __init__(
-        self,
-        threshold_auto: int = 85,
-        threshold_suggest: int = 70,
-    ):
+    def __init__(self, threshold_suggest: int = 78):
         """
         Args:
-            threshold_auto: Score >= para aceitar automaticamente
             threshold_suggest: Score >= para incluir em sugestoes
         """
 ```
@@ -177,7 +228,7 @@ def search(
 **Exemplo**:
 
 ```python
-matcher = FuzzyMatcher(threshold_auto=85, threshold_suggest=70)
+matcher = FuzzyMatcher(threshold_suggest=78)
 
 choices = {
     "33000167": "BANCO DO BRASIL S.A.",
@@ -294,7 +345,7 @@ class EntityLookup:
 ### BaseExplorer usa date.py
 
 ```python
-from ifdata_bcb.utils import generate_month_range, yyyymm_to_datetime
+from ifdata_bcb.utils import generate_month_range
 
 class BaseExplorer:
     def _resolve_date_range(self, start, end, trimestral=False):
@@ -302,30 +353,40 @@ class BaseExplorer:
             return generate_quarter_range(start, end)
         return generate_month_range(start, end)
 
-    def _finalize_read(self, df):
-        # Converter DATA int -> datetime
-        if "DATA" in df.columns:
-            df["DATA"] = df["DATA"].apply(yyyymm_to_datetime)
+    # Conversao DATA int -> datetime agora feita no DuckDB via _read_glob(date_column=...)
 ```
 
-### BaseCollector usa period.py
+### BaseCollector usa DataManager (que usa period.py internamente)
 
 ```python
-from ifdata_bcb.utils import extract_periods_from_files
-
 class BaseCollector:
     def _get_missing_periods(self, start, end):
-        # Periodos ja coletados
-        files = self._qe.list_files(self._get_subdir())
-        existing = extract_periods_from_files(files, self._get_file_prefix())
-
-        # Periodos necessarios
-        required = self._generate_periods(start, end)
+        # Periodos ja coletados (via DataManager)
+        all_periods = self._generate_periods(start, end)
+        existing = self.dm.get_periodos_disponiveis(
+            self._get_file_prefix(), self._get_subdir()
+        )
 
         # Diferenca
-        existing_set = {y * 100 + m for y, m in existing}
-        return [p for p in required if p not in existing_set]
+        existing_ints = {y * 100 + m for y, m in existing}
+        return [p for p in all_periods if p not in existing_ints]
 ```
+
+---
+
+## nulls.py
+
+### is_valid()
+
+Check escalar de nulidade sem dependencia de pandas. Substitui `pd.notna()`/`pd.isna()` para valores individuais extraidos de DataFrames DuckDB:
+
+```python
+def is_valid(val: object) -> bool
+```
+
+Compativel com `None`, `float('nan')`, `numpy.nan`, `pd.NA` (StringDtype) e `pd.NaT`. Explora auto-desigualdade IEEE 754 (`NaN != NaN`) e trata `pd.NA` via `try/except` (comparacao ambigua).
+
+Usado em `lookup.py`, `date.py` e `cadastro/collector.py` para checks escalares. Operacoes vetorizadas (`.notna()` sobre Series) continuam usando pandas.
 
 ---
 
@@ -335,12 +396,11 @@ class BaseCollector:
 # utils/__init__.py
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 from ifdata_bcb.utils.fuzzy import FuzzyMatcher
-from ifdata_bcb.utils.text import normalize_accents, normalize_text
+from ifdata_bcb.utils.text import normalize_accents, normalize_text, stem_ptbr
 from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
     normalize_date_to_int,
-    yyyymm_to_datetime,
 )
 from ifdata_bcb.utils.period import (
     parse_period_from_filename,
@@ -356,11 +416,11 @@ __all__ = [
     # text
     "normalize_accents",
     "normalize_text",
+    "stem_ptbr",
     # date
     "generate_month_range",
     "generate_quarter_range",
     "normalize_date_to_int",
-    "yyyymm_to_datetime",
     # period
     "parse_period_from_filename",
     "extract_periods_from_files",

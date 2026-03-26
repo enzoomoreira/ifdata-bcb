@@ -3,9 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
-from ifdata_bcb.domain.exceptions import (
-    InvalidIdentifierError,
-)
+from ifdata_bcb.domain.exceptions import InvalidIdentifierError
 from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
 from ifdata_bcb.utils.date import normalize_date_to_int
 
@@ -48,14 +46,7 @@ class InstitutionList(BaseModel):
     def normalize_and_validate(cls, v: InstitutionInput) -> list[str]:
         if isinstance(v, str):
             v = [v]
-
-        result = []
-        for item in v:
-            item = item.strip()
-            if not re.fullmatch(r"[0-9]{8}", item):
-                raise InvalidIdentifierError(item)
-            result.append(item)
-        return result
+        return [ValidatedCnpj8(value=item).value for item in v]
 
 
 class AccountList(BaseModel):

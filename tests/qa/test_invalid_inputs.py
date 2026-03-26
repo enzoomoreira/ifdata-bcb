@@ -2,7 +2,7 @@
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntitySearch
 from ifdata_bcb.domain.exceptions import (
     InvalidDateFormatError,
     InvalidDateRangeError,
@@ -17,9 +17,16 @@ class TestMissingParams:
         with pytest.raises(TypeError):
             qa_cosif.read(instituicao="60872504")  # type: ignore[call-arg]
 
-    def test_read_without_instituicao_raises(self, qa_cosif: COSIFExplorer) -> None:
-        with pytest.raises(TypeError):
-            qa_cosif.read(start="2023-03")  # type: ignore[call-arg]
+    def test_read_without_instituicao_does_not_raise(
+        self, qa_cosif: COSIFExplorer
+    ) -> None:
+        """instituicao e opcional agora (bulk read)."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df = qa_cosif.read("2023-03")
+        assert df is not None
 
 
 class TestInvalidCNPJ:
@@ -86,22 +93,53 @@ class TestInvalidScope:
                 instituicao="60872504", start="2023-03", cadastro=["COLUNA_FAKE"]
             )
 
+    def test_columns_unknown_raises(self, qa_cosif: COSIFExplorer) -> None:
+        with pytest.raises(InvalidScopeError):
+            qa_cosif.read("2023-03", instituicao="60872504", columns=["INVENTADA"])
+
+
+class TestPassthroughColumns:
+    """Colunas nativas do parquet que nao estao em _COLUMN_MAP devem ser aceitas."""
+
+    def test_cosif_cnpj8_accepted(self, qa_cosif: COSIFExplorer) -> None:
+        df = qa_cosif.read(
+            "2023-03", instituicao="60872504", columns=["CNPJ_8", "DATA", "VALOR"]
+        )
+        assert list(df.columns) == ["CNPJ_8", "DATA", "VALOR"]
+
+    def test_cosif_documento_accepted(self, qa_cosif: COSIFExplorer) -> None:
+        df = qa_cosif.read(
+            "2023-03", instituicao="60872504", columns=["DOCUMENTO", "DATA"]
+        )
+        assert "DOCUMENTO" in df.columns
+
 
 class TestSearchResilience:
-    def test_search_sql_injection(self, qa_lookup: EntityLookup) -> None:
-        df = qa_lookup.search("'; DROP TABLE--")
+    def test_search_sql_injection(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("'; DROP TABLE--")
         assert df.empty or isinstance(df.empty, bool)
 
-    def test_search_10k_chars(self, qa_lookup: EntityLookup) -> None:
-        df = qa_lookup.search("A" * 10000)
+    def test_search_10k_chars(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("A" * 10000)
         assert df.empty
 
-    def test_search_unicode_special(self, qa_lookup: EntityLookup) -> None:
+    def test_search_unicode_special(self, qa_search: EntitySearch) -> None:
         for term in ["\x00\x01\x02", "\ud800", "banco"]:
             try:
-                qa_lookup.search(term)
+                qa_search.search(term)
             except (UnicodeError, ValueError):
                 pass  # Erros de encoding sao aceitaveis
+
+    def test_search_with_quotes_in_term(self, qa_search: EntitySearch) -> None:
+        """Aspas no termo de busca nao crasheiam a query SQL."""
+        import pandas as pd
+
+        df = qa_search.search("BANCO 'ALFA'")
+        assert isinstance(df, pd.DataFrame)
+
+    def test_search_empty_term_returns_empty(self, qa_search: EntitySearch) -> None:
+        df = qa_search.search("")
+        assert df.empty
 
 
 class TestGracefulEmpty:
@@ -111,6 +149,6 @@ class TestGracefulEmpty:
         )
         assert df.empty
 
-    def test_list_accounts_negative_limit(self, qa_cosif: COSIFExplorer) -> None:
+    def test_list_contas_negative_limit(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(Exception):
-            qa_cosif.list_accounts(limit=-1)
+            qa_cosif.list_contas(limit=-1)

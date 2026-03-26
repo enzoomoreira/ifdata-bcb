@@ -104,7 +104,7 @@ class TestFirstAvailablePeriod:
             month = period % 100
             year = period // 100
             assert 1 <= month <= 12, f"{key}: mes invalido {month}"
-            assert 1990 <= year <= 2030, f"{key}: ano fora do range {year}"
+            assert 1985 <= year <= 2030, f"{key}: ano fora do range {year}"
 
     def test_cosif_prudencial_after_individual(self) -> None:
         assert (
@@ -117,13 +117,13 @@ class TestGetFirstAvailable:
     """Lookup de cutoff por prefix."""
 
     def test_cosif_individual(self) -> None:
-        assert get_first_available("cosif_ind") == 199501
+        assert get_first_available("cosif_ind") == 198807
 
     def test_cosif_prudencial(self) -> None:
         assert get_first_available("cosif_prud") == 201407
 
     def test_ifdata_valores(self) -> None:
-        assert get_first_available("ifdata_val") == 200303
+        assert get_first_available("ifdata_val") == 200003
 
     def test_ifdata_cadastro(self) -> None:
         assert get_first_available("ifdata_cad") == 200503

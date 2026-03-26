@@ -9,13 +9,16 @@ from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.utils.period import extract_periods_from_files
 
 
+def _resolve_base_path(base_path: Path | None) -> Path:
+    return base_path or get_settings().cache_path
+
+
 def list_parquet_files(
     subdir: str,
     pattern: str = "*.parquet",
     base_path: Path | None = None,
 ) -> list[str]:
-    path = base_path or get_settings().cache_path
-    dir_path = path / subdir
+    dir_path = _resolve_base_path(base_path) / subdir
     if not dir_path.exists():
         return []
     return [f.stem for f in dir_path.glob(pattern)]
@@ -26,8 +29,7 @@ def parquet_exists(
     subdir: str,
     base_path: Path | None = None,
 ) -> bool:
-    cache_path = base_path or get_settings().cache_path
-    filepath = cache_path / subdir / f"{filename}.parquet"
+    filepath = _resolve_base_path(base_path) / subdir / f"{filename}.parquet"
     return filepath.exists()
 
 
@@ -36,8 +38,7 @@ def get_parquet_path(
     subdir: str,
     base_path: Path | None = None,
 ) -> Path:
-    cache_path = base_path or get_settings().cache_path
-    return cache_path / subdir / f"{filename}.parquet"
+    return _resolve_base_path(base_path) / subdir / f"{filename}.parquet"
 
 
 _metadata_conn: duckdb.DuckDBPyConnection | None = None
@@ -57,8 +58,7 @@ def get_parquet_metadata(
     base_path: Path | None = None,
 ) -> dict | None:
     """Retorna {arquivo, subdir, registros, colunas, status} ou None se nao existir."""
-    cache_path = base_path or get_settings().cache_path
-    filepath = cache_path / subdir / f"{filename}.parquet"
+    filepath = _resolve_base_path(base_path) / subdir / f"{filename}.parquet"
 
     if not filepath.exists():
         return None
@@ -93,7 +93,7 @@ class DataManager:
     """Gerenciador de persistencia em Parquet."""
 
     def __init__(self, base_path: Path | None = None):
-        self.cache_path = Path(base_path) if base_path else get_settings().cache_path
+        self.cache_path = _resolve_base_path(Path(base_path) if base_path else None)
         self._logger = get_logger(__name__)
         self._conn = duckdb.connect()
 
@@ -136,7 +136,7 @@ class DataManager:
     def get_metadata(self, filename: str, subdir: str) -> dict | None:
         return get_parquet_metadata(filename, subdir, self.cache_path)
 
-    def get_available_periods(
+    def get_periodos_disponiveis(
         self,
         prefix: str,
         subdir: str,

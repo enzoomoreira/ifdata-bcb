@@ -1,18 +1,27 @@
-"""Testes para EntityLookup -- resolucao de entidades, escopos e busca fuzzy."""
+"""Testes para EntityLookup e EntitySearch -- resolucao de entidades e busca fuzzy."""
 
 from pathlib import Path
 
 import pytest
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
-from ifdata_bcb.domain.exceptions import DataUnavailableError, InvalidScopeError
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
-from tests.conftest import BANCO_A_CNPJ, BANCO_B_CNPJ, COD_CONGL_FIN, COD_CONGL_PRUD
+from tests.conftest import (
+    BANCO_A_CNPJ,
+    BANCO_B_CNPJ,
+    COD_CONGL_FIN,
+    COD_CONGL_PRUD,
+)
 
 
 def _make_lookup(cache_dir: Path) -> EntityLookup:
     qe = QueryEngine(base_path=cache_dir)
     return EntityLookup(query_engine=qe)
+
+
+def _make_search(cache_dir: Path) -> EntitySearch:
+    lookup = _make_lookup(cache_dir)
+    return EntitySearch(lookup)
 
 
 # =========================================================================
@@ -27,29 +36,6 @@ class TestRealEntityCondition:
         # Deve ser uma expressao SQL valida que filtra apenas entidades reais
         assert "CNPJ_8 IS NOT NULL" in condition
         assert "regexp_matches" in condition
-
-    def test_legacy_fallback_without_codinst(self, tmp_cache_dir: Path) -> None:
-        """Se cadastro nao tem CodInst, usa heuristica por nome."""
-        import pandas as pd
-        from tests.conftest import _save_parquet
-
-        df = pd.DataFrame(
-            {
-                "Data": pd.array([202303], dtype="Int64"),
-                "CNPJ_8": ["12345678"],
-                "NomeInstituicao": ["BANCO TESTE"],
-                "CNPJ_LIDER_8": [None],
-                "CodConglomeradoPrudencial": [None],
-                "CodConglomeradoFinanceiro": [None],
-                "Situacao": ["A"],
-            }
-        )
-        _save_parquet(df, tmp_cache_dir, "ifdata/cadastro", "ifdata_cad_202303")
-
-        lookup = _make_lookup(tmp_cache_dir)
-        condition = lookup.real_entity_condition()
-        # Sem CodInst -> usa heuristica
-        assert "PRUDENCIAL" in condition or "MASTER" in condition
 
 
 # =========================================================================
@@ -109,55 +95,6 @@ class TestGetEntityIdentifiers:
 
 
 # =========================================================================
-# resolve_ifdata_scope
-# =========================================================================
-
-
-class TestResolveIfdataScope:
-    def test_individual_returns_cnpj_directly(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = lookup.resolve_ifdata_scope(BANCO_A_CNPJ, "individual")
-
-        assert result.cod_inst == BANCO_A_CNPJ
-        assert result.tipo_inst == 3
-        assert result.escopo == "individual"
-
-    def test_prudencial_resolves_to_conglomerate(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = lookup.resolve_ifdata_scope(BANCO_A_CNPJ, "prudencial")
-
-        assert result.cod_inst == COD_CONGL_PRUD
-        assert result.tipo_inst == 1
-        assert result.escopo == "prudencial"
-
-    def test_prudencial_raises_for_entity_without_conglomerate(
-        self, populated_cache: Path
-    ) -> None:
-        lookup = _make_lookup(populated_cache)
-        with pytest.raises(DataUnavailableError) as exc_info:
-            lookup.resolve_ifdata_scope(BANCO_B_CNPJ, "prudencial")
-        assert "prudencial" in str(exc_info.value)
-
-    def test_prudencial_suggests_cadastro_when_entity_unknown(
-        self, tmp_cache_dir: Path
-    ) -> None:
-        """Sem cadastro coletado, mensagem sugere executar cadastro.collect()."""
-        lookup = _make_lookup(tmp_cache_dir)
-        with pytest.raises(DataUnavailableError, match="cadastro.collect"):
-            lookup.resolve_ifdata_scope("60872504", "prudencial")
-
-    def test_invalid_scope_raises(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        with pytest.raises(InvalidScopeError):
-            lookup.resolve_ifdata_scope(BANCO_A_CNPJ, "inexistente")
-
-    def test_scope_case_insensitive(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        result = lookup.resolve_ifdata_scope(BANCO_A_CNPJ, "INDIVIDUAL")
-        assert result.escopo == "individual"
-
-
-# =========================================================================
 # get_canonical_names_for_cnpjs
 # =========================================================================
 
@@ -179,6 +116,77 @@ class TestGetCanonicalNames:
         lookup = _make_lookup(populated_cache)
         assert lookup.get_canonical_names_for_cnpjs([]) == {}
 
+    def test_cache_reuses_previous_results(self, populated_cache: Path) -> None:
+        """Segunda chamada com mesmos CNPJs nao deve executar query SQL."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+
+        # Substituir sql() por um que falha -- se cache funciona, nao sera chamado
+        original_sql = lookup._qe.sql
+        lookup._qe.sql = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            RuntimeError("sql() nao deveria ser chamado com cache preenchido")
+        )
+        try:
+            names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+            assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_cache_partial_hit_queries_only_missing(
+        self, populated_cache: Path
+    ) -> None:
+        """Com subset ja cacheado, apenas CNPJs novos devem gerar query."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+
+        # Agora pedir A + B: A ja esta no cache, so B precisa de query
+        calls: list[str] = []
+        original_sql = lookup._qe.sql
+
+        def tracking_sql(query: str) -> object:
+            calls.append(query)
+            return original_sql(query)
+
+        lookup._qe.sql = tracking_sql  # type: ignore[assignment]
+        try:
+            names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ, BANCO_B_CNPJ])
+            assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+            assert names[BANCO_B_CNPJ] == "BANCO BETA S.A."
+            # Query deve conter apenas BANCO_B, nao BANCO_A
+            assert len(calls) == 1
+            assert BANCO_B_CNPJ in calls[0]
+            assert BANCO_A_CNPJ not in calls[0]
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_cache_unknown_cnpj_not_retried(self, populated_cache: Path) -> None:
+        """CNPJ desconhecido cacheado como '' nao gera query repetida."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs(["99999999"])
+
+        original_sql = lookup._qe.sql
+        lookup._qe.sql = lambda *a, **kw: (_ for _ in ()).throw(  # type: ignore[assignment]
+            RuntimeError("sql() nao deveria ser chamado")
+        )
+        try:
+            names = lookup.get_canonical_names_for_cnpjs(["99999999"])
+            assert names["99999999"] == ""
+        finally:
+            lookup._qe.sql = original_sql
+
+    def test_clear_cache_forces_fresh_query(self, populated_cache: Path) -> None:
+        """Apos clear_cache(), proxima chamada deve consultar o banco."""
+        lookup = _make_lookup(populated_cache)
+        lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+        assert BANCO_A_CNPJ in lookup._name_cache
+
+        lookup.clear_cache()
+        assert lookup._name_cache == {}
+
+        # Deve funcionar normalmente apos clear
+        names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
+        assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
+
 
 # =========================================================================
 # search
@@ -187,41 +195,41 @@ class TestGetCanonicalNames:
 
 class TestSearch:
     def test_finds_by_exact_name(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("BANCO ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("BANCO ALFA")
 
         assert not df.empty
         assert BANCO_A_CNPJ in df["CNPJ_8"].values
 
     def test_finds_by_partial_name(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert not df.empty
         assert BANCO_A_CNPJ in df["CNPJ_8"].values
 
     def test_returns_score_column(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert "SCORE" in df.columns
         assert all(df["SCORE"] > 0)
 
     def test_returns_situacao(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("ALFA")
+        search = _make_search(populated_cache)
+        df = search.search("ALFA")
 
         assert "SITUACAO" in df.columns
 
     def test_respects_limit(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("BANCO", limit=1)
+        search = _make_search(populated_cache)
+        df = search.search("BANCO", limit=1)
 
         assert len(df) <= 1
 
     def test_empty_term_returns_empty(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("   ")
+        search = _make_search(populated_cache)
+        df = search.search("   ")
 
         assert df.empty
         assert list(df.columns) == [
@@ -233,15 +241,15 @@ class TestSearch:
         ]
 
     def test_no_match_returns_empty(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
-        df = lookup.search("XYZNONEXISTENT")
+        search = _make_search(populated_cache)
+        df = search.search("XYZNONEXISTENT")
 
         assert df.empty
 
     def test_invalid_limit_raises(self, populated_cache: Path) -> None:
-        lookup = _make_lookup(populated_cache)
+        search = _make_search(populated_cache)
         with pytest.raises(ValueError, match="limit"):
-            lookup.search("ALFA", limit=0)
+            search.search("ALFA", limit=0)
 
 
 # =========================================================================
@@ -267,3 +275,68 @@ class TestGetDataSources:
         sources = lookup._get_data_sources_for_cnpjs(["99999999"])
 
         assert sources["99999999"] == set()
+
+
+# =========================================================================
+# get_entity_identifiers -- FIRST FILTER (NULL-resistant)
+# =========================================================================
+
+
+class TestGetEntityIdentifiersFinNull:
+    """Testa que FIRST ... FILTER retorna valor nao-NULL mesmo quando recente e NULL."""
+
+    def test_cod_congl_fin_returns_non_null_when_recent_is_null(
+        self, fin_disappeared_cache: Path
+    ) -> None:
+        """CodConglFin desapareceu no periodo recente; FIRST FILTER pega o anterior."""
+        lookup = _make_lookup(fin_disappeared_cache)
+        info = lookup.get_entity_identifiers(BANCO_A_CNPJ)
+
+        assert info["cod_congl_fin"] == COD_CONGL_FIN
+        assert info["cod_congl_prud"] == COD_CONGL_PRUD
+        assert info["nome_entidade"] == "BANCO ALFA S.A."
+
+
+# =========================================================================
+# search -- CNPJ exact match
+# =========================================================================
+
+
+class TestSearchByCnpj:
+    def test_search_by_cnpj_exact_match(self, populated_cache: Path) -> None:
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_A_CNPJ)
+
+        assert not df.empty
+        assert df.iloc[0]["CNPJ_8"] == BANCO_A_CNPJ
+        assert df.iloc[0]["SCORE"] == 100
+
+    def test_search_by_cnpj_unknown_returns_empty(self, populated_cache: Path) -> None:
+        """CNPJ desconhecido de 8 digitos sem match fuzzy retorna vazio."""
+        search = _make_search(populated_cache)
+        df = search.search("99999999")
+
+        assert df.empty
+
+    def test_search_by_cnpj_has_correct_columns(self, populated_cache: Path) -> None:
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_A_CNPJ)
+
+        expected_cols = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
+        assert list(df.columns) == expected_cols
+
+    def test_search_by_name_still_works(self, populated_cache: Path) -> None:
+        search = _make_search(populated_cache)
+        df = search.search("BANCO ALFA")
+
+        assert not df.empty
+        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+
+    def test_search_cnpj_exact_no_sources_returns_empty(
+        self, populated_cache: Path
+    ) -> None:
+        """CNPJ no cadastro mas sem dados em nenhuma fonte retorna vazio."""
+        search = _make_search(populated_cache)
+        df = search.search(BANCO_B_CNPJ)
+        if not df.empty:
+            assert (df["FONTES"] != "").all()

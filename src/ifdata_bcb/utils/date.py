@@ -1,13 +1,30 @@
-from calendar import monthrange
 from datetime import date, datetime
 
 import pandas as pd
 
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
+from ifdata_bcb.utils.nulls import is_valid
 
 
-def _parse_date_input(date_input: int | str) -> date:
-    # Aceita: int YYYYMM, str 'YYYYMM', 'YYYY-MM', 'YYYY-MM-DD'
+def _parse_date_input(date_input: int | str | date | datetime | pd.Timestamp) -> date:
+    # Aceita: int YYYYMM, str 'YYYYMM'/'YYYY-MM'/'YYYY-MM-DD',
+    #         date, datetime, pd.Timestamp
+    try:
+        is_na = not is_valid(date_input)
+    except (ValueError, TypeError):
+        is_na = False
+    if is_na is True:
+        raise InvalidDateFormatError("NaT", "pd.NaT nao e uma data valida")
+
+    if isinstance(date_input, pd.Timestamp):
+        return date_input.date()
+
+    if isinstance(date_input, datetime):
+        return date_input.date()
+
+    if isinstance(date_input, date):
+        return date_input
+
     if isinstance(date_input, int):
         year, month = divmod(date_input, 100)
         return date(year, month, 1)
@@ -29,8 +46,8 @@ def _parse_date_input(date_input: int | str) -> date:
     raise InvalidDateFormatError(str(date_input))
 
 
-def normalize_date_to_int(date_val: int | str) -> int:
-    """Converte data para int YYYYMM. Aceita int ou str ('YYYYMM', 'YYYY-MM', 'YYYY-MM-DD')."""
+def normalize_date_to_int(date_val: int | str | date | datetime | pd.Timestamp) -> int:
+    """Converte data para int YYYYMM. Aceita int, str, date, datetime, pd.Timestamp."""
     if isinstance(date_val, int):
         month = date_val % 100
         if not (1 <= month <= 12):
@@ -41,7 +58,10 @@ def normalize_date_to_int(date_val: int | str) -> int:
     return parsed_date.year * 100 + parsed_date.month
 
 
-def generate_month_range(start: int | str, end: int | str) -> list[int]:
+def generate_month_range(
+    start: int | str | date | datetime | pd.Timestamp,
+    end: int | str | date | datetime | pd.Timestamp,
+) -> list[int]:
     """Gera lista de meses YYYYMM entre start e end (inclusive)."""
     start_int = normalize_date_to_int(start)
     end_int = normalize_date_to_int(end)
@@ -66,7 +86,10 @@ def generate_month_range(start: int | str, end: int | str) -> list[int]:
     return months
 
 
-def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
+def generate_quarter_range(
+    start: int | str | date | datetime | pd.Timestamp,
+    end: int | str | date | datetime | pd.Timestamp,
+) -> list[int]:
     """Gera lista de fins de trimestre YYYYMM (03, 06, 09, 12) entre start e end."""
     start_int = normalize_date_to_int(start)
     end_int = normalize_date_to_int(end)
@@ -96,7 +119,8 @@ def generate_quarter_range(start: int | str, end: int | str) -> list[int]:
     return quarters
 
 
-def yyyymm_to_datetime(value: int) -> pd.Timestamp:
-    year, month = divmod(int(value), 100)
-    last_day = monthrange(year, month)[1]
-    return pd.Timestamp(year=year, month=month, day=last_day)
+def align_to_quarter_end(yyyymm: int) -> int:
+    """Alinha YYYYMM para o fim do trimestre correspondente (03, 06, 09, 12)."""
+    year, month = divmod(yyyymm, 100)
+    quarter_month = ((month - 1) // 3 + 1) * 3
+    return year * 100 + quarter_month

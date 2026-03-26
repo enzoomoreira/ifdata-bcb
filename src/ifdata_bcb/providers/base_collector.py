@@ -1,21 +1,27 @@
 import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum, auto
 from pathlib import Path
 
 import duckdb
 import pandas as pd
-import requests
+import httpx
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
 from ifdata_bcb.infra.storage import DataManager
-from ifdata_bcb.providers.collector_models import CollectStatus
 from ifdata_bcb.ui.display import get_display
 from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
 from ifdata_bcb.utils.text import normalize_text
+
+
+class CollectStatus(Enum):
+    SUCCESS = auto()
+    UNAVAILABLE = auto()
+    FAILED = auto()
 
 
 class BaseCollector(ABC):
@@ -39,6 +45,10 @@ class BaseCollector(ABC):
         self._collect_total = 0
         self._collect_lock = threading.Lock()
         self._duckdb_conn = duckdb.connect()  # Conexao para cursors thread-local
+        self._http = httpx.Client(
+            timeout=DEFAULT_REQUEST_TIMEOUT,
+            follow_redirects=True,
+        )
 
     def _get_cursor(self) -> duckdb.DuckDBPyConnection:
         """Retorna cursor thread-local para operacoes DuckDB."""
@@ -76,10 +86,15 @@ class BaseCollector(ABC):
     @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path) -> bool:
         """Baixa um arquivo da URL e salva em output_path."""
-        response = requests.get(url, timeout=DEFAULT_REQUEST_TIMEOUT)
+        response = self._http.get(url)
         response.raise_for_status()
         output_path.write_bytes(response.content)
         return True
+
+    def close(self) -> None:
+        """Libera recursos (HTTP client e DuckDB)."""
+        self._http.close()
+        self._duckdb_conn.close()
 
     def _start(self, title: str, num_items: int, verbose: bool = True) -> None:
         self._collect_total = 0
@@ -161,7 +176,7 @@ class BaseCollector(ABC):
 
     def _get_missing_periods(self, start: str, end: str) -> list[int]:
         all_periods = self._generate_periods(start, end)
-        existing = self.dm.get_available_periods(
+        existing = self.dm.get_periodos_disponiveis(
             self._get_file_prefix(), self._get_subdir()
         )
         existing_ints = {y * 100 + m for y, m in existing}
@@ -174,7 +189,7 @@ class BaseCollector(ABC):
     def _normalize_text_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove newlines e espacos multiplos de colunas de texto dos CSVs do BCB."""
         for col in df.select_dtypes(include=["object"]).columns:
-            df[col] = df[col].apply(normalize_text)
+            df[col] = df[col].map(normalize_text, na_action="ignore")
         return df
 
     # =========================================================================
@@ -337,8 +352,3 @@ class BaseCollector(ABC):
                 )
 
         return pd.DataFrame(status_data)
-
-    def available_periods(self) -> list[tuple[int, int]]:
-        return self.dm.get_available_periods(
-            self._get_file_prefix(), self._get_subdir()
-        )

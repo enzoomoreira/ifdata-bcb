@@ -3,7 +3,6 @@ from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
     normalize_date_to_int,
-    yyyymm_to_datetime,
 )
 from ifdata_bcb.utils.fuzzy import FuzzyMatcher
 from ifdata_bcb.utils.period import (
@@ -11,7 +10,7 @@ from ifdata_bcb.utils.period import (
     get_latest_period,
     parse_period_from_filename,
 )
-from ifdata_bcb.utils.text import normalize_accents, normalize_text
+from ifdata_bcb.utils.text import normalize_accents, normalize_text, stem_ptbr
 
 __all__ = [
     "standardize_cnpj_base8",
@@ -21,8 +20,8 @@ __all__ = [
     "generate_month_range",
     "generate_quarter_range",
     "normalize_date_to_int",
-    "yyyymm_to_datetime",
     "parse_period_from_filename",
     "extract_periods_from_files",
     "get_latest_period",
+    "stem_ptbr",
 ]

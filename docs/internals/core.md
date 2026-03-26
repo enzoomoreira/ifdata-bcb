@@ -6,15 +6,26 @@ O modulo `core` concentra a logica central compartilhada entre todos os provider
 
 ```
 src/ifdata_bcb/core/
-|-- __init__.py           # Exports publicos
-|-- api.py               # Funcao search() de alto nivel
-|-- base_explorer.py     # Classe base abstrata para explorers
-|-- entity_lookup.py     # Resolucao e busca de entidades
+|-- __init__.py           # Exports publicos (EntityLookup, EntitySearch)
+|-- entity/              # Resolucao e busca de entidades
+|   |-- __init__.py      # Re-exports: EntityLookup, EntitySearch
+|   |-- lookup.py        # EntityLookup (metadados, source checking, canonical names)
+|   +-- search.py        # EntitySearch (fuzzy matching, corpus building)
 |-- constants.py         # Configuracoes centralizadas
 +-- eras.py              # Deteccao e tratamento de eras de formato BCB
 ```
 
+> **Nota:** `BaseExplorer` foi movido para `providers/base_explorer.py`.
+
 ## constants.py
+
+### IFDATA_API_BASE
+
+URL base da API IFDATA (OData), centralizada para uso pelos collectors:
+
+```python
+IFDATA_API_BASE = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
+```
 
 ### TIPO_INST_MAP
 
@@ -59,9 +70,9 @@ Primeiro periodo disponivel por fonte (YYYYMM). Periodos anteriores retornam 404
 
 ```python
 FIRST_AVAILABLE_PERIOD: dict[str, int] = {
-    "cosif_individual": 199501,
+    "cosif_individual": 198807,
     "cosif_prudencial": 201407,
-    "ifdata_valores": 200303,
+    "ifdata_valores": 200003,
     "cadastro": 200503,
 }
 ```
@@ -88,7 +99,7 @@ def get_first_available(prefix: str) -> int | None:
 
 ---
 
-## base_explorer.py
+## BaseExplorer (providers/base_explorer.py)
 
 ### Responsabilidades
 
@@ -96,7 +107,7 @@ O `BaseExplorer` e a classe base abstrata para todos os explorers:
 
 1. **Normalizacao**: Padroniza formatos de entrada (datas, CNPJs, contas)
 2. **Validacao**: Verifica parametros obrigatorios e formatos
-3. **SQL Building**: Constroi clausulas WHERE dinamicamente
+3. **SQL Building**: Constroi clausulas WHERE dinamicamente (funcoes em `infra.sql`)
 4. **Mapeamento**: Traduz nomes de colunas (storage -> apresentacao)
 5. **Finalizacao**: Transforma dados de saida (DATA int -> datetime)
 
@@ -115,11 +126,23 @@ class COSIFExplorer(BaseExplorer):
         "SALDO": "VALOR",
     }
 
-    # Colunas a remover do resultado (vazio para COSIF, que expoe todas)
+    # Colunas adicionadas pos-query por Python (nao existem no Parquet)
+    _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
+
+    # Colunas nativas do parquet aceitas em columns= sem precisar estar em _COLUMN_MAP
+    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+
+    # Coluna YYYYMM int para conversao automatica em datetime no DuckDB
+    _DATE_COLUMN = "DATA_BASE"
+
+    # Colunas a remover do resultado
     _DROP_COLUMNS: list[str] = []
 
     # Ordem das colunas no resultado
     _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "ESCOPO", "COD_CONTA", "CONTA", ...]
+
+    # Escopos validos para _validate_escopo()
+    _VALID_ESCOPOS = ["individual", "prudencial"]
 ```
 
 ### Construtor
@@ -181,12 +204,33 @@ def _get_sources(self):
     return self._ESCOPOS
 ```
 
-### Metodos de Normalizacao
+### _read_glob() (wrapper)
 
-#### _normalize_dates()
+Wrapper que injeta `distinct=True`, `date_column` e `exclude_columns` automaticamente ao delegar para `QueryEngine.read_glob()`:
 
 ```python
-def _normalize_dates(self, datas: DateInput) -> list[int]:
+def _read_glob(
+    self,
+    pattern: str,
+    subdir: str,
+    columns: list[str] | None = None,
+    where: str | None = None,
+) -> pd.DataFrame:
+    """
+    Le parquets via DuckDB com dedup, datetime e exclude automaticos.
+
+    - distinct=True: dedup no DuckDB (em vez de drop_duplicates pos-query)
+    - date_column: usa _DATE_COLUMN da subclasse para conversao YYYYMM->datetime
+    - exclude_columns: usa _DROP_COLUMNS para excluir colunas internas
+    """
+```
+
+### Metodos de Normalizacao
+
+#### _normalize_datas()
+
+```python
+def _normalize_datas(self, datas: DateInput) -> list[int]:
     """
     Normaliza datas para lista de inteiros YYYYMM.
 
@@ -199,10 +243,10 @@ def _normalize_dates(self, datas: DateInput) -> list[int]:
     """
 ```
 
-#### _normalize_accounts()
+#### _normalize_contas()
 
 ```python
-def _normalize_accounts(
+def _normalize_contas(
     self, contas: AccountInput | None
 ) -> list[str] | None:
     """
@@ -217,10 +261,10 @@ def _normalize_accounts(
     """
 ```
 
-#### _normalize_institutions()
+#### _normalize_instituicoes()
 
 ```python
-def _normalize_institutions(
+def _normalize_instituicoes(
     self, instituicoes: InstitutionInput | None
 ) -> list[str] | None:
     """
@@ -237,10 +281,10 @@ Normalizacao e validacao de inputs sao delegadas para modelos Pydantic em `domai
 - `InstitutionList`: Normaliza e valida lista de CNPJs
 - `AccountList`: Normaliza lista de contas
 
-#### _resolve_entity()
+#### _resolve_entidade()
 
 ```python
-def _resolve_entity(self, identificador: str) -> str:
+def _resolve_entidade(self, identificador: str) -> str:
     """
     Valida CNPJ de exatamente 8 digitos.
     Delega para ValidatedCnpj8 (Pydantic).
@@ -255,15 +299,99 @@ def _resolve_entity(self, identificador: str) -> str:
 ```python
 def _validate_required_params(
     self,
-    instituicao: InstitutionInput | None,
     start: str | None,
 ) -> None:
     """
     Valida parametros obrigatorios.
 
     Raises:
-        MissingRequiredParameterError: Se faltar instituicao ou start
+        MissingRequiredParameterError: Se faltar start
     """
+```
+
+**Nota**: `instituicao` nao e mais validado aqui, pois agora e opcional em todos os explorers.
+
+#### _validate_escopo()
+
+```python
+def _validate_escopo(self, escopo: str) -> str:
+    """
+    Valida e normaliza nome de escopo.
+
+    Raises:
+        InvalidScopeError: Se escopo nao estiver em _VALID_ESCOPOS
+    """
+```
+
+#### _validate_columns()
+
+```python
+def _validate_columns(self, columns: list[str] | None) -> list[str] | None:
+    """
+    Valida nomes de colunas contra o conjunto conhecido.
+    Emite EmptyFilterWarning se columns=[].
+
+    Raises:
+        InvalidScopeError: Se coluna desconhecida
+    """
+```
+
+#### _filter_columns()
+
+```python
+def _filter_columns(self, df: pd.DataFrame, columns: list[str] | None) -> pd.DataFrame:
+    """Filtra DataFrame para conter apenas as colunas solicitadas."""
+```
+
+#### _storage_columns_for_query()
+
+```python
+def _storage_columns_for_query(
+    self,
+    columns: list[str] | None,
+    required: list[str] | None = None,
+) -> list[str] | None:
+    """
+    Traduz colunas para storage, filtrando derivadas e garantindo required.
+    Usado antes de read_glob() para montar lista de colunas eficiente.
+    """
+```
+
+#### _apply_canonical_names()
+
+```python
+def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aplica nomes canonicos do cadastro a coluna INSTITUICAO.
+    Se INSTITUICAO ja existe no DataFrame, retorna sem alteracao
+    (nomes do parquet sao mantidos). Caso contrario, resolve
+    nomes a partir do CNPJ_8 via EntityLookup.
+    """
+```
+
+#### _diagnose_empty_result()
+
+```python
+def _diagnose_empty_result(
+    self,
+    source_name: str,
+    has_files: bool,
+    had_conta_filter: bool,
+    had_institution_filter: bool = True,
+) -> None:
+    """Cascata de diagnostico quando read() retorna vazio. Emite PartialDataWarning.
+    had_institution_filter diferencia diagnostico entre bulk e filtrado."""
+```
+
+#### _ensure_data_exists()
+
+```python
+def _ensure_data_exists(
+    self,
+    pattern: str | None = None,
+    subdir: str | None = None,
+) -> bool:
+    """Retorna True se existem arquivos parquet para o pattern."""
 ```
 
 #### _resolve_date_range()
@@ -287,13 +415,18 @@ def _resolve_date_range(
     """
 ```
 
-### Metodos para Construir SQL
+### Funcoes de Construcao SQL (infra.sql)
 
-#### _build_string_condition()
+As funcoes de construcao SQL foram extraidas para `infra.sql` como funcoes de modulo:
 
 ```python
-def _build_string_condition(
-    self,
+from ifdata_bcb.infra.sql import build_string_condition, build_int_condition, join_conditions
+```
+
+#### build_string_condition()
+
+```python
+def build_string_condition(
     column: str,
     values: list[str],
     case_insensitive: bool = False,
@@ -318,10 +451,10 @@ def _translate_columns(self, columns: list[str] | None) -> list[str] | None:
     """Traduz nomes de apresentacao para storage. Aceita ambos."""
 ```
 
-#### _build_int_condition()
+#### build_int_condition()
 
 ```python
-def _build_int_condition(self, column: str, values: list[int]) -> str:
+def build_int_condition(column: str, values: list[int]) -> str:
     """
     Constroi clausula WHERE para inteiros.
 
@@ -360,10 +493,10 @@ def _build_cnpj_condition(
     """
 ```
 
-#### _join_conditions()
+#### join_conditions()
 
 ```python
-def _join_conditions(self, conditions: list[str | None]) -> str | None:
+def join_conditions(conditions: list[str | None]) -> str | None:
     """
     Junta condicoes com AND, ignorando None.
 
@@ -407,22 +540,24 @@ def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
 ```python
 def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Pipeline final:
-    1. Aplica mapeamento de colunas
-    2. Converte DATA (int YYYYMM) -> datetime
-    3. Ordena por DATA ascending
+    Pipeline final (simplificado -- dedup, datetime e drop movidos para DuckDB):
+    1. Aplica mapeamento de colunas (_COLUMN_MAP)
+    2. Ordena por DATA ascending
+    3. Reordena colunas (_COLUMN_ORDER, se definido)
     4. Reset index
 
-    Cria copia para evitar SettingWithCopyWarning.
+    Dedup (DISTINCT), conversao datetime (LAST_DAY/MAKE_DATE) e drop de
+    colunas internas sao feitos no DuckDB via _read_glob(), antes do
+    pipeline Python.
     """
 ```
 
 ### Metodos de Introspeccao
 
-#### list_periods()
+#### list_periodos()
 
 ```python
-def list_periods(self, source: str | None = None) -> list[int]:
+def list_periodos(self, source: str | None = None) -> list[int]:
     """
     Lista periodos disponiveis (ordenados).
 
@@ -475,32 +610,48 @@ def describe(self, source: str | None = None) -> dict:
 
 ---
 
-## entity_lookup.py
+## entity/ (pacote)
 
-### Responsabilidades
+O pacote `entity/` contem duas classes com responsabilidades distintas:
 
-O `EntityLookup` centraliza toda logica de busca e resolucao de entidades:
+- **`EntityLookup`** (`lookup.py`): resolucao de metadados, source checking, canonical names
+- **`EntitySearch`** (`search.py`): busca fuzzy de entidades por nome
 
-1. **Busca fuzzy**: Encontra instituicoes por nome parcial
-2. **Resolucao de escopos**: Resolve CNPJ para codigo IFDATA
-3. **Cache**: LRU cache para evitar re-queries
-4. **Uniao de fontes**: Agrega dados de cadastro, COSIF individual e prudencial
+Dependencia unidirecional: `EntitySearch` depende de `EntityLookup`, mas nao o inverso.
 
-### Construtor
+### EntityLookup (lookup.py)
+
+Resolucao de entidades e metadados via queries DuckDB:
+
+1. **Verificacao de disponibilidade**: Quais fontes (cosif/ifdata) tem dados para cada CNPJ
+2. **Resolucao de identificadores**: CNPJ, conglomerado, lider
+3. **Nomes canonicos**: Cache de nomes a partir do cadastro
+4. **Cache**: LRU cache para `get_entity_identifiers`, session cache para nomes
 
 ```python
 def __init__(
     self,
     query_engine: QueryEngine | None = None,
-    fuzzy_threshold_suggest: int = 78,
 ):
     self._qe = query_engine or QueryEngine()
-    self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 ```
 
-- `threshold_suggest`: Score >= 78 aparece em sugestoes
+### EntitySearch (search.py)
 
-### search()
+Busca fuzzy de entidades por nome. Recebe `EntityLookup` no construtor.
+
+```python
+class EntitySearch:
+    def __init__(
+        self,
+        lookup: EntityLookup,
+        fuzzy_threshold_suggest: int = 78,
+    ):
+        self._lookup = lookup
+        self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
+```
+
+### EntitySearch.search()
 
 ```python
 def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
@@ -528,15 +679,15 @@ def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
 Fluxo interno:
 
 1. Normaliza termo (remove acentos, upper)
-2. Carrega entidades reais do cadastro (filtra aliases com `_real_entity_condition()`)
+2. Carrega entidades reais do cadastro (filtra aliases com `real_entity_condition()`)
 3. Carrega aliases pesquisaveis (incluindo nomes prudenciais/financeiros), resolvidos para CNPJ real
 4. Fuzzy match com token_set_ratio sobre todos os aliases
-5. Verifica fontes de dados para CNPJs encontrados
-6. Busca situacao mais recente
+5. Verifica fontes de dados para CNPJs encontrados (via `EntityLookup`)
+6. Busca situacao mais recente (via `EntityLookup`)
 7. Se houver matches com fontes disponiveis, filtra resultados sem `FONTES`
 8. Ordena (ativas primeiro, score desc, nome asc) e aplica limit
 
-### get_entity_identifiers() [CACHED]
+### EntityLookup.get_entity_identifiers() [CACHED]
 
 ```python
 @cached(maxsize=256)
@@ -558,124 +709,71 @@ def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
     """
 ```
 
-### resolve_ifdata_scope()
-
-```python
-def resolve_ifdata_scope(self, cnpj_8: str, escopo: str) -> ScopeResolution:
-    """
-    Resolve CNPJ para codigo IFDATA baseado no escopo.
-
-    Args:
-        cnpj_8: CNPJ de 8 digitos
-        escopo: "individual", "prudencial", ou "financeiro"
-
-    Retorna ScopeResolution:
-    {
-        "cod_inst": str,      # Codigo para filtrar IFDATA
-        "tipo_inst": int,     # 1, 2, ou 3
-        "cnpj_original": str,
-        "escopo": str,
-    }
-
-    Logica:
-    - individual: CNPJ direto, tipo=3
-    - prudencial: CodConglomeradoPrudencial, tipo=1
-    - financeiro: Verifica CodConglomeradoFinanceiro e CNPJ direto
-                  como candidatos nos dados IFDATA, tipo=2
-
-    Raises:
-        InvalidScopeError: Escopo invalido
-        DataUnavailableError: CNPJ nao tem dados para escopo
-    """
-```
-
-### get_canonical_names_for_cnpjs()
+### EntityLookup.get_canonical_names_for_cnpjs() [CACHED]
 
 ```python
 def get_canonical_names_for_cnpjs(self, cnpjs: list[str]) -> dict[str, str]:
     """
-    Retorna nomes canônicos a partir do cadastro mais recente.
+    Retorna nomes canonicos a partir do cadastro mais recente.
 
     O cadastro e a fonte mestra para nomes de entidades nas leituras
     analiticas. Filtra apenas entidades reais (exclui aliases).
     Se um CNPJ nao existir no cadastro, retorna string vazia.
+    Resultados sao cacheados por sessao para evitar queries repetidas.
     """
 ```
 
-### clear_cache()
+Cache incremental por sessao (`_name_cache`): apenas CNPJs nao vistos geram query SQL. Chamadas subsequentes com mesmos CNPJs (ou subsets) retornam do cache sem hit no DuckDB.
+
+### EntityLookup.clear_cache()
 
 ```python
 def clear_cache(self) -> None:
-    """Limpa caches LRU de get_entity_identifiers() e _cadastro_has_codinst()."""
+    """Limpa caches LRU de get_entity_identifiers() e cache de nomes."""
 ```
+
+Limpa tanto o LRU cache de `get_entity_identifiers()` quanto o `_name_cache` de nomes canonicos.
 
 ### Filtragem de Entidades Reais
 
 O EntityLookup distingue entidades reais de aliases prudenciais/financeiros no cadastro:
 
 ```python
-def _real_entity_condition(self) -> str:
+@staticmethod
+def real_entity_condition(
+    cnpj_col: str = "CNPJ_8",
+    cod_inst_col: str = "CodInst",
+) -> str:
     """
     Filtra linhas que representam entidades reais.
 
-    Se o cache possui CodInst (caches novos):
-      CNPJ_8 IS NOT NULL AND CodInst e numerico
+    Regra canonica: toda linha com CNPJ_8 e CodInst numerico
+    representa uma entidade. Aliases prudenciais/financeiros
+    sao identificados pelo CodInst nao-numerico.
 
-    Se nao (caches legados):
-      Heuristica por nome (exclui aliases como 'PRUDENCIAL', 'MASTER')
+    E um @staticmethod -- nao depende de estado de instancia.
     """
 
-def _resolved_entity_cnpj_expr(self) -> str:
+def resolved_entity_cnpj_expr(
+    self,
+    cnpj_col: str = "CNPJ_8",
+    cnpj_lider_col: str = "CNPJ_LIDER_8",
+    cod_inst_col: str = "CodInst",
+) -> str:
     """Resolve aliases prudenciais para o CNPJ da entidade lider."""
 ```
 
-### SQL Interno
+### SQL Interno do EntitySearch
 
 O `search()` usa duas queries separadas:
 
-1. **Entidades reais**: nomes canônicos do cadastro, filtrados por `_real_entity_condition()`,
+1. **Entidades reais**: nomes canonicos do cadastro, filtrados por `real_entity_condition()`,
    com dedup por CNPJ (nome mais recente)
 2. **Aliases pesquisaveis**: todos os nomes do cadastro (incluindo prudenciais/financeiros),
-   resolvidos para o CNPJ real via `_resolved_entity_cnpj_expr()`
+   resolvidos para o CNPJ real via `resolved_entity_cnpj_expr()`
 3. **Pos-processamento**: quando existem matches com `FONTES`, resultados sem dados sao descartados
 
 A funcao `strip_accents()` e UDF registrada no DuckDB para comparacao insensivel a acentos.
-
----
-
-## api.py
-
-### search()
-
-Funcao de alto nivel para busca de instituicoes:
-
-```python
-_lookup: EntityLookup | None = None
-
-def search(termo: str, limit: int = 10) -> pd.DataFrame:
-    """
-    Busca instituicoes por nome em todas as fontes.
-
-    Use esta funcao para encontrar o CNPJ antes de fazer consultas.
-
-    Args:
-        termo: Nome ou parte dele
-        limit: Maximo de resultados (default 10)
-
-    Exemplo:
-        >>> from ifdata_bcb import search
-        >>> search("itau")
-           CNPJ_8          INSTITUICAO SITUACAO       FONTES  SCORE
-        0  60872504  ITAU UNIBANCO S.A.        A  cosif,ifdata    100
-    """
-    global _lookup
-    if _lookup is None:
-        _lookup = EntityLookup()
-    return _lookup.search(termo, limit=limit)
-```
-
-- Lazy loading do EntityLookup
-- Singleton reutilizado em chamadas subsequentes
 
 ---
 
@@ -698,22 +796,22 @@ class BaseExplorer:
 
 ```python
 class COSIFExplorer(BaseExplorer):
-    def read(self, instituicao, start, end=None, conta=None, escopo=None):
-        # Validacao (herdada)
-        self._validate_required_params(instituicao, start)
+    def read(self, start, end=None, *, instituicao=None, escopo=None, conta=None):
+        # Validacao (herdada -- apenas start e obrigatorio)
+        self._validate_required_params(start)
 
         # Normalizacao (herdada)
-        cnpjs = self._normalize_institutions(instituicao)
+        cnpjs = self._normalize_instituicoes(instituicao) if instituicao else None
 
-        # SQL Building (herdado)
+        # SQL Building (herdado + funcoes de infra.sql)
         conditions = [
             self._build_cnpj_condition(cnpjs),
             self._build_date_condition(start, end),
         ]
-        where = self._join_conditions(conditions)
+        where = join_conditions(conditions)
 
-        # Query (usa QueryEngine herdado)
-        df = self._qe.read_glob(
+        # Query (usa _read_glob com distinct, date_column, exclude)
+        df = self._read_glob(
             pattern=f"{prefix}_*.parquet",
             subdir=subdir,
             where=where,
@@ -726,13 +824,12 @@ class COSIFExplorer(BaseExplorer):
 ### EntityLookup usa Constants
 
 ```python
-from ifdata_bcb.core.constants import DATA_SOURCES, get_pattern, get_subdir
+from ifdata_bcb.core.constants import get_pattern, get_subdir
 
-class EntityLookup:
-    def _get_source_path(self, source: str) -> str:
-        subdir = get_subdir(source)
-        pattern = get_pattern(source)
-        return f"{self._cache_path}/{subdir}/{pattern}"
+class EntityLookup:  # em core/entity/lookup.py
+    def _source_path(self, source_key: str) -> str:
+        """Retorna path completo para glob de arquivos de uma fonte."""
+        return f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
 ```
 
 ---
@@ -793,10 +890,30 @@ def check_era_boundary(
     boundary: int,
     source_name: str,
 ) -> None:
-    """Emite IncompatibleEraWarning se dates cruzam o boundary."""
+    """Emite IncompatibleEraWarning se dates cruzam o boundary.
+    Usado pelo COSIF. Para IFDATA, usar check_ifdata_era()."""
 ```
 
 Condicao: `min(dates) < boundary <= max(dates)`. Nao bloqueia a query -- apenas emite `warnings.warn()`.
+
+### check_ifdata_era()
+
+```python
+def check_ifdata_era(
+    dates: list[int] | None,
+    relatorio: str | None = None,
+    escopo: str | None = None,
+) -> None:
+    """Verificacoes de era especificas para IFDATA Valores."""
+```
+
+Emite ate 3 tipos de warning conforme o cenario:
+
+1. **`DroppedReportWarning`**: Relatorio descontinuado apos 202412 (ex: "Carteira de credito ativa - por nivel de risco da operacao").
+2. **`ScopeMigrationWarning`**: Relatorios de credito com escopo filtrado -- migraram de `financeiro` para `prudencial` a partir de 202503. Emitido quando `escopo` e `"financeiro"` ou `"prudencial"` e a query cruza o boundary.
+3. **`IncompatibleEraWarning`**: Contas renumeradas entre eras. **Nao emitido** para relatorios com contas estaveis (credit reports, "Informacoes de Capital").
+
+A deteccao de tipo de relatorio usa normalizacao Unicode (remove acentos, lowercase) para matching robusto.
 
 ---
 
@@ -804,13 +921,12 @@ Condicao: `min(dates) < boundary <= max(dates)`. Nao bloqueia a query -- apenas 
 
 ```python
 # core/__init__.py
-from ifdata_bcb.core.api import search
-from ifdata_bcb.core.base_explorer import BaseExplorer
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 
 __all__ = [
-    "search",
-    "BaseExplorer",
     "EntityLookup",
+    "EntitySearch",
 ]
 ```
+
+> **Nota:** `BaseExplorer` e exportado de `providers/`, nao de `core/`.

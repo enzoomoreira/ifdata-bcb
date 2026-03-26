@@ -18,6 +18,5 @@ class FuzzyMatcher:
             score_cutoff=score_cutoff,
             limit=None,
         )
-        filtered = [(chave, score) for chave, score in matches]
-        filtered.sort(key=lambda x: (-x[1], x[0]))
-        return filtered
+        matches.sort(key=lambda x: (-x[1], x[0]))
+        return matches

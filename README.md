@@ -32,50 +32,51 @@ bcb.cosif.collect('2024-01', '2024-12')
 bcb.ifdata.collect('2024-01', '2024-12')
 
 # 2. Buscar instituicao por nome (fuzzy matching)
-bcb.search('Itau')
-bcb.search('Bradesco')
-#    CNPJ_8                       INSTITUICAO  SITUACAO  FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A    ...    100
-# Quando possivel, prioriza resultados com dados disponiveis em FONTES.
+bcb.cadastro.search('Itau')
+bcb.cadastro.search('Bradesco')
+#    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
 
 # 3. Ler dados usando CNPJ de 8 digitos
-# COSIF/IFDATA: instituicao e start sao OBRIGATORIOS
+# start e OBRIGATORIO (posicional); instituicao e keyword-only e opcional
 # start sozinho = data unica; start + end = range
 
 # COSIF (escopo=None busca em todos os escopos)
 df = bcb.cosif.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     conta='TOTAL GERAL DO ATIVO',
     escopo='prudencial'
 )
 
 # IFDATA
 df = bcb.ifdata.read(
+    '2024-01',
+    '2024-12',
     instituicao='60872504',
-    start='2024-01',
-    end='2024-12',
     conta='Lucro Liquido'
 )
 
+# Bulk read: todas as instituicoes (sem instituicao)
+df = bcb.cosif.read('2024-12', escopo='prudencial')
+
 # Enriquecer com dados cadastrais inline
 df = bcb.ifdata.read(
+    '2024-01',
+    '2024-12',
     instituicao='60872504',
-    start='2024-01',
-    end='2024-12',
     escopo='prudencial',
     cadastro=['TCB', 'SEGMENTO']
 )
 
 # Cadastro
-info = bcb.cadastro.info('60872504', start='2024-12')
+df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
 
-# Cadastro tambem pode ser filtrado sem instituicao
-df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
-
-# 4. Listar contas e instituicoes disponiveis
-bcb.cosif.list_accounts(escopo='prudencial')
-bcb.cosif.list_institutions(escopo='prudencial')
+# 4. Listar valores distintos e contas
+bcb.ifdata.list(["RELATORIO"])
+bcb.cosif.list(["DATA", "ESCOPO"])
+bcb.cadastro.list(["SEGMENTO"], uf='SP')
+bcb.cosif.list_contas(escopo='prudencial')
 
 # 5. SQL direto com DuckDB (para analises avancadas)
 from ifdata_bcb.infra import QueryEngine
@@ -110,8 +111,8 @@ df = qe.sql("""
 ### Arquitetura Interna
 
 - **[architecture.md](docs/internals/architecture.md)** - Visao geral da arquitetura
-- **[core.md](docs/internals/core.md)** - BaseExplorer, EntityLookup, Constants
-- **[domain.md](docs/internals/domain.md)** - Exceptions, Models, Types, Validation
+- **[core.md](docs/internals/core.md)** - EntityLookup, Constants, Eras, BaseExplorer
+- **[domain.md](docs/internals/domain.md)** - Exceptions, Types, Validation
 - **[infra.md](docs/internals/infra.md)** - Settings, QueryEngine, DataManager
 - **[providers.md](docs/internals/providers.md)** - BaseCollector, Explorers
 
@@ -149,9 +150,6 @@ bcb.cosif       # COSIFExplorer
 bcb.ifdata      # IFDATAExplorer
 bcb.cadastro    # CadastroExplorer
 
-# Funcoes
-bcb.search(termo, limit=10)  # Busca instituicoes por nome
-
 # Exceptions
 bcb.BacenAnalysisError       # Classe base para todos os erros
 bcb.DataUnavailableError     # Dados nao disponiveis
@@ -164,23 +162,25 @@ Todos os explorers possuem:
 | Metodo | Descricao |
 |--------|-----------|
 | `collect(start, end, ...)` | Coleta dados do BCB |
-| `read(instituicao, start, ...)` | Le dados com filtros |
-| `list_periods()` | Periodos disponiveis |
+| `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only) |
+| `list(columns, *, ...)` | Lista valores distintos para colunas (SELECT DISTINCT) |
+| `list_periodos()` | Periodos disponiveis |
+| `describe()` | Metadados do provider (inclui `columns` aceitas por `list()`) |
 | `has_data()` | Verifica se tem dados |
 
 Metodos especificos:
 
 | Explorer | Metodos Adicionais |
 |----------|-------------------|
-| `cosif` | `list_accounts()`, `list_institutions()` |
-| `ifdata` | `list_accounts()`, `list_institutions()`, `list_reporters()`, `list_reports()` |
-| `cadastro` | `info()`, `list_segmentos()`, `list_ufs()`, `get_conglomerate_members()` |
+| `cosif` | `list_contas()` |
+| `ifdata` | `list_contas()`, `mapeamento()` |
+| `cadastro` | `search()` |
 
 ## Limitacoes Conhecidas
 
 - **Dependencia de APIs do BCB**: a coleta depende da disponibilidade dos endpoints publicos do Banco Central. Se a API estiver fora do ar ou mudar seu schema, a coleta pode falhar.
-- **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periods()` para verificar disponibilidade.
-- **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz requisicoes HTTP sequenciais ao BCB.
+- **Dados historicos**: nem todos os periodos estao disponiveis para todas as fontes. Use `list_periodos()` para verificar disponibilidade.
+- **Primeira coleta lenta**: a coleta inicial de dados pode demorar dependendo do range de datas solicitado, pois faz multiplas requisicoes HTTP ao BCB (paralelas com 4 workers).
 - **Cache sem invalidacao automatica**: dados coletados ficam em cache local indefinidamente. Para atualizar, colete novamente o periodo desejado.
 - **Sem suporte offline**: a coleta requer conexao com a internet. A leitura funciona offline se os dados ja estiverem em cache.
 

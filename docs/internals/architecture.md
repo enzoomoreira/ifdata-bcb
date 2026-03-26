@@ -6,10 +6,10 @@ Visao geral da arquitetura interna da biblioteca `ifdata-bcb`.
 
 ```mermaid
 graph TD
-    API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro, search()<br/><i>lazy loading</i>"]
-    CORE["<b>CORE (core/)</b><br/>BaseExplorer<br/>EntityLookup<br/>constants<br/>api.search()"]
-    DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>ScopeResolution<br/>Type aliases<br/>Validation models"]
-    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseCollector | collector_models<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/ : IFDATACollector, IFDATAExplorer, CadastroExplorer"]
+    API["<b>API PUBLICA (ifdata_bcb/)</b><br/>__init__.py: cosif, ifdata, cadastro<br/><i>lazy loading</i>"]
+    CORE["<b>CORE (core/)</b><br/>EntityLookup | EntitySearch<br/>constants<br/>eras"]
+    DOMAIN["<b>DOMAIN (domain/)</b><br/>Exceptions (9)<br/>Type aliases<br/>Validation models"]
+    PROVIDERS["<b>PROVIDERS (providers/)</b><br/>BaseExplorer | BaseCollector<br/>cosif/: COSIFCollector, COSIFExplorer<br/>ifdata/valores/: IFDATAValoresCollector, IFDATAExplorer<br/>ifdata/cadastro/: IFDATACadastroCollector, CadastroExplorer"]
     INFRA["<b>INFRA (infra/)</b><br/>config<br/>QueryEngine<br/>DataManager<br/>log (loguru)<br/>cache | resilience"]
     UTILS["<b>UTILS (utils/)</b><br/>text | date<br/>fuzzy | cnpj<br/>period"]
     UI["<b>UI (ui/)</b><br/>Display (Rich)"]
@@ -27,34 +27,44 @@ src/ifdata_bcb/
 |-- __init__.py               # Entry point (lazy loading)
 |-- core/                     # Logica central compartilhada
 |   |-- __init__.py
-|   |-- api.py               # search() publica
-|   |-- base_explorer.py     # Classe base abstrata
-|   |-- entity_lookup.py     # Resolucao de entidades
-|   +-- constants.py         # Configuracoes centralizadas
+|   |-- entity/              # Resolucao e busca de entidades
+|   |   |-- __init__.py      # Re-exports: EntityLookup, EntitySearch
+|   |   |-- lookup.py        # EntityLookup (metadados, source checking)
+|   |   +-- search.py        # EntitySearch (fuzzy matching)
+|   |-- constants.py         # Configuracoes centralizadas
+|   +-- eras.py              # Deteccao e tratamento de eras de formato BCB
 |-- domain/                   # Modelos e tipos
 |   |-- __init__.py
 |   |-- exceptions.py        # Hierarquia de excecoes
-|   |-- models.py            # ScopeResolution
 |   |-- types.py             # DateInput, AccountInput, etc
 |   +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
 |-- providers/                # Implementacoes por fonte
 |   |-- __init__.py
-|   |-- base_collector.py    # Template para coleta
-|   |-- collector_models.py  # CollectStatus enum
+|   |-- base_explorer.py     # Classe base abstrata para explorers
+|   |-- base_collector.py    # Template para coleta + CollectStatus enum
+|   |-- enrichment.py        # Enriquecimento cadastral inline
 |   |-- cosif/               # COSIF (mensal)
 |   |   |-- __init__.py
 |   |   |-- collector.py     # COSIFCollector
 |   |   +-- explorer.py      # COSIFExplorer
 |   +-- ifdata/              # IFDATA (trimestral)
 |       |-- __init__.py
-|       |-- collector.py     # IFDATAValoresCollector, IFDATACadastroCollector
-|       |-- explorer.py      # IFDATAExplorer
-|       +-- cadastro_explorer.py  # CadastroExplorer
+|       |-- cadastro/        # Dados cadastrais
+|       |   |-- __init__.py
+|       |   |-- collector.py # IFDATACadastroCollector
+|       |   |-- explorer.py  # CadastroExplorer
+|       |   +-- search.py    # CadastroSearch (busca com filtros fonte/escopo)
+|       +-- valores/         # Dados financeiros (valores)
+|           |-- __init__.py
+|           |-- collector.py # IFDATAValoresCollector
+|           |-- explorer.py  # IFDATAExplorer
+|           +-- temporal.py  # TemporalResolver (resolucao temporal por periodo)
 |-- infra/                    # Infraestrutura tecnica
 |   |-- __init__.py
 |   |-- config.py            # Settings (pydantic-settings)
 |   |-- paths.py             # ensure_dir, temp_dir
 |   |-- query.py             # QueryEngine (DuckDB)
+|   |-- sql.py               # Funcoes de construcao SQL (build_string_condition, etc)
 |   |-- storage.py           # DataManager (Parquet)
 |   |-- log.py               # Logging (Loguru)
 |   |-- cache.py             # Cache LRU com registro global
@@ -77,26 +87,27 @@ src/ifdata_bcb/
 
 - Ponto de entrada da biblioteca
 - Lazy loading de explorers (`cosif`, `ifdata`, `cadastro`)
-- Exporta `search()` para busca de instituicoes
 - Exporta excecoes para tratamento de erros
+- Busca de instituicoes via `bcb.cadastro.search()`
 
 ### Core (`core/`)
 
-- **BaseExplorer**: Classe base abstrata com logica compartilhada de leitura
-- **EntityLookup**: Busca e resolucao de entidades (nome -> CNPJ)
+- **EntityLookup**: Resolucao de metadados, source checking, canonical names
+- **EntitySearch**: Busca fuzzy de entidades por nome (via FuzzyMatcher)
 - **constants**: Mapeamentos centralizados (DATA_SOURCES, TIPO_INST_MAP)
-- **api**: Funcao `search()` de alto nivel
+- **eras**: Deteccao e tratamento de eras de formato BCB
 
 ### Domain (`domain/`)
 
 - **exceptions**: Hierarquia de 9 excecoes customizadas
-- **models**: `ScopeResolution` dataclass para resolucao IFDATA
 - **types**: Type aliases para parametros flexiveis
 - **validation**: Pydantic models para normalizacao/validacao de inputs
 
 ### Providers (`providers/`)
 
+- **BaseExplorer**: Classe base abstrata com logica compartilhada de leitura
 - **BaseCollector**: Template Method para coleta paralela
+- **enrichment**: Enriquecimento cadastral inline (`cadastro=` parameter)
 - **COSIFExplorer/Collector**: Dados COSIF (mensal)
 - **IFDATAExplorer/Collector**: Dados IFDATA Valores (trimestral)
 - **CadastroExplorer**: Dados cadastrais IFDATA
@@ -106,8 +117,9 @@ src/ifdata_bcb/
 - **config**: Settings via pydantic-settings (BACEN_DATA_DIR)
 - **paths**: Gerenciamento de diretorios (`ensure_dir`, `temp_dir`)
 - **QueryEngine**: Motor DuckDB sobre Parquet
+- **sql**: Funcoes de construcao SQL (`build_string_condition`, `build_account_condition`, `build_like_condition`, `join_conditions`, etc)
 - **DataManager**: Persistencia em Parquet
-- **log**: Dual output (console WARNING+, arquivo DEBUG+)
+- **log**: Dual output (console WARNING+, arquivo DEBUG+), `emit_user_warning`
 - **cache**: Decorator `@cached` com registro global
 - **resilience**: `@retry` com exponential backoff
 
@@ -129,25 +141,19 @@ src/ifdata_bcb/
 
 ### Lazy Loading
 
-Explorers e `search` sao carregados sob demanda para startup rapido (~17ms):
+Explorers sao carregados sob demanda para startup rapido (~17ms):
 
 ```python
 # Em __init__.py
 _cosif = None
-_search = None
 
 def __getattr__(name):
-    global _cosif, _search
+    global _cosif
     if name == "cosif":
         if _cosif is None:
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
             _cosif = COSIFExplorer()
         return _cosif
-    if name == "search":
-        if _search is None:
-            from ifdata_bcb.core.api import search as _search_fn
-            _search = _search_fn
-        return _search
     # ... ifdata, cadastro analogos
 ```
 
@@ -158,29 +164,32 @@ Define esqueleto da coleta, subclasses implementam detalhes:
 ```python
 class BaseCollector(ABC):
     def collect(self, start, end):
-        periods = self._generate_periods(start, end)  # Template
-        for period in periods:
-            csv = self._download_period(period)        # Abstract
-            df = self._process_to_parquet(csv)         # Abstract
-            self.dm.save(df, filename, subdir)         # Template
+        periods = self._generate_periods(start, end)      # Template
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for period in periods:  # Paralelo via executor.submit()
+                data = self._download_period(period, work_dir)  # Abstract
+                df = self._process_to_parquet(data, period)     # Abstract
+                self.dm.save(df, filename, subdir)              # Template
 
     @abstractmethod
-    def _download_period(self, period): ...
+    def _download_period(self, period, work_dir): ...
     @abstractmethod
-    def _process_to_parquet(self, csv_path): ...
+    def _process_to_parquet(self, data_path, period): ...
 ```
 
 ### Builder Pattern (Condicoes SQL)
 
-Construcao incremental de clausulas WHERE:
+Construcao incremental de clausulas WHERE (funcoes em `infra.sql`):
 
 ```python
+from ifdata_bcb.infra.sql import build_string_condition, join_conditions
+
 conditions = [
     self._build_cnpj_condition(instituicao),     # Pode ser None
     self._build_date_condition(start, end),      # Pode ser None
-    self._build_string_condition(conta),         # Pode ser None
+    build_string_condition(col, conta),          # Pode ser None
 ]
-where = self._join_conditions(conditions)        # Filtra Nones, junta com AND
+where = join_conditions(conditions)              # Filtra Nones, junta com AND
 ```
 
 ### Dependency Injection
@@ -252,7 +261,7 @@ COSIFCollector.collect()
         +-- Worker 0: staggered_delay(0) --> 0s
         |   +-- temp_dir() as work_dir
         |   +-- _download_period(202401, work_dir)
-        |   +-- _process_to_parquet(csv_path)
+        |   +-- _process_to_parquet(data_path)
         |   +-- dm.save(df, 'cosif_ind_202401', 'cosif/individual')
         |   +-- work_dir cleanup automatico
         |
@@ -269,14 +278,14 @@ Retorna: (registros_total, periodos_ok, falhas, indisponiveis)
 ## Fluxo de Leitura
 
 ```
-Usuario: bcb.cosif.read(instituicao='60872504', start='2024-01', end='2024-12')
+Usuario: bcb.cosif.read('2024-01', '2024-12', instituicao='60872504')
     |
     v
 COSIFExplorer.read()
     |
-    +-- _validate_required_params(instituicao, start)
+    +-- _validate_required_params(start)
     |
-    +-- _normalize_institutions('60872504')
+    +-- _normalize_instituicoes('60872504')  (se instituicao != None)
     |   +-- InstitutionList (Pydantic) --> Valida regex [0-9]{8}
     |
     +-- _resolve_date_range('2024-01', '2024-12')
@@ -285,19 +294,18 @@ COSIFExplorer.read()
     +-- Construir condicoes SQL:
     |   +-- _build_cnpj_condition() --> "CNPJ_8 = '60872504'"
     |   +-- _build_date_condition() --> "DATA_BASE IN (202401, ...)"
-    |   +-- _join_conditions() --> "... AND ..."
+    |   +-- join_conditions() --> "... AND ..."
     |
-    +-- QueryEngine.read_glob(
-    |       pattern='cosif_ind_*.parquet',
-    |       subdir='cosif/individual',
-    |       where='CNPJ_8 = ... AND DATA_BASE IN ...'
-    |   )
-    |   +-- DuckDB executa glob SELECT com predicate pushdown
+    +-- _read_glob(pattern, subdir, where=...)
+    |   +-- Injeta distinct=True, date_column, exclude_columns
+    |   +-- QueryEngine.read_glob()
+    |       +-- DuckDB: DISTINCT + LAST_DAY(MAKE_DATE(...)) + EXCLUDE(...)
+    |       +-- Predicate pushdown no Parquet
     |
     +-- _finalize_read(df)
-        +-- _apply_column_mapping() --> DATA_BASE -> DATA
-        +-- Converter DATA int -> datetime
+        +-- _apply_column_mapping() --> NOME_CONTA -> CONTA, etc
         +-- Sort por DATA
+        +-- Reordenar colunas (_COLUMN_ORDER)
     |
     v
 Retorna: pd.DataFrame
@@ -306,15 +314,22 @@ Retorna: pd.DataFrame
 ## Fluxo de Busca
 
 ```
-Usuario: bcb.search('Itau')
+Usuario: bcb.cadastro.search('Itau')
     |
     v
-api.search('Itau')
+CadastroExplorer.search('Itau')
     |
-    +-- Lazy-load EntityLookup singleton
+    +-- Delega para CadastroSearch.search()
+    |       (cadastro/search.py -- filtros fonte/escopo)
     |
     v
-EntityLookup.search('Itau')
+CadastroSearch.search('Itau')
+    |
+    +-- Delega fuzzy matching para EntitySearch.search()
+    |       (core/entity/search.py)
+    |
+    v
+EntitySearch.search('Itau')
     |
     +-- normalize_accents('Itau'.upper()) --> 'ITAU'
     |
@@ -330,15 +345,18 @@ EntityLookup.search('Itau')
     |   +-- token_set_ratio scorer
     |   +-- Filtra score >= threshold_suggest, ordena desc(score) + asc(nome)
     |
-    +-- _get_data_sources_for_cnpjs(cnpjs)
+    +-- _get_data_sources_for_cnpjs(cnpjs) (via EntityLookup)
     |   +-- Verifica presenca em COSIF e IFDATA
     |
-    +-- _get_latest_situacao(cnpjs)
+    +-- _get_latest_situacao(cnpjs) (via EntityLookup)
     |   +-- Window function para situacao mais recente
     |
     +-- Filtra: se ha matches com FONTES, descarta sem dados
     |
     +-- Ordena (ativas, score, nome) e aplica limit
+    |
+    v
+CadastroSearch aplica filtros fonte/escopo sobre resultados
     |
     v
 Retorna: DataFrame[CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE]
@@ -351,12 +369,11 @@ graph LR
     init["__init__.py"]
 
     cosif_exp["COSIFExplorer<br/><i>cosif/explorer.py</i>"]
-    ifdata_exp["IFDATAExplorer<br/><i>ifdata/explorer.py</i>"]
-    cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro_explorer.py</i>"]
-    api["search()<br/><i>core/api.py</i>"]
+    ifdata_exp["IFDATAExplorer<br/><i>ifdata/valores/explorer.py</i>"]
+    cadastro_exp["CadastroExplorer<br/><i>ifdata/cadastro/explorer.py</i>"]
 
-    base_exp["BaseExplorer<br/><i>core/base_explorer.py</i>"]
-    entity["EntityLookup<br/><i>core/entity_lookup.py</i>"]
+    base_exp["BaseExplorer<br/><i>providers/base_explorer.py</i>"]
+    entity["EntityLookup + EntitySearch<br/><i>core/entity/</i>"]
     query["QueryEngine<br/><i>infra/query.py</i>"]
     exceptions["exceptions<br/><i>domain/exceptions.py</i>"]
 
@@ -368,17 +385,17 @@ graph LR
     fuzzy["FuzzyMatcher<br/><i>utils/fuzzy.py</i>"]
     text["normalize_accents<br/><i>utils/text.py</i>"]
 
-    init --> cosif_exp & ifdata_exp & cadastro_exp & api
+    init --> cosif_exp & ifdata_exp & cadastro_exp
 
     cosif_exp --> base_exp
     cosif_exp --> cosif_col
     ifdata_exp --> base_exp
+    cadastro_exp --> base_exp & entity
 
     base_exp --> entity & query & exceptions
 
     cosif_col --> base_col & storage & resilience
 
-    api --> entity
     entity --> fuzzy & text
 ```
 

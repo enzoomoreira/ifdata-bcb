@@ -12,15 +12,12 @@ Uso:
     bcb.cosif.collect('2024-01', '2024-12')
     bcb.ifdata.collect('2024-01', '2024-12')
 
-    # Buscar instituicao
-    bcb.search('Itau')  # Retorna DataFrame com CNPJ_8, INSTITUICAO, FONTES, SCORE
-
     # Consultas usando CNPJ de 8 digitos
+    # start e OBRIGATORIO; instituicao e opcional (None = todas)
     # start sozinho = data unica; start + end = range de datas
-    # instituicao e start sao OBRIGATORIOS
     df = bcb.ifdata.read(
-        instituicao='60872504',
-        start='2024-12',  # Data unica
+        '2024-12',  # start (posicional, obrigatorio)
+        instituicao='60872504',  # keyword-only, opcional
         conta='Lucro Liquido',
     )
 
@@ -44,12 +41,11 @@ from ifdata_bcb.domain.exceptions import (
 _cosif = None
 _ifdata = None
 _cadastro = None
-_search = None
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy loading dos explorers e da funcao search."""
-    global _cosif, _ifdata, _cadastro, _search
+    """Lazy loading dos explorers."""
+    global _cosif, _ifdata, _cadastro
 
     if name == "cosif":
         if _cosif is None:
@@ -60,24 +56,17 @@ def __getattr__(name: str) -> Any:
 
     if name == "ifdata":
         if _ifdata is None:
-            from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+            from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
             _ifdata = IFDATAExplorer()
         return _ifdata
 
     if name == "cadastro":
         if _cadastro is None:
-            from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
+            from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 
             _cadastro = CadastroExplorer()
         return _cadastro
-
-    if name == "search":
-        if _search is None:
-            from ifdata_bcb.core.api import search as _search_fn
-
-            _search = _search_fn
-        return _search
 
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
 
@@ -91,8 +80,6 @@ __all__ = [
     "cosif",
     "ifdata",
     "cadastro",
-    # Funcoes de alto nivel
-    "search",
     # Exceptions (BacenAnalysisError = base)
     "BacenAnalysisError",
     "DataUnavailableError",

@@ -422,7 +422,7 @@ dm = DataManager()
 path = dm.save(df, 'meu_arquivo', 'minha_pasta')
 
 # Periodos disponiveis
-periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
 # [(2024, 1), (2024, 2), ...]
 ```
 

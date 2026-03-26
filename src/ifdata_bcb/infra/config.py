@@ -13,7 +13,6 @@ class Settings(BaseSettings):
 
     @property
     def cache_path(self) -> Path:
-        self.data_dir.mkdir(parents=True, exist_ok=True)
         return self.data_dir
 
     @property

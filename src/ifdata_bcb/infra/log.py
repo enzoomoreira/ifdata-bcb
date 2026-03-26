@@ -1,4 +1,5 @@
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,24 @@ def set_log_level(level: str) -> None:
         _logger_instance.remove()
     _configured = False
     configure_logging(level=level)
+
+
+def emit_user_warning(
+    warning: str | Warning,
+    category: type[Warning] = UserWarning,
+    stacklevel: int = 2,
+) -> None:
+    """Emite warning para o usuario E registra no log interno."""
+    if isinstance(warning, Warning):
+        warnings.warn(warning, type(warning), stacklevel=stacklevel + 1)
+        msg = str(warning)
+        cat_name = type(warning).__name__
+    else:
+        warnings.warn(warning, category, stacklevel=stacklevel + 1)
+        msg = warning
+        cat_name = category.__name__
+    logger = get_logger("ifdata_bcb.warnings")
+    logger.debug(f"[{cat_name}] {msg}")
 
 
 def get_log_path() -> Path:

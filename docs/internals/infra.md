@@ -10,6 +10,7 @@ src/ifdata_bcb/infra/
 |-- config.py            # Settings (pydantic-settings)
 |-- paths.py             # ensure_dir, temp_dir
 |-- query.py             # QueryEngine (DuckDB)
+|-- sql.py               # Funcoes de construcao SQL
 |-- storage.py           # DataManager (Parquet)
 |-- log.py               # Logging (Loguru)
 |-- cache.py             # Cache LRU com registro global
@@ -29,7 +30,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
 
     @property
-    def cache_path(self) -> Path: ...   # data_dir com mkdir
+    def cache_path(self) -> Path: ...   # data_dir (sem mkdir -- nao cria diretorios como side-effect)
 
     @property
     def logs_path(self) -> Path: ...    # data_dir.parent / "Logs" com mkdir
@@ -142,10 +143,14 @@ Le multiplos arquivos via glob pattern:
 ```python
 def read_glob(
     self,
-    pattern: str,        # Glob (ex: "cosif_prud_*.parquet")
+    pattern: str,                          # Glob (ex: "cosif_prud_*.parquet")
     subdir: str,
-    columns: list = None,
-    where: str = None
+    columns: list[str] | None = None,
+    where: str | None = None,
+    distinct: bool = False,                # Se True, adiciona DISTINCT ao SELECT
+    date_column: str | None = None,        # Coluna YYYYMM int a converter para datetime via DuckDB
+    date_alias: str = "DATA",              # Nome da coluna datetime no output
+    exclude_columns: list[str] | None = None,  # Colunas a excluir via EXCLUDE (so quando columns=None)
 ) -> pd.DataFrame:
 ```
 
@@ -160,7 +165,14 @@ df = qe.read_glob(
 )
 ```
 
+**Novos parametros**:
+- `distinct`: Adiciona `DISTINCT` ao SELECT para deduplicar resultados no DuckDB.
+- `date_column`/`date_alias`: Converte coluna YYYYMM int para datetime diretamente no DuckDB (ultimo dia do mes via `LAST_DAY(MAKE_DATE(...))`), evitando conversao pos-query em pandas.
+- `exclude_columns`: Usa `EXCLUDE(col1, col2)` no SQL para remover colunas do resultado (so quando `columns=None`).
+
 **union_by_name**: A leitura usa `read_parquet(..., union_by_name=true)` para compatibilidade com parquets que tenham schemas ligeiramente diferentes (ex: eras distintas de formato COSIF).
+
+**Tratamento de erros**: Se a query falhar (ex: incompatibilidade de schema entre parquets), `read_glob` emite `PartialDataWarning` e retorna DataFrame vazio em vez de levantar excecao.
 
 **Predicate Pushdown**:
 
@@ -195,6 +207,144 @@ df = qe.sql("""
     ORDER BY total DESC
     LIMIT 10
 """)
+```
+
+### sql_with_df()
+
+Executa SQL com DataFrames registrados como tabelas virtuais:
+
+```python
+def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
+    """
+    Permite JOINs, ASOF JOINs etc entre DataFrames em memoria
+    e/ou parquets via read_parquet() na mesma query.
+
+    DataFrames sao registrados como tabelas virtuais pelo nome do parametro
+    e desregistrados automaticamente ao final.
+    """
+```
+
+**Exemplo**:
+
+```python
+qe = QueryEngine()
+
+df_financial = pd.DataFrame(...)
+df_cadastro = pd.DataFrame(...)
+
+result = qe.sql_with_df("""
+    SELECT f.*, c.SEGMENTO
+    FROM _financial f
+    ASOF LEFT JOIN _cadastro c
+        ON f.CNPJ_8 = c.CNPJ_8
+        AND f.DATA >= c.DATA
+""", _financial=df_financial, _cadastro=df_cadastro)
+```
+
+Usado internamente pelo modulo de enrichment para ASOF JOINs entre dados financeiros e cadastrais.
+
+---
+
+## sql.py
+
+### Responsabilidades
+
+Funcoes puras para construcao de condicoes SQL compativeis com DuckDB. Usadas pelo `BaseExplorer` e `EntityLookup`.
+
+### build_string_condition()
+
+```python
+def build_string_condition(
+    column: str,
+    values: list[str],
+    case_insensitive: bool = False,
+    accent_insensitive: bool = False,
+) -> str:
+    """
+    Constroi clausula WHERE para strings.
+
+    Exemplos:
+    - ["valor"] -> "COLUNA = 'valor'"
+    - ["a", "b"] -> "COLUNA IN ('a', 'b')"
+    - case_insensitive=True -> "UPPER(COLUNA) IN ('A', 'B')"
+    - accent_insensitive=True -> "strip_accents(COLUNA) = 'valor'"
+    """
+```
+
+### build_int_condition()
+
+```python
+def build_int_condition(column: str, values: list[int]) -> str:
+    """
+    Constroi clausula WHERE para inteiros.
+
+    Exemplos:
+    - [202412] -> "DATA = 202412"
+    - [202412, 202501] -> "DATA IN (202412, 202501)"
+    """
+```
+
+### build_account_condition()
+
+```python
+def build_account_condition(
+    name_col: str,
+    code_col: str,
+    values: list[str],
+) -> str:
+    """
+    Match por nome (accent/case insensitive) OU por codigo.
+
+    Permite filtrar contas por nome textual ou codigo numerico
+    na mesma chamada.
+    """
+```
+
+### build_like_condition()
+
+```python
+def build_like_condition(
+    column: str,
+    term: str,
+    case_insensitive: bool = True,
+    accent_insensitive: bool = True,
+) -> str:
+    """
+    Constroi condicao LIKE para busca textual parcial.
+
+    Escapa metacaracteres LIKE (%, _) automaticamente.
+    """
+```
+
+### join_conditions()
+
+```python
+def join_conditions(conditions: list[str | None]) -> str | None:
+    """
+    Junta condicoes com AND, ignorando None e strings vazias.
+
+    Exemplo:
+    ["DATA = 202412", None, "CNPJ_8 = '12345678'"]
+    -> "DATA = 202412 AND CNPJ_8 = '12345678'"
+    """
+```
+
+### build_in_clause()
+
+```python
+def build_in_clause(values: list[str], escape: bool = True) -> str:
+    """
+    Constroi lista SQL IN sem parenteses: 'a', 'b', 'c'.
+
+    Usado internamente pelo EntityLookup para montar queries.
+    """
+```
+
+### escape_sql_string()
+
+```python
+def escape_sql_string(value: str) -> str:
+    """Escapa aspas simples para uso em SQL."""
 ```
 
 ---
@@ -255,10 +405,10 @@ def get_metadata(self, filename: str, subdir: str) -> dict | None:
     """Retorna {arquivo, subdir, registros, colunas, status} ou None."""
 ```
 
-### get_available_periods()
+### get_periodos_disponiveis()
 
 ```python
-def get_available_periods(
+def get_periodos_disponiveis(
     self,
     prefix: str,
     subdir: str
@@ -304,9 +454,16 @@ def configure_logging(
 WARNING  | Mensagem de aviso
 
 # Arquivo (Logs/ifdata_YYYY-MM-DD.log)
-[2024-01-15 10:30:45] DEBUG    [ifdata_bcb.infra.query] Query: ...
-[2024-01-15 10:30:46] INFO     [ifdata_bcb.providers.base_collector] Saved: ...
+[2024-01-15 10:30:45] INFO     [ifdata_bcb.providers.cosif.explorer] COSIF read: escopo=prudencial, instituicao=60872504 -> 301 rows
+[2024-01-15 10:30:46] INFO     [ifdata_bcb.infra.storage] Saved: cosif/prudencial/cosif_prud_202412.parquet (1,234 rows)
+[2024-01-15 10:30:47] DEBUG    [ifdata_bcb.providers.enrichment] enrichment NOME_CONGL_PRUD: 605/1380 resolvidos
 ```
+
+**Filosofia de niveis**:
+- **ERROR**: operacao nao pode continuar (CSV corrompido, falha de processamento)
+- **WARNING**: operacao continuou com resultado parcial ou fallback (query falhou, fonte indisponivel)
+- **INFO**: evento de negocio (o que o usuario pediu, resultado da operacao, coleta iniciada/concluida)
+- **DEBUG**: detalhe interno de resolucao (ratios de mapeamento, retry/backoff, mirror de warnings)
 
 **Configuracao de arquivo**:
 - Rotacao: 10 MB por arquivo
@@ -347,6 +504,21 @@ def set_log_level(level: str):
 ```python
 def get_log_path() -> Path:
 ```
+
+### emit_user_warning()
+
+```python
+def emit_user_warning(
+    warning: str | Warning,
+    category: type[Warning] = UserWarning,
+    stacklevel: int = 2,
+) -> None:
+    """Emite warning para o usuario E registra no log interno."""
+```
+
+Aceita tanto uma string de mensagem (com `category` separado) quanto uma instancia de `Warning` diretamente. No segundo caso, o tipo do warning e extraido automaticamente.
+
+Dual output: chama `warnings.warn()` para o usuario e registra no logger interno em nivel `DEBUG`. Usado por `BaseExplorer._diagnose_empty_result()`, `QueryEngine.read_glob()` e `check_ifdata_era()` para comunicar problemas sem levantar excecao.
 
 ---
 
@@ -432,10 +604,7 @@ DEFAULT_REQUEST_TIMEOUT = 240
 DEFAULT_PARALLEL_STAGGER = 0.5
 
 TRANSIENT_EXCEPTIONS = (
-    requests.RequestException,
-    requests.ConnectionError,
-    requests.Timeout,
-    urllib3.exceptions.HTTPError,
+    httpx.HTTPError,
     ConnectionError,
     TimeoutError,
     OSError,
@@ -464,8 +633,8 @@ def retry(
 from ifdata_bcb.infra.resilience import retry
 
 @retry(max_attempts=3, delay=2.0)
-def download_data(url):
-    response = requests.get(url, timeout=240)
+def download_data(client: httpx.Client, url: str):
+    response = client.get(url)
     response.raise_for_status()
     return response.content
 ```
@@ -540,7 +709,7 @@ from ifdata_bcb.infra import DataManager
 dm = DataManager()
 
 # Verificar periodos
-periodos = dm.get_available_periods('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
 
 # Salvar DataFrame
 dm.save(df, 'meu_arquivo', 'meu_subdir')
@@ -580,10 +749,10 @@ logger.info("Mensagem")
 # infra/__init__.py
 from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
 from ifdata_bcb.infra.config import Settings, get_settings
-from ifdata_bcb.infra.log import configure_logging, get_log_path, get_logger, set_log_level
+from ifdata_bcb.infra.log import configure_logging, emit_user_warning, get_log_path, get_logger, set_log_level
 from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.resilience import retry
+from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
 from ifdata_bcb.infra.storage import (
     DataManager,
     get_parquet_metadata,

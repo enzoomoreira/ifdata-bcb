@@ -1,6 +1,13 @@
 """Testes para ifdata_bcb.utils.text."""
 
-from ifdata_bcb.utils.text import normalize_accents, normalize_text
+import pytest
+
+from ifdata_bcb.utils.text import (
+    format_entity_labels,
+    normalize_accents,
+    normalize_text,
+    stem_ptbr,
+)
 
 
 class TestNormalizeAccents:
@@ -67,3 +74,115 @@ class TestNormalizeText:
 
     def test_only_whitespace(self) -> None:
         assert normalize_text("   \t\n  ") == ""
+
+
+class TestFormatEntityLabels:
+    """format_entity_labels: formata CNPJs com nomes para mensagens de warning."""
+
+    def test_single_cnpj_with_nome(self) -> None:
+        result = format_entity_labels(["60872504"], {"60872504": "ITAU UNIBANCO S.A."})
+        assert result == "60872504 (ITAU UNIBANCO S.A.)"
+
+    def test_single_cnpj_without_nome(self) -> None:
+        result = format_entity_labels(["60872504"], {})
+        assert result == "60872504"
+
+    def test_single_cnpj_empty_nome(self) -> None:
+        result = format_entity_labels(["60872504"], {"60872504": ""})
+        assert result == "60872504"
+
+    def test_multiple_cnpjs_within_limit(self) -> None:
+        result = format_entity_labels(
+            ["60872504", "90400888"],
+            {"60872504": "ITAU", "90400888": "SANTANDER"},
+        )
+        assert "60872504 (ITAU)" in result
+        assert "90400888 (SANTANDER)" in result
+        assert ", " in result
+
+    def test_exceeds_limit_returns_count(self) -> None:
+        cnpjs = [f"{i:08d}" for i in range(6)]
+        result = format_entity_labels(cnpjs, {}, limit=5)
+        assert result == "6 entidades"
+
+    def test_exactly_at_limit_returns_labels(self) -> None:
+        cnpjs = [f"{i:08d}" for i in range(5)]
+        result = format_entity_labels(cnpjs, {}, limit=5)
+        assert "entidades" not in result
+        assert "00000004" in result
+
+    def test_empty_list(self) -> None:
+        result = format_entity_labels([], {})
+        assert result == ""
+
+    def test_mixed_with_and_without_nome(self) -> None:
+        result = format_entity_labels(
+            ["60872504", "99999999"],
+            {"60872504": "ITAU"},
+        )
+        assert "60872504 (ITAU)" in result
+        assert "99999999" in result
+        assert "()" not in result
+
+
+class TestStemPtbr:
+    """stem_ptbr: stemming PT-BR para busca singular/plural."""
+
+    @pytest.mark.parametrize(
+        "singular, plural, expected_stem",
+        [
+            ("operacao", "operacoes", "opera"),
+            ("captacao", "captacoes", "capta"),
+            ("aplicacao", "aplicacoes", "aplica"),
+            ("provisao", "provisoes", "provi"),
+            ("reducao", "reducoes", "redu"),
+            ("informacao", "informacoes", "informa"),
+            ("capital", "capitais", "capit"),
+        ],
+    )
+    def test_singular_plural_produce_same_stem(
+        self, singular: str, plural: str, expected_stem: str
+    ) -> None:
+        assert stem_ptbr(singular) == expected_stem
+        assert stem_ptbr(plural) == expected_stem
+
+    @pytest.mark.parametrize(
+        "term",
+        ["credito", "ativo", "lucro", "deposito", "patrimonio", "basileia", "rwa"],
+    )
+    def test_no_inflection_passthrough(self, term: str) -> None:
+        assert stem_ptbr(term) == term
+
+    def test_accent_insensitive(self) -> None:
+        # Both accented and non-accented forms produce the same stem
+        assert stem_ptbr("operacao") == stem_ptbr("operac\u00e3o")
+        assert stem_ptbr("operacao") == "opera"
+
+    def test_minimum_root_length_4(self) -> None:
+        # A short word where stripping the suffix would leave < 4 chars
+        # should pass through unchanged. "mao" -> root "m" (1 char) -> no strip.
+        assert len(stem_ptbr("mao")) >= 4 or stem_ptbr("mao") == "mao"
+        # "cao" has root "" -> passthrough
+        assert stem_ptbr("cao") == "cao"
+        # "leao" -> root "le" (2 chars) -> no strip
+        assert stem_ptbr("leao") == "leao"
+        # "uniao" -> root "uni" (3 chars) -> no strip
+        assert stem_ptbr("uniao") == "uniao"
+
+    def test_case_insensitive(self) -> None:
+        assert stem_ptbr("OPERACAO") == stem_ptbr("operacao")
+        assert stem_ptbr("Captacao") == stem_ptbr("captacao")
+
+    def test_el_eis_pair(self) -> None:
+        # "imovel/imoveis" -> root "imov" (4 chars, meets minimum)
+        assert stem_ptbr("imovel") == stem_ptbr("imoveis")
+        assert stem_ptbr("imovel") == "imov"
+
+    def test_el_eis_pair_short_root_no_strip(self) -> None:
+        # "papel" root "pap" (3 chars) < minimum 4 -> passthrough
+        assert stem_ptbr("papel") == "papel"
+        assert stem_ptbr("papeis") == "papeis"
+
+    def test_al_ais_pair(self) -> None:
+        assert stem_ptbr("capital") == stem_ptbr("capitais")
+        assert stem_ptbr("capital") == "capit"

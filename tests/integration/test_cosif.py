@@ -1,10 +1,12 @@
 """Testes de integracao -- COSIF read() e list methods."""
 
 import pandas as pd
+import pytest
 
+from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.cadastro_explorer import CadastroExplorer
-from ifdata_bcb.providers.ifdata.explorer import IFDATAExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 from tests.conftest import BANCO_A_CNPJ
 
 
@@ -38,7 +40,7 @@ class TestCOSIFRead:
         assert "ESCOPO" in df.columns
         assert "individual" in df["ESCOPO"].unique()
 
-    def test_read_single_scope(
+    def test_read_single_escopo(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(
@@ -99,10 +101,10 @@ class TestCOSIFRead:
 
 
 class TestCOSIFListMethods:
-    def test_list_periods(
+    def test_list_periodos(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        assert 202303 in explorers[0].list_periods()
+        assert 202303 in explorers[0].list_periodos()
 
     def test_has_data(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -117,23 +119,62 @@ class TestCOSIFListMethods:
         assert info["period_count"] >= 1
         assert "by_source" in info
 
-    def test_list_accounts(
+    def test_list_contas(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_accounts()
+        df = explorers[0].list_contas()
         assert not df.empty
         assert "COD_CONTA" in df.columns
+        assert "ESCOPOS" in df.columns
 
-    def test_list_accounts_with_filter(
+    def test_list_contas_with_filter(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_accounts(termo="ATIVO")
+        df = explorers[0].list_contas(termo="ATIVO")
         assert not df.empty
         assert all("ATIVO" in c.upper() for c in df["CONTA"])
 
-    def test_list_institutions(
+    def test_list_contas_limit_applies_to_total(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        df = explorers[0].list_institutions()
+        df = explorers[0].list_contas(limit=2)
+        assert len(df) <= 2
+
+    def test_list_contas_with_escopo_no_escopos_column(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        df = explorers[0].list_contas(escopo="individual")
         assert not df.empty
-        assert "CNPJ_8" in df.columns
+        assert "ESCOPOS" not in df.columns
+        assert list(df.columns) == ["COD_CONTA", "CONTA"]
+
+
+class TestCOSIFDocumentoValidation:
+    """Validacao do parametro documento em cosif.read()."""
+
+    def test_documento_non_numeric_raises(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """documento com valor nao-numerico deve levantar InvalidScopeError."""
+        with pytest.raises(InvalidScopeError) as exc_info:
+            explorers[0].read(
+                "2023-03", instituicao=BANCO_A_CNPJ, documento="balancete"
+            )
+        assert exc_info.value.scope == "documento"
+
+    def test_documento_numeric_string_accepted(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """documento com string numerica deve ser aceito sem erro."""
+        df = explorers[0].read("2023-03", instituicao=BANCO_A_CNPJ, documento="4010")
+        assert isinstance(df, pd.DataFrame)
+
+    def test_documento_list_with_non_numeric_raises(
+        self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
+    ) -> None:
+        """Lista com elemento nao-numerico deve levantar InvalidScopeError."""
+        with pytest.raises(InvalidScopeError) as exc_info:
+            explorers[0].read(
+                "2023-03", instituicao=BANCO_A_CNPJ, documento=["4010", "abc"]
+            )
+        assert exc_info.value.scope == "documento"

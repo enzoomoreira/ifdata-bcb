@@ -3,7 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from ifdata_bcb.core.entity_lookup import EntityLookup
+from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from tests.conftest import BANCO_A_CNPJ
@@ -33,7 +33,7 @@ class TestConcurrentReads:
         def do_search(term: str) -> int:
             qe = QueryEngine(base_path=populated_cache)
             el = EntityLookup(query_engine=qe)
-            return len(el.search(term))
+            return len(EntitySearch(el).search(term))
 
         with ThreadPoolExecutor(max_workers=8) as ex:
             futures = [ex.submit(do_search, "ALFA") for _ in range(10)]
@@ -50,7 +50,7 @@ class TestConcurrentReads:
         def do_search() -> str:
             qe = QueryEngine(base_path=populated_cache)
             el = EntityLookup(query_engine=qe)
-            el.search("ALFA")
+            EntitySearch(el).search("ALFA")
             return "search"
 
         with ThreadPoolExecutor(max_workers=8) as ex:

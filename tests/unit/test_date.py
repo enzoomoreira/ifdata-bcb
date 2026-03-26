@@ -1,6 +1,6 @@
 """Testes para ifdata_bcb.utils.date."""
 
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import pytest
@@ -11,7 +11,6 @@ from ifdata_bcb.utils.date import (
     generate_month_range,
     generate_quarter_range,
     normalize_date_to_int,
-    yyyymm_to_datetime,
 )
 
 
@@ -55,6 +54,37 @@ class TestParseDateInput:
         with pytest.raises(InvalidDateFormatError):
             _parse_date_input("20241")
 
+    # --- Novos tipos: date, datetime, pd.Timestamp ---
+
+    def test_date_object(self) -> None:
+        assert _parse_date_input(date(2024, 12, 1)) == date(2024, 12, 1)
+
+    def test_date_preserves_day(self) -> None:
+        assert _parse_date_input(date(2024, 3, 15)) == date(2024, 3, 15)
+
+    def test_datetime_object(self) -> None:
+        assert _parse_date_input(datetime(2024, 12, 15, 10, 30)) == date(2024, 12, 15)
+
+    def test_datetime_extracts_date_only(self) -> None:
+        dt = datetime(2024, 3, 1, 23, 59, 59)
+        assert _parse_date_input(dt) == date(2024, 3, 1)
+
+    def test_pd_timestamp(self) -> None:
+        ts = pd.Timestamp("2024-12-01")
+        assert _parse_date_input(ts) == date(2024, 12, 1)
+
+    def test_pd_timestamp_with_time(self) -> None:
+        ts = pd.Timestamp("2024-03-15 10:30:00")
+        assert _parse_date_input(ts) == date(2024, 3, 15)
+
+    def test_pd_nat_raises(self) -> None:
+        with pytest.raises(InvalidDateFormatError, match="NaT"):
+            _parse_date_input(pd.NaT)
+
+    def test_none_raises(self) -> None:
+        with pytest.raises((InvalidDateFormatError, TypeError)):
+            _parse_date_input(None)  # type: ignore[arg-type]
+
 
 class TestNormalizeDateToInt:
     """normalize_date_to_int: converte para YYYYMM int."""
@@ -78,6 +108,24 @@ class TestNormalizeDateToInt:
 
     def test_str_yyyy_mm_dd_drops_day(self) -> None:
         assert normalize_date_to_int("2024-03-15") == 202403
+
+    # --- Novos tipos: date, datetime, pd.Timestamp ---
+
+    def test_date_object(self) -> None:
+        assert normalize_date_to_int(date(2024, 3, 15)) == 202403
+
+    def test_datetime_object(self) -> None:
+        assert normalize_date_to_int(datetime(2024, 12, 25, 10, 30)) == 202412
+
+    def test_pd_timestamp(self) -> None:
+        assert normalize_date_to_int(pd.Timestamp("2024-06-15")) == 202406
+
+    def test_pd_timestamp_month_boundary(self) -> None:
+        assert normalize_date_to_int(pd.Timestamp("2024-01-31")) == 202401
+
+    def test_pd_nat_raises(self) -> None:
+        with pytest.raises(InvalidDateFormatError, match="NaT"):
+            normalize_date_to_int(pd.NaT)
 
 
 class TestGenerateMonthRange:
@@ -143,27 +191,3 @@ class TestGenerateQuarterRange:
     def test_start_equals_end_not_quarter(self) -> None:
         # start=end=202402, primeiro trimestre=202403 que e > end
         assert generate_quarter_range(202402, 202402) == []
-
-
-class TestYyyymToDatetime:
-    """yyyymm_to_datetime: converte YYYYMM para ultimo dia do mes."""
-
-    def test_regular_month(self) -> None:
-        result = yyyymm_to_datetime(202403)
-        assert result == pd.Timestamp(2024, 3, 31)
-
-    def test_february_non_leap(self) -> None:
-        result = yyyymm_to_datetime(202302)
-        assert result == pd.Timestamp(2023, 2, 28)
-
-    def test_february_leap(self) -> None:
-        result = yyyymm_to_datetime(202402)
-        assert result == pd.Timestamp(2024, 2, 29)
-
-    def test_april_30_days(self) -> None:
-        result = yyyymm_to_datetime(202404)
-        assert result == pd.Timestamp(2024, 4, 30)
-
-    def test_december(self) -> None:
-        result = yyyymm_to_datetime(202412)
-        assert result == pd.Timestamp(2024, 12, 31)

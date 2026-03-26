@@ -1,5 +1,8 @@
 """Constantes centralizadas para fontes de dados."""
 
+# URL base da API IFDATA (OData)
+IFDATA_API_BASE = "https://olinda.bcb.gov.br/olinda/servico/IFDATA/versao/v1/odata"
+
 # Mapeamento escopo -> TipoInstituicao (IFDATA)
 TIPO_INST_MAP: dict[str, int] = {
     "individual": 3,
@@ -32,9 +35,9 @@ DATA_SOURCES: dict[str, dict[str, str]] = {
 # Valores conservadores baseados em testes empiricos (2026-03).
 # Periodos anteriores retornam 404 no BCB.
 FIRST_AVAILABLE_PERIOD: dict[str, int] = {
-    "cosif_individual": 199501,
+    "cosif_individual": 198807,
     "cosif_prudencial": 201407,
-    "ifdata_valores": 200303,
+    "ifdata_valores": 200003,
     "cadastro": 200503,
 }
 

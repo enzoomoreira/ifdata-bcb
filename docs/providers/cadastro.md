@@ -54,133 +54,163 @@ Le dados cadastrais com filtros.
 
 ```python
 bcb.cadastro.read(
+    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: str | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos (opcional)
-    start: str | None = None,               # Data inicial ou unica. Se None, usa ultimo periodo
-    end: str | None = None,                 # Data final para range
     segmento: str | None = None,            # Segmento para filtrar (accent-insensitive)
     uf: str | None = None,                  # UF para filtrar
     situacao: str | None = None,            # Situacao para filtrar ('A'=Ativo, 'I'=Inativo)
+    atividade: str | None = None,           # Atividade para filtrar
+    tcb: str | None = None,                 # TCB para filtrar
+    td: str | None = None,                  # TD para filtrar
+    tc: str | int | None = None,            # TC para filtrar (aceita str ou int)
+    sr: str | None = None,                  # SR para filtrar
+    municipio: str | None = None,           # Municipio para filtrar
     columns: list[str] | None = None        # Colunas especificas (aceita nomes de apresentacao)
 ) -> pd.DataFrame
 ```
 
+**Parametro Obrigatorio**: `start`.
+
 **API de Datas**:
-- `start=None`: usa ultimo periodo disponivel
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
 
-**Filtros de texto** (`segmento`, `uf`, `situacao`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
+**Filtros de texto** (`segmento`, `uf`, `situacao`, `atividade`, `tcb`, `td`, `tc`, `sr`, `municipio`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
+
+**Raises**:
+- `MissingRequiredParameterError`: Se `start` nao fornecido.
+- `InvalidDateRangeError`: Se `start > end`.
 
 **Exemplos**:
 
 ```python
-# Dados de uma instituicao no ultimo periodo disponivel
-df = bcb.cadastro.read(instituicao='60872504')
-
 # Dados de uma instituicao em um periodo especifico
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12')
+df = bcb.cadastro.read('2024-12', instituicao='60872504')
 
 # Filtrar por segmento (accent-insensitive)
-df = bcb.cadastro.read(start='2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
 
 # Filtrar por UF
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12', uf='SP')
+df = bcb.cadastro.read('2024-12', instituicao='60872504', uf='SP')
 
 # Filtrar apenas instituicoes ativas
-df = bcb.cadastro.read(start='2024-12', situacao='A')
+df = bcb.cadastro.read('2024-12', situacao='A')
+
+# Novos filtros: atividade, tcb, td, tc, sr, municipio
+df = bcb.cadastro.read('2024-12', tcb='B1', sr='S1')
+df = bcb.cadastro.read('2024-12', municipio='Sao Paulo', uf='SP')
 
 # Combinar filtros
 df = bcb.cadastro.read(
+    '2024-12',
     instituicao='60872504',
-    start='2024-12',
     segmento='Banco Multiplo',
     uf='SP',
     situacao='A'
 )
 ```
 
-### info()
+### list()
 
-Retorna informacoes detalhadas de uma instituicao como dicionario.
-
-```python
-bcb.cadastro.info(
-    instituicao: str,                # CNPJ de 8 digitos
-    start: str | None = None         # Periodo (YYYY-MM). Se None, usa ultimo periodo
-) -> dict | None
-```
-
-**Retorna**: Dicionario com todas as colunas da instituicao ou `None` se nao encontrar.
-Valores "null" sao convertidos para `None`.
-
-**Exemplo**:
+Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 
 ```python
-# Dados do ultimo periodo disponivel
-info = bcb.cadastro.info('60872504')
-
-# Dados de um periodo especifico
-info = bcb.cadastro.info('60872504', start='2024-12')
-
-if info:
-    print(f"Nome: {info['INSTITUICAO']}")
-    print(f"Segmento: {info['SEGMENTO']}")
-    print(f"UF: {info['UF']}")
-    print(f"Conglomerado: {info['COD_CONGL_PRUD']}")
-```
-
-### list_segmentos()
-
-Lista segmentos disponiveis.
-
-```python
-bcb.cadastro.list_segmentos() -> list[str]
-```
-
-**Exemplo**:
-
-```python
-segmentos = bcb.cadastro.list_segmentos()
-print(segmentos)
-# ['Administradora de Consorcio', 'Agencia de Fomento', 'Banco Comercial',
-#  'Banco Multiplo', 'Cooperativa de Credito', ...]
-```
-
-### list_ufs()
-
-Lista UFs disponiveis.
-
-```python
-bcb.cadastro.list_ufs() -> list[str]
-```
-
-**Exemplo**:
-
-```python
-ufs = bcb.cadastro.list_ufs()
-print(ufs)  # ['AC', 'AL', 'AM', ..., 'SP', 'TO']
-```
-
-### get_conglomerate_members()
-
-Retorna membros de um conglomerado prudencial.
-
-```python
-bcb.cadastro.get_conglomerate_members(
-    cod_congl: str,                  # Codigo do conglomerado
-    start: str | None = None         # Periodo (YYYY-MM). Se None, usa ultimo periodo
+bcb.cadastro.list(
+    columns: list[str],            # Colunas a listar (ver tabela abaixo)
+    *,
+    start: str | None = None,      # Periodo inicial
+    end: str | None = None,        # Periodo final
+    segmento: str | None = None,   # Filtro por segmento (case/accent insensitive)
+    uf: str | None = None,         # Filtro por UF
+    situacao: str | None = None,   # Filtro por situacao
+    atividade: str | None = None,  # Filtro por atividade
+    tcb: str | None = None,        # Filtro por TCB
+    td: str | None = None,         # Filtro por TD
+    tc: str | int | None = None,   # Filtro por TC
+    sr: str | None = None,         # Filtro por SR
+    municipio: str | None = None,  # Filtro por municipio
+    limit: int = 100               # Maximo de resultados
 ) -> pd.DataFrame
 ```
 
-**Exemplo**:
+**Colunas aceitas**: DATA, SEGMENTO, UF, SITUACAO, ATIVIDADE, TCB, TD, TC, SR, MUNICIPIO.
+
+**Colunas bloqueadas** (emitem warning e retornam DataFrame vazio):
+- `CNPJ_8`, `INSTITUICAO`: use `cadastro.search()` para buscar instituicoes
+
+**Raises**: `InvalidColumnError` se coluna invalida. `TruncatedResultWarning` quando `len(resultado) == limit`.
+
+**Exemplos**:
 
 ```python
-# Membros do conglomerado do Itau (ultimo periodo)
-membros = bcb.cadastro.get_conglomerate_members('C0080099')
-print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
+# Listar segmentos disponiveis
+bcb.cadastro.list(["SEGMENTO"])
 
-# Membros em um periodo especifico
-membros = bcb.cadastro.get_conglomerate_members('C0080099', start='2024-12')
+# Listar UFs
+bcb.cadastro.list(["UF"])
+
+# Listar municipios de SP (sem filtro, trunca em 100)
+bcb.cadastro.list(["MUNICIPIO"], uf='SP')
+
+# Combinacao de colunas
+bcb.cadastro.list(["SEGMENTO", "UF"], situacao='A')
+```
+
+### search()
+
+Busca instituicoes por nome ou lista todas com dados disponiveis.
+
+```python
+bcb.cadastro.search(
+    termo: str | None = None,       # Termo de busca (fuzzy). Se None, lista todas
+    *,
+    fonte: str | None = None,       # "ifdata", "cosif", ou None (todas)
+    escopo: str | None = None,      # Filtra por escopo disponivel na fonte
+    start: str | None = None,       # Periodo inicial
+    end: str | None = None,         # Periodo final
+    limit: int = 100                # Maximo de resultados
+) -> pd.DataFrame
+```
+
+**Com `termo`**: fuzzy matching, retorna matches ordenados por SCORE. Coluna SCORE presente.
+
+**Sem `termo`**: lista todas as instituicoes com dados nos providers solicitados. Sem SCORE.
+
+**Filtro `fonte=`**:
+- `None`: instituicoes com dados em qualquer provider
+- `"ifdata"`: so com dados no IFDATA
+- `"cosif"`: so com dados no COSIF
+
+**Filtro `escopo=`**: filtra por escopo disponivel na fonte (ex: `fonte="cosif", escopo="prudencial"`).
+
+**Filtro `start=`/`end=`**: restringe a verificacao de disponibilidade a um intervalo de periodos. Aceita formatos `'YYYY-MM'` ou `YYYYMM`. Quando `start` e fornecido sem `end`, filtra periodo unico. Apenas instituicoes com dados (COSIF e/ou IFDATA) no intervalo solicitado aparecem no resultado, e a coluna `FONTES` reflete a disponibilidade naquele periodo.
+
+**Retorna**: DataFrame com colunas `CNPJ_8`, `INSTITUICAO`, `SITUACAO`, `FONTES`, e `SCORE` (quando `termo` fornecido).
+
+**Raises**: `InvalidScopeError` se fonte ou escopo invalidos.
+
+**Exemplos**:
+
+```python
+# Buscar por nome
+bcb.cadastro.search('Itau')
+
+# Listar todas com dados no IFDATA
+bcb.cadastro.search(fonte='ifdata')
+
+# Listar instituicoes no COSIF prudencial
+bcb.cadastro.search(fonte='cosif', escopo='prudencial')
+
+# Buscar + filtrar por fonte
+bcb.cadastro.search('Bradesco', fonte='cosif')
+
+# Buscar com filtro temporal -- so instituicoes com dados em 2025
+bcb.cadastro.search('Itau', start='2025-03', end='2025-12')
+
+# Listar todas com dados no IFDATA em Q2 2025
+bcb.cadastro.search(fonte='ifdata', start='2025-06')
 ```
 
 ## Colunas Disponiveis
@@ -243,7 +273,7 @@ membros = bcb.cadastro.get_conglomerate_members('C0080099', start='2024-12')
 
 ```python
 # Bancos do Segmento S1 (maiores)
-df = bcb.cadastro.read(instituicao='60872504', start='2024-12')
+df = bcb.cadastro.read('2024-12', instituicao='60872504')
 if df['SR'].iloc[0] == 'S1':
     print("Banco sistemicamente importante")
 ```
@@ -260,14 +290,14 @@ if df['SR'].iloc[0] == 'S1':
 ### Listar Membros do Conglomerado
 
 ```python
-# Obter codigo do conglomerado (ultimo periodo)
-info = bcb.cadastro.info('60872504')
-cod_congl = info['COD_CONGL_PRUD']
+# Usar mapeamento IFDATA para ver membros
+df = bcb.ifdata.mapeamento(start='2024-12')
 
-# Listar todos os membros
-membros = bcb.cadastro.get_conglomerate_members(cod_congl)
-print(f"Conglomerado {cod_congl} tem {len(membros)} membros:")
-print(membros[['CNPJ_8', 'INSTITUICAO', 'SEGMENTO']])
+# Descobrir cod_inst de um banco
+df[df['CNPJ_8'] == '60872504']
+
+# Listar todos os membros do conglomerado
+df[df['COD_INST'] == 'C0080075']
 ```
 
 ## Exemplos Avancados
@@ -374,18 +404,31 @@ Mapeamento para colunas de apresentacao:
 | Uf | UF |
 | Municipio | MUNICIPIO |
 | Sr | SR |
+| CnpjInstituicaoLider | CNPJ_LIDER_8 (normalizado durante coleta) |
 | DataInicioAtividade | DATA_INICIO_ATIVIDADE |
 
 ## Tratamento de Erros
 
 ```python
-# Instituicao nao encontrada
-info = bcb.cadastro.info('99999999')
-if info is None:
-    print("Instituicao nao encontrada no cadastro")
+# start e obrigatorio em read()
+df = bcb.cadastro.read('2024-12', instituicao='60872504')  # OK!
 
-# start=None funciona (usa ultimo periodo disponivel)
-df = bcb.cadastro.read(instituicao='60872504')  # OK!
-info = bcb.cadastro.info('60872504')             # OK!
-membros = bcb.cadastro.get_conglomerate_members('C0080099')  # OK!
+# search() sem resultados retorna DataFrame vazio
+df = bcb.cadastro.search('XYZNONEXISTENT')
+assert df.empty
+
+# Coluna invalida em list()
+from ifdata_bcb.domain.exceptions import InvalidColumnError
+try:
+    bcb.cadastro.list(["FOO"])
+except InvalidColumnError as e:
+    print(f"Erro: {e}")
+    # Coluna 'FOO' invalida. Disponiveis: ATIVIDADE, DATA, MUNICIPIO, ...
+
+# Fonte/escopo invalido em search()
+from ifdata_bcb.domain.exceptions import InvalidScopeError
+try:
+    bcb.cadastro.search(fonte='cosif', escopo='financeiro')  # COSIF nao tem financeiro
+except InvalidScopeError as e:
+    print(f"Erro: {e}")
 ```

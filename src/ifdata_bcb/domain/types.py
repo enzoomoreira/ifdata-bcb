@@ -1,6 +1,11 @@
+from datetime import date, datetime
+
+import pandas as pd
+
 # Tipos para parametros de data
-# Aceita int (202412), str ('2024-12', '202412'), ou lista de ambos
-DateInput = int | str | list[int] | list[str]
+# Aceita int, str, date, datetime, pd.Timestamp, ou lista de qualquer um desses
+DateScalar = int | str | date | datetime | pd.Timestamp
+DateInput = DateScalar | list[DateScalar]
 
 # Tipos para parametros de conta
 # Aceita nome unico ou lista de nomes
@@ -11,6 +16,7 @@ AccountInput = str | list[str]
 InstitutionInput = str | list[str]
 
 __all__ = [
+    "DateScalar",
     "DateInput",
     "AccountInput",
     "InstitutionInput",
