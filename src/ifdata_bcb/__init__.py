@@ -13,11 +13,11 @@ Uso:
     bcb.ifdata.collect('2024-01', '2024-12')
 
     # Consultas usando CNPJ de 8 digitos
+    # start e OBRIGATORIO; instituicao e opcional (None = todas)
     # start sozinho = data unica; start + end = range de datas
-    # instituicao e start sao OBRIGATORIOS
     df = bcb.ifdata.read(
-        instituicao='60872504',
-        start='2024-12',  # Data unica
+        '2024-12',  # start (posicional, obrigatorio)
+        instituicao='60872504',  # keyword-only, opcional
         conta='Lucro Liquido',
     )
 

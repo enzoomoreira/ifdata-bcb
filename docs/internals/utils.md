@@ -11,6 +11,7 @@ src/ifdata_bcb/utils/
 |-- date.py              # Processamento de datas
 |-- fuzzy.py             # Busca fuzzy
 |-- cnpj.py              # Padronizacao de CNPJ
+|-- nulls.py             # Check escalar de nulidade (is_valid)
 +-- period.py            # Extracao de periodos de arquivos
 ```
 
@@ -370,6 +371,22 @@ class BaseCollector:
         existing_ints = {y * 100 + m for y, m in existing}
         return [p for p in all_periods if p not in existing_ints]
 ```
+
+---
+
+## nulls.py
+
+### is_valid()
+
+Check escalar de nulidade sem dependencia de pandas. Substitui `pd.notna()`/`pd.isna()` para valores individuais extraidos de DataFrames DuckDB:
+
+```python
+def is_valid(val: object) -> bool
+```
+
+Compativel com `None`, `float('nan')`, `numpy.nan`, `pd.NA` (StringDtype) e `pd.NaT`. Explora auto-desigualdade IEEE 754 (`NaN != NaN`) e trata `pd.NA` via `try/except` (comparacao ambigua).
+
+Usado em `lookup.py`, `date.py` e `cadastro/collector.py` para checks escalares. Operacoes vetorizadas (`.notna()` sobre Series) continuam usando pandas.
 
 ---
 

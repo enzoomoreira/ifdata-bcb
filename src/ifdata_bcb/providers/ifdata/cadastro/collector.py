@@ -7,6 +7,7 @@ from ifdata_bcb.domain.exceptions import DataProcessingError
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
+from ifdata_bcb.utils.nulls import is_valid
 
 
 class IFDATACadastroCollector(BaseCollector):
@@ -78,7 +79,7 @@ class IFDATACadastroCollector(BaseCollector):
 
             df = df.replace("null", None)
             df["CNPJ_LIDER_8"] = df["CnpjInstituicaoLider"].apply(
-                lambda x: standardize_cnpj_base8(x) if pd.notna(x) else None
+                lambda x: standardize_cnpj_base8(x) if is_valid(x) else None
             )
             cod_inst = df["CodInst"].astype(str).str.strip()
             is_numeric_cod_inst = cod_inst.str.fullmatch(r"\d+").fillna(False)

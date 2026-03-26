@@ -3,6 +3,7 @@
 import pandas as pd
 
 from ifdata_bcb.core.constants import TIPO_INST_MAP, get_pattern, get_subdir
+from ifdata_bcb.utils.nulls import is_valid
 from ifdata_bcb.infra.cache import cached
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
@@ -193,7 +194,7 @@ class EntityLookup:
                 fin_col = df_congl["cod_fin"].values
                 for cnpj, cod_prud, cod_fin in zip(cnpjs_col, prud_col, fin_col):
                     for cod in (cod_prud, cod_fin):
-                        if pd.notna(cod):
+                        if is_valid(cod):
                             cod_to_cnpjs.setdefault(str(cod), []).append(cnpj)
 
                 if cod_to_cnpjs:
@@ -280,7 +281,7 @@ class EntityLookup:
             )
             df = pd.DataFrame()
 
-        if df.empty or pd.isna(df.iloc[0]["NomeInstituicao"]):
+        if df.empty or not is_valid(df.iloc[0]["NomeInstituicao"]):
             return {
                 "cnpj_interesse": cnpj_8,
                 "cnpj_reporte_cosif": cnpj_8,
@@ -290,15 +291,15 @@ class EntityLookup:
             }
 
         row = df.iloc[0]
-        nome = str(row["NomeInstituicao"]) if pd.notna(row["NomeInstituicao"]) else None
+        nome = str(row["NomeInstituicao"]) if is_valid(row["NomeInstituicao"]) else None
         cod_prud = (
             str(row["CodConglomeradoPrudencial"])
-            if pd.notna(row["CodConglomeradoPrudencial"])
+            if is_valid(row["CodConglomeradoPrudencial"])
             else None
         )
         cod_fin = (
             str(row["CodConglomeradoFinanceiro"])
-            if pd.notna(row["CodConglomeradoFinanceiro"])
+            if is_valid(row["CodConglomeradoFinanceiro"])
             else None
         )
 
@@ -319,7 +320,7 @@ class EntityLookup:
                 df_lider = self._qe.sql(sql_lider)
                 if not df_lider.empty:
                     lider = df_lider["CNPJ_LIDER_8"].iloc[0]
-                    if pd.notna(lider):
+                    if is_valid(lider):
                         cnpj_reporte = str(lider)
             except Exception as e:
                 self._logger.warning(

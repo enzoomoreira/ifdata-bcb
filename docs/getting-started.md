@@ -232,7 +232,7 @@ Comportamento:
 - **start sozinho**: Data unica
 - **start + end**: Range de datas (a biblioteca gera automaticamente os periodos)
 
-A coluna `DATA` retornada e sempre do tipo `datetime64[ns]`.
+A coluna `DATA` retornada e sempre do tipo `datetime64` (resolucao microsegundos, nativa do DuckDB).
 
 ## Exemplos Praticos
 

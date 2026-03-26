@@ -567,17 +567,12 @@ class BaseExplorer(ABC):
         # Montar SELECT com expressoes SQL dos _LIST_COLUMNS
         select_parts: list[str] = []
         canonical_names: list[str] = []
-        has_data_col = False
         for col in columns:
             col_upper = col.upper()
             canonical_names.append(col_upper)
             expr = self._LIST_COLUMNS[col_upper]
             if col_upper == "DATA":
-                has_data_col = True
-                select_parts.append(
-                    f"LAST_DAY(MAKE_DATE(CAST({expr}/100 AS INT), "
-                    f"CAST({expr}%100 AS INT), 1)) AS DATA"
-                )
+                select_parts.append(QueryEngine._date_sql_expr(expr, "DATA"))
             else:
                 select_parts.append(f"{expr} AS {col_upper}")
 
@@ -612,10 +607,6 @@ class BaseExplorer(ABC):
 
         if df.empty:
             return pd.DataFrame(columns=canonical_names)
-
-        # Converter DATA para datetime64 (consistente com read())
-        if has_data_col and "DATA" in df.columns:
-            df["DATA"] = pd.to_datetime(df["DATA"])
 
         # Truncation warning
         if len(df) == limit:

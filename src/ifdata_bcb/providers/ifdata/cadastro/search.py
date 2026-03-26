@@ -97,11 +97,17 @@ class CadastroSearch:
 
         if termo is not None:
             return self._search_with_termo(
-                termo, fonte=fonte, escopo=escopo, limit=limit,
+                termo,
+                fonte=fonte,
+                escopo=escopo,
+                limit=limit,
                 date_range=date_range,
             )
         return self._search_without_termo(
-            fonte=fonte, escopo=escopo, limit=limit, date_range=date_range,
+            fonte=fonte,
+            escopo=escopo,
+            limit=limit,
+            date_range=date_range,
         )
 
     def _validate_search_params(self, fonte: str | None, escopo: str | None) -> None:
@@ -167,16 +173,18 @@ class CadastroSearch:
         )
 
         rows: list[dict[str, str]] = []
-        for _, row in all_entities.iterrows():
-            cnpj = row["CNPJ_8"]
+        cnpjs_arr = all_entities["CNPJ_8"].values
+        insts_arr = all_entities["INSTITUICAO"].values
+        sits_arr = all_entities["SITUACAO"].values
+        for cnpj, inst, sit in zip(cnpjs_arr, insts_arr, sits_arr):
             fontes = cnpj_sources.get(cnpj, set())
             if not fontes:
                 continue
             rows.append(
                 {
                     "CNPJ_8": cnpj,
-                    "INSTITUICAO": row["INSTITUICAO"],
-                    "SITUACAO": row["SITUACAO"],
+                    "INSTITUICAO": inst,
+                    "SITUACAO": sit,
                     "FONTES": ",".join(sorted(fontes)),
                 }
             )

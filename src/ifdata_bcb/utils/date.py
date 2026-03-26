@@ -3,13 +3,14 @@ from datetime import date, datetime
 import pandas as pd
 
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
+from ifdata_bcb.utils.nulls import is_valid
 
 
 def _parse_date_input(date_input: int | str | date | datetime | pd.Timestamp) -> date:
     # Aceita: int YYYYMM, str 'YYYYMM'/'YYYY-MM'/'YYYY-MM-DD',
     #         date, datetime, pd.Timestamp
     try:
-        is_na = pd.isna(date_input)
+        is_na = not is_valid(date_input)
     except (ValueError, TypeError):
         is_na = False
     if is_na is True:
