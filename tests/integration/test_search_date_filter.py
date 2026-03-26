@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.core.entity.lookup import EntityLookup as EntityLookupDirect
 from ifdata_bcb.infra.query import QueryEngine
@@ -100,18 +98,14 @@ class TestResolveDateRange:
 class TestDataSourcesDateRange:
     """Testa que date_range filtra verificacao de disponibilidade."""
 
-    def test_without_date_range_finds_sources(
-        self, populated_cache: Path
-    ) -> None:
+    def test_without_date_range_finds_sources(self, populated_cache: Path) -> None:
         """Sem date_range, encontra todas as fontes disponiveis."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs([BANCO_A_CNPJ])
         assert "cosif" in sources[BANCO_A_CNPJ]
         assert "ifdata" in sources[BANCO_A_CNPJ]
 
-    def test_matching_period_finds_sources(
-        self, populated_cache: Path
-    ) -> None:
+    def test_matching_period_finds_sources(self, populated_cache: Path) -> None:
         """date_range que inclui 202303 encontra dados."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs(
@@ -120,9 +114,7 @@ class TestDataSourcesDateRange:
         assert "cosif" in sources[BANCO_A_CNPJ]
         assert "ifdata" in sources[BANCO_A_CNPJ]
 
-    def test_future_period_finds_nothing(
-        self, populated_cache: Path
-    ) -> None:
+    def test_future_period_finds_nothing(self, populated_cache: Path) -> None:
         """date_range futuro nao encontra nenhuma fonte."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs(
@@ -130,9 +122,7 @@ class TestDataSourcesDateRange:
         )
         assert sources[BANCO_A_CNPJ] == set()
 
-    def test_past_period_finds_nothing(
-        self, populated_cache: Path
-    ) -> None:
+    def test_past_period_finds_nothing(self, populated_cache: Path) -> None:
         """date_range anterior aos dados nao encontra nenhuma fonte."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs(
@@ -140,9 +130,7 @@ class TestDataSourcesDateRange:
         )
         assert sources[BANCO_A_CNPJ] == set()
 
-    def test_range_spanning_data_finds_sources(
-        self, populated_cache: Path
-    ) -> None:
+    def test_range_spanning_data_finds_sources(self, populated_cache: Path) -> None:
         """Range amplo que inclui 202303 encontra dados."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs(
@@ -150,9 +138,7 @@ class TestDataSourcesDateRange:
         )
         assert "cosif" in sources[BANCO_A_CNPJ]
 
-    def test_multiple_cnpjs_filtered_independently(
-        self, populated_cache: Path
-    ) -> None:
+    def test_multiple_cnpjs_filtered_independently(self, populated_cache: Path) -> None:
         """Cada CNPJ e filtrado independentemente."""
         lookup = _make_lookup(populated_cache)
         sources = lookup._get_data_sources_for_cnpjs(
@@ -171,18 +157,14 @@ class TestDataSourcesDateRange:
 class TestEntitySearchDateRange:
     """Testa propagacao de date_range no fuzzy search."""
 
-    def test_search_without_date_range(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_without_date_range(self, populated_cache: Path) -> None:
         """Busca sem date_range retorna entidades com dados."""
         search = _make_search(populated_cache)
         df = search.search("ALFA")
         assert not df.empty
         assert "FONTES" in df.columns
 
-    def test_search_with_matching_date_range(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_matching_date_range(self, populated_cache: Path) -> None:
         """Busca com date_range que inclui dados retorna resultados."""
         search = _make_search(populated_cache)
         df = search.search("ALFA", date_range=(202303, 202303))
@@ -214,17 +196,13 @@ class TestEntitySearchDateRange:
 class TestCadastroSearchDateFilter:
     """Testa search() via CadastroExplorer com parametros start/end."""
 
-    def test_search_without_dates_returns_results(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_without_dates_returns_results(self, populated_cache: Path) -> None:
         """search() sem start/end funciona como antes."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA")
         assert not df.empty
 
-    def test_search_with_matching_start(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_matching_start(self, populated_cache: Path) -> None:
         """search(start=) com periodo valido retorna resultados."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", start="2023-03")
@@ -239,9 +217,7 @@ class TestCadastroSearchDateFilter:
         df = cadastro.search("ALFA", start="2030-12")
         assert df.empty
 
-    def test_search_without_termo_with_dates(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_without_termo_with_dates(self, populated_cache: Path) -> None:
         """search(start=) sem termo lista entidades com dados no periodo."""
         cadastro = _make_cadastro(populated_cache)
         df_all = cadastro.search()
@@ -259,17 +235,13 @@ class TestCadastroSearchDateFilter:
         df = cadastro.search(start="2030-12")
         assert df.empty
 
-    def test_search_with_start_and_end(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_start_and_end(self, populated_cache: Path) -> None:
         """search(start=, end=) com range valido retorna resultados."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", start="2023-01", end="2023-12")
         assert not df.empty
 
-    def test_search_with_fonte_and_dates(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_fonte_and_dates(self, populated_cache: Path) -> None:
         """search(fonte=, start=) combina filtros corretamente."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", fonte="cosif", start="2023-03")
@@ -277,17 +249,13 @@ class TestCadastroSearchDateFilter:
         # FONTES deve conter cosif
         assert all(df["FONTES"].str.contains("cosif"))
 
-    def test_search_with_fonte_and_future_dates(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_fonte_and_future_dates(self, populated_cache: Path) -> None:
         """search(fonte=, start=) com periodo futuro retorna vazio."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", fonte="cosif", start="2030-12")
         assert df.empty
 
-    def test_search_with_escopo_and_dates(
-        self, populated_cache: Path
-    ) -> None:
+    def test_search_with_escopo_and_dates(self, populated_cache: Path) -> None:
         """search(escopo=, start=) combina filtros corretamente."""
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search(
@@ -295,9 +263,7 @@ class TestCadastroSearchDateFilter:
         )
         assert not df.empty
 
-    def test_start_end_single_date_equivalent(
-        self, populated_cache: Path
-    ) -> None:
+    def test_start_end_single_date_equivalent(self, populated_cache: Path) -> None:
         """start='X' sem end == start='X', end='X'."""
         cadastro = _make_cadastro(populated_cache)
         df_single = cadastro.search("ALFA", start="2023-03")

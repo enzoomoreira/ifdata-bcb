@@ -254,7 +254,7 @@ class TestIFDATAFinanceiro:
     def test_read_financeiro_entity_without_congl_returns_empty(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             df = explorers[1].read(
                 instituicao=BANCO_B_CNPJ,
