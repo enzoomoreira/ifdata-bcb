@@ -433,18 +433,46 @@ get_parquet_metadata(filename, subdir, base_path=None) -> dict | None
 
 ### Responsabilidades
 
-Sistema de logging com dual output:
+Logging interno **desativado por padrao**. O logger global do loguru pertence a
+aplicacao consumidora: a biblioteca nao adiciona nem remove sinks sem ser pedido.
+`ifdata_bcb/__init__.py` chama `logger.disable("ifdata_bcb")` no import, conforme
+o padrao que a documentacao do loguru prescreve para bibliotecas.
+
+Quando ativado, oferece dual output:
 - **Console (stderr)**: WARNING+ para usuario
 - **Arquivo**: DEBUG+ para debugging tecnico
 
-### configure_logging()
+### enable_logging()
 
 ```python
-def configure_logging(
-    level: str = "WARNING",      # Nivel minimo console
-    enable_file: bool = True,
-    file_level: str = "DEBUG"
-):
+def enable_logging(
+    level: str = "WARNING",      # Nivel minimo do console
+    to_stderr: bool = True,      # Cria sink proprio em stderr
+    to_file: bool = False,       # Cria sink proprio em arquivo
+    file_level: str = "DEBUG",
+) -> None:
+```
+
+```python
+import ifdata_bcb as bcb
+
+bcb.enable_logging()                                  # console, WARNING+
+bcb.enable_logging(level="DEBUG", to_file=True)       # console + arquivo
+bcb.enable_logging(to_stderr=False)                   # usa os sinks da propria app
+```
+
+Com `to_stderr=False` e `to_file=False` nenhum sink e criado: as mensagens fluem
+para os sinks que a aplicacao consumidora ja tiver configurado no loguru.
+
+Os sinks criados aqui sao rastreados por id e removidos individualmente. A
+biblioteca nunca chama `logger.remove()` sem argumento, que apagaria os sinks
+da aplicacao.
+
+### disable_logging()
+
+```python
+def disable_logging() -> None:
+    """Desativa o logging interno e remove os sinks criados por enable_logging()."""
 ```
 
 **Estrutura do log**:
@@ -474,11 +502,11 @@ WARNING  | Mensagem de aviso
 
 ```python
 def get_logger(name: str = "ifdata_bcb"):
-    """
-    Lazy initialization do logging.
-    Retorna logger loguru com binding de nome.
-    """
+    """Retorna logger loguru com binding de nome."""
 ```
+
+Nao ativa nem configura nada: se o logging estiver desativado (o padrao), as
+chamadas viram no-op.
 
 **Exemplo**:
 
@@ -490,13 +518,6 @@ logger.debug("Mensagem de debug")
 logger.info("Mensagem informativa")
 logger.warning("Aviso")
 logger.error("Erro")
-```
-
-### set_log_level()
-
-```python
-def set_log_level(level: str):
-    """Altera nivel (DEBUG, INFO, WARNING, ERROR, CRITICAL)."""
 ```
 
 ### get_log_path()
@@ -728,10 +749,11 @@ print(f"Logs: {settings.logs_path}")
 ### Logging
 
 ```python
-from ifdata_bcb.infra.log import get_logger, set_log_level, get_log_path
+import ifdata_bcb as bcb
+from ifdata_bcb.infra.log import get_log_path, get_logger
 
-# Aumentar verbosidade
-set_log_level("DEBUG")
+# Ativar logging interno (desativado por padrao) com verbosidade maxima
+bcb.enable_logging(level="DEBUG", to_file=True)
 
 # Verificar onde logs sao salvos
 print(f"Logs em: {get_log_path()}")
@@ -739,6 +761,9 @@ print(f"Logs em: {get_log_path()}")
 # Usar logger
 logger = get_logger("meu_modulo")
 logger.info("Mensagem")
+
+# Voltar ao padrao
+bcb.disable_logging()
 ```
 
 ---
@@ -749,7 +774,7 @@ logger.info("Mensagem")
 # infra/__init__.py
 from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
 from ifdata_bcb.infra.config import Settings, get_settings
-from ifdata_bcb.infra.log import configure_logging, emit_user_warning, get_log_path, get_logger, set_log_level
+from ifdata_bcb.infra.log import disable_logging, emit_user_warning, enable_logging, get_log_path, get_logger
 from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay

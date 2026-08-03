@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.4.2] - 2026-08-02
+
+Correcoes criticas de seguranca e integridade de dados, identificadas em auditoria.
+
+### Seguranca
+
+**Injecao SQL via normalizacao Unicode** (`infra/sql.py`): o escape de aspas era
+aplicado antes da normalizacao NFKD. Como NFKD decompoe compatibilidade e nao
+apenas acentos, `U+FF07` (FULLWIDTH APOSTROPHE) virava uma aspa simples ASCII
+depois do escape, fechando o literal SQL. Alcancavel por `read(conta=...)`,
+`list_contas()` e `search()`. O escape passa a ser a ultima transformacao
+aplicada ao valor.
+
+### BREAKING CHANGES
+
+**`configure_logging()` e `set_log_level()` substituidas por `enable_logging()` e
+`disable_logging()`.** A biblioteca nao emite mais logs por padrao.
+
+`configure_logging()` chamava `logger.remove()` no logger global do loguru, que
+pertence a aplicacao consumidora, e era disparada implicitamente por
+`get_logger()` -- presente no `__init__` de `QueryEngine`, `EntityLookup` e
+`DataManager`. Bastava instanciar a API publica para a aplicacao perder os
+proprios sinks de logging. Tambem criava arquivo de log em disco sem ser pedido.
+
+```python
+# Antes (v0.4.1) -- logging ativo por padrao, destruindo os sinks da app
+from ifdata_bcb.infra.log import configure_logging, set_log_level
+set_log_level("DEBUG")
+
+# Agora (v0.4.2) -- opt-in explicito
+import ifdata_bcb as bcb
+bcb.enable_logging(level="DEBUG", to_file=True)
+bcb.disable_logging()
+```
+
+**Coleta IFDATA falha o periodo inteiro se qualquer tipo de instituicao falhar.**
+Antes, o periodo era gravado se ao menos 1 dos 3 tipos tivesse sucesso, marcado
+como SUCCESS. Como a deteccao de "periodo ja coletado" e feita por nome de
+arquivo, o dado incompleto nunca era reparado sem `force=True`. Coletas que antes
+"passavam" parcialmente agora falham de forma explicita.
+
+### Corrigido
+
+- **Escrita de Parquet nao-atomica** (`infra/storage.py`): interrupcao no meio da
+  escrita deixava arquivo truncado com o nome definitivo, tratado como periodo
+  coletado para sempre. Passa a escrever em `.tmp` e mover com `os.replace`.
+  `collect()` limpa `.tmp` orfaos de execucoes anteriores.
+- **Retry em respostas 4xx** (`infra/resilience.py`): `httpx.HTTPError` na lista
+  de excecoes transientes fazia com que um 404 de periodo inexistente fosse
+  retentado 3x com backoff contra a API do BCB. `ValueError` generico tambem
+  estava na lista, mascarando bugs de logica. Substituidos pelo predicado
+  `is_retryable` (transporte, 5xx e 429).
+
+### Removido
+
+- Dependencia `ipywidgets`, declarada mas sem nenhum import no codigo.
+  `ui/display.py` usa Rich com `force_jupyter=False` deliberadamente.
+
 ## [0.4.0] - 2026-03-26
 
 Refatoracao arquitetural com mudancas de API, migracao de HTTP client, novos metodos de consulta e otimizacoes de performance.
