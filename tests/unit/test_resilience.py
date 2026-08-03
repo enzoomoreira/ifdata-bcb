@@ -2,16 +2,23 @@
 
 from unittest.mock import patch
 
-import pytest
 import httpx
-
+import pytest
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.resilience import (
     DEFAULT_PARALLEL_STAGGER,
-    TRANSIENT_EXCEPTIONS,
+    is_retryable,
     retry,
     staggered_delay,
 )
+
+
+def _status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://exemplo.bcb.gov.br/dado")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError(
+        f"HTTP {status_code}", request=request, response=response
+    )
 
 
 class TestRetrySuccess:
@@ -93,7 +100,7 @@ class TestRetryTransientExceptions:
         [
             httpx.ConnectError,
             httpx.TimeoutException,
-            httpx.HTTPError,
+            httpx.ReadError,
             ConnectionError,
             TimeoutError,
             OSError,
@@ -174,19 +181,67 @@ class TestRetryJitter:
         assert ok_func() == "ok"
 
 
-class TestTransientExceptionsTuple:
-    """TRANSIENT_EXCEPTIONS: valida composicao da tupla."""
+class TestIsRetryable:
+    """is_retryable: so erro de transporte e resposta 5xx/429 justificam retry."""
 
-    def test_contains_httpx_exceptions(self) -> None:
-        assert httpx.HTTPError in TRANSIENT_EXCEPTIONS
+    @pytest.mark.parametrize("status", [500, 502, 503, 504, 429])
+    def test_server_errors_and_throttling_are_retryable(self, status: int) -> None:
+        assert is_retryable(_status_error(status)) is True
 
-    def test_contains_builtin_network_exceptions(self) -> None:
-        assert ConnectionError in TRANSIENT_EXCEPTIONS
-        assert TimeoutError in TRANSIENT_EXCEPTIONS
-        assert OSError in TRANSIENT_EXCEPTIONS
+    @pytest.mark.parametrize("status", [400, 401, 403, 404, 410, 422])
+    def test_client_errors_are_not_retryable(self, status: int) -> None:
+        assert is_retryable(_status_error(status)) is False
 
-    def test_does_not_contain_domain_exceptions(self) -> None:
-        assert PeriodUnavailableError not in TRANSIENT_EXCEPTIONS
+    def test_transport_errors_are_retryable(self) -> None:
+        assert is_retryable(httpx.ConnectError("sem rede")) is True
+        assert is_retryable(httpx.ReadTimeout("lento")) is True
+
+    def test_builtin_network_errors_are_retryable(self) -> None:
+        assert is_retryable(ConnectionError("perdeu")) is True
+        assert is_retryable(TimeoutError("estourou")) is True
+        assert is_retryable(OSError("socket")) is True
+
+    def test_domain_exceptions_are_not_retryable(self) -> None:
+        assert is_retryable(PeriodUnavailableError(period=202301)) is False
+
+    def test_generic_value_error_is_not_retryable(self) -> None:
+        """ValueError amplo mascarava bugs de logica com 3 tentativas."""
+        assert is_retryable(ValueError("bug de logica")) is False
+
+    def test_json_decode_error_is_retryable(self) -> None:
+        import json
+
+        assert is_retryable(json.JSONDecodeError("invalido", "", 0)) is True
+
+
+class TestHttpStatusRetryBehaviour:
+    """Comportamento ponta a ponta do decorator para respostas HTTP."""
+
+    def test_404_is_not_retried(self) -> None:
+        counter = {"calls": 0}
+
+        @retry(max_attempts=3, delay=0.01, jitter=False)
+        def not_found() -> None:
+            counter["calls"] += 1
+            raise _status_error(404)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            not_found()
+
+        assert counter["calls"] == 1
+
+    def test_503_is_retried(self) -> None:
+        counter = {"calls": 0}
+
+        @retry(max_attempts=3, delay=0.01, jitter=False)
+        def unavailable() -> None:
+            counter["calls"] += 1
+            raise _status_error(503)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            unavailable()
+
+        assert counter["calls"] == 3
 
 
 class TestStaggeredDelay:

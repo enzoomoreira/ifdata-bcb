@@ -1,16 +1,19 @@
 import json
 import random
 import time
-from typing import Any, Tuple, Type
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 from tenacity import (
     RetryCallState,
-    retry as tenacity_retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
     wait_random_exponential,
+)
+from tenacity import (
+    retry as tenacity_retry,
 )
 
 DEFAULT_RETRY_ATTEMPTS = 3
@@ -54,24 +57,37 @@ def _log_final_failure(retry_state: RetryCallState) -> None:
     raise retry_state.outcome.result()
 
 
-# Excecoes transientes que justificam retry (rede, parsing, APIs instaveis)
-TRANSIENT_EXCEPTIONS: Tuple[Type[Exception], ...] = (
-    # Rede/HTTP (httpx.HTTPError cobre ConnectError, TimeoutException, etc.)
-    httpx.HTTPError,
-    ConnectionError,
-    TimeoutError,
-    OSError,  # Inclui socket errors
-    # Parsing (APIs que retornam resposta invalida/vazia)
-    json.JSONDecodeError,
-    ValueError,
-)
+# Status HTTP que justificam nova tentativa: sobrecarga e falha de servidor.
+# 4xx (404 de periodo inexistente, 403, 400) sao definitivos -- retentar so
+# desperdicaria requisicoes contra a API do BCB.
+RETRYABLE_STATUS_CODES = frozenset({429})
+
+
+def is_retryable(exc: BaseException) -> bool:
+    """Decide se uma excecao justifica nova tentativa."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status in RETRYABLE_STATUS_CODES or 500 <= status < 600
+
+    # TransportError cobre ConnectError, TimeoutException, ReadError etc.
+    # A base httpx.HTTPError fica de fora de proposito: HTTPStatusError herda
+    # dela e seria retentada em qualquer status.
+    if isinstance(exc, httpx.TransportError):
+        return True
+
+    # Resposta invalida/truncada da API pode ser transiente
+    if isinstance(exc, json.JSONDecodeError):
+        return True
+
+    # OSError cobre ConnectionError e TimeoutError (subclasses desde 3.3/3.10)
+    return isinstance(exc, OSError)
 
 
 def retry(
     max_attempts: int = DEFAULT_RETRY_ATTEMPTS,
     delay: float = DEFAULT_RETRY_DELAY,
     backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
-    exceptions: Tuple[Type[Exception], ...] = TRANSIENT_EXCEPTIONS,
+    retry_on: Callable[[BaseException], bool] = is_retryable,
     jitter: bool = True,
 ):
     """Decorator para retry com exponential backoff. Jitter evita thundering herd."""
@@ -88,7 +104,7 @@ def retry(
     return tenacity_retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_strategy,
-        retry=retry_if_exception_type(exceptions),
+        retry=retry_if_exception(retry_on),
         before_sleep=_before_sleep_log,
         retry_error_callback=_log_final_failure,
         reraise=True,  # Re-levanta excecao original apos todas tentativas
