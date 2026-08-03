@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
@@ -29,7 +28,9 @@ class TestImport:
 
     def test_import_nonexistent_raises(self) -> None:
         with pytest.raises(ImportError):
-            from ifdata_bcb import nonexistent_attr  # type: ignore[attr-defined]  # noqa: F401
+            from ifdata_bcb import (
+                nonexistent_attr,  # type: ignore[attr-defined]  # noqa: F401
+            )
 
 
 class TestLazyLoading:
@@ -55,12 +56,15 @@ class TestConfiguration:
         assert s.logs_path is not None
 
     def test_logging_idempotent(self) -> None:
-        from ifdata_bcb.infra.log import configure_logging, get_logger
+        from ifdata_bcb.infra.log import disable_logging, enable_logging, get_logger
 
-        configure_logging()
-        configure_logging()
-        logger = get_logger("test")
-        assert logger is not None
+        try:
+            enable_logging(to_stderr=False)
+            enable_logging(to_stderr=False)
+            logger = get_logger("test")
+            assert logger is not None
+        finally:
+            disable_logging()
 
 
 class TestEmptyCacheExperience:

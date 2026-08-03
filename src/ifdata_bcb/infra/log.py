@@ -1,76 +1,102 @@
+"""
+Logging interno da biblioteca.
+
+Desativado por padrao via `logger.disable("ifdata_bcb")` em ifdata_bcb/__init__.py,
+conforme o padrao que a documentacao do loguru prescreve para bibliotecas: uma lib
+nao pode adicionar nem remover sinks do logger global, porque esse logger pertence
+a aplicacao consumidora.
+
+Para ativar, o consumidor chama `enable_logging()`. Sem sinks proprios
+(to_stderr=False, to_file=False), as mensagens passam a fluir para os sinks que a
+aplicacao ja tiver configurado.
+"""
+
 import sys
 import warnings
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-_configured: bool = False
-_logger_instance = None
+from loguru import logger
+
+# Ids dos sinks criados por enable_logging(). Só estes podem ser removidos --
+# remover por id evita destruir sinks da aplicacao consumidora.
+_sink_ids: list[int] = []
+
+_PACKAGE = "ifdata_bcb"
 
 
-def configure_logging(
+def _remove_own_sinks() -> None:
+    global _sink_ids
+    for sink_id in _sink_ids:
+        try:
+            logger.remove(sink_id)
+        except ValueError:
+            # Sink ja removido pela aplicacao consumidora
+            pass
+    _sink_ids = []
+
+
+def enable_logging(
     level: str = "WARNING",
-    enable_file: bool = True,
+    to_stderr: bool = True,
+    to_file: bool = False,
     file_level: str = "DEBUG",
 ) -> None:
     """
-    Configura loguru com dual output (console + arquivo).
+    Ativa o logging interno da biblioteca.
 
-    Idempotente - chamadas subsequentes sao ignoradas.
-    Console: WARNING+ por padrao. Arquivo: DEBUG+ em Logs/ ao lado do cache efetivo.
+    Args:
+        level: nivel minimo do sink de console.
+        to_stderr: adiciona sink proprio em stderr.
+        to_file: adiciona sink proprio em arquivo, em `get_log_path()`.
+        file_level: nivel minimo do sink de arquivo.
+
+    Com to_stderr=False e to_file=False, nenhum sink e criado e as mensagens
+    vao para os sinks ja configurados pela aplicacao consumidora.
     """
-    global _configured, _logger_instance
+    _remove_own_sinks()
+    logger.enable(_PACKAGE)
 
-    if _configured:
-        return
+    if to_stderr:
+        _sink_ids.append(
+            logger.add(
+                sys.stderr,
+                level=level,
+                format="<level>{level: <8}</level> | {message}",
+                colorize=True,
+                filter=_PACKAGE,
+            )
+        )
 
-    from loguru import logger
-
-    logger.remove()
-
-    logger.add(
-        sys.stderr,
-        level=level,
-        format="<level>{level: <8}</level> | {message}",
-        colorize=True,
-    )
-
-    if enable_file:
+    if to_file:
         from ifdata_bcb.infra.config import get_settings
 
         try:
-            log_path = get_settings().logs_path
-            today = datetime.now().strftime("%Y-%m-%d")
-            log_file = log_path / f"ifdata_{today}.log"
-
-            logger.add(
-                log_file,
-                format="[{time:YYYY-MM-DD HH:mm:ss}] {level: <8} [{name}] {message}",
-                level=file_level,
-                rotation="10 MB",
-                retention="30 days",
-                encoding="utf-8",
+            log_file = get_settings().logs_path / "ifdata_{time:YYYY-MM-DD}.log"
+            _sink_ids.append(
+                logger.add(
+                    log_file,
+                    format="[{time:YYYY-MM-DD HH:mm:ss}] {level: <8} [{name}] {message}",
+                    level=file_level,
+                    rotation="00:00",
+                    retention="30 days",
+                    encoding="utf-8",
+                    filter=_PACKAGE,
+                )
             )
         except OSError:
-            # Ambiente restrito: mantem apenas sink de console.
+            # Ambiente restrito: segue sem sink de arquivo.
             pass
 
-    _logger_instance = logger
-    _configured = True
+
+def disable_logging() -> None:
+    """Desativa o logging interno e remove os sinks criados por enable_logging()."""
+    _remove_own_sinks()
+    logger.disable(_PACKAGE)
 
 
 def get_logger(name: str = "ifdata_bcb") -> Any:
-    configure_logging()
-    assert _logger_instance is not None
-    return _logger_instance.bind(name=name)
-
-
-def set_log_level(level: str) -> None:
-    global _configured, _logger_instance
-    if _logger_instance:
-        _logger_instance.remove()
-    _configured = False
-    configure_logging(level=level)
+    return logger.bind(name=name)
 
 
 def emit_user_warning(
@@ -87,8 +113,7 @@ def emit_user_warning(
         warnings.warn(warning, category, stacklevel=stacklevel + 1)
         msg = warning
         cat_name = category.__name__
-    logger = get_logger("ifdata_bcb.warnings")
-    logger.debug(f"[{cat_name}] {msg}")
+    get_logger("ifdata_bcb.warnings").debug(f"[{cat_name}] {msg}")
 
 
 def get_log_path() -> Path:

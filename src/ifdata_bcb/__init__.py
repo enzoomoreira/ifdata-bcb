@@ -32,11 +32,18 @@ Uso:
 
 from typing import Any
 
+from loguru import logger
+
 # Exceptions importadas diretamente (nao passam por domain/__init__.py)
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
     DataUnavailableError,
 )
+
+# Biblioteca nao loga por padrao: o logger global do loguru pertence a aplicacao
+# consumidora. Consumidor ativa com enable_logging().
+# Feito aqui (e nao em infra.log) porque importar infra puxa pandas/duckdb.
+logger.disable("ifdata_bcb")
 
 # Lazy loading de tudo que puxa pandas/duckdb
 _cosif = None
@@ -69,6 +76,11 @@ def __getattr__(name: str) -> Any:
             _cadastro = CadastroExplorer()
         return _cadastro
 
+    if name in ("enable_logging", "disable_logging"):
+        import ifdata_bcb.infra.log as log_module
+
+        return getattr(log_module, name)
+
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
 
 
@@ -84,4 +96,7 @@ __all__ = [
     # Exceptions (BacenAnalysisError = base)
     "BacenAnalysisError",
     "DataUnavailableError",
+    # Logging (desativado por padrao)
+    "enable_logging",
+    "disable_logging",
 ]
