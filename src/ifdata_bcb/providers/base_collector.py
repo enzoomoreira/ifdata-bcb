@@ -5,8 +5,8 @@ from enum import Enum, auto
 from pathlib import Path
 
 import duckdb
-import pandas as pd
 import httpx
+import pandas as pd
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
@@ -61,17 +61,14 @@ class BaseCollector(ABC):
     @abstractmethod
     def _get_file_prefix(self) -> str:
         """Prefixo do arquivo (ex: 'cosif_ind', 'ifdata_val')."""
-        pass
 
     @abstractmethod
     def _get_subdir(self) -> str:
         """Subdiretorio para os arquivos (ex: 'cosif/individual')."""
-        pass
 
     @abstractmethod
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """Baixa dados de um periodo para work_dir. Retorna path ou None se falhar."""
-        pass
 
     @abstractmethod
     def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
@@ -81,7 +78,6 @@ class BaseCollector(ABC):
             data_path: Caminho para arquivo CSV ou diretorio com CSVs,
                 dependendo do provider.
         """
-        pass
 
     @retry(delay=2.0)
     def _download_single(self, url: str, output_path: Path) -> bool:
@@ -251,6 +247,13 @@ class BaseCollector(ABC):
 
         Usa coleta paralela. Retorna (registros, ok, falhas, indisponiveis).
         """
+        # Escritas interrompidas em execucoes anteriores deixam .tmp orfaos
+        orphans = self.dm.cleanup_partial_writes(self._get_subdir())
+        if orphans:
+            self.logger.info(
+                f"{orphans} escrita(s) parcial(is) anterior(es) removida(s)"
+            )
+
         if force:
             periods = self._generate_periods(start, end)
         else:

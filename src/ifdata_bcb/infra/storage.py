@@ -1,16 +1,56 @@
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from ifdata_bcb.infra.config import get_settings
-from ifdata_bcb.infra.paths import ensure_dir
 from ifdata_bcb.infra.log import get_logger
+from ifdata_bcb.infra.paths import ensure_dir
 from ifdata_bcb.utils.period import extract_periods_from_files
+
+_TMP_SUFFIX = ".tmp"
 
 
 def _resolve_base_path(base_path: Path | None) -> Path:
     return base_path or get_settings().cache_path
+
+
+@contextmanager
+def _atomic_write(filepath: Path) -> Iterator[Path]:
+    """
+    Escreve em arquivo temporario e move para o destino final ao concluir.
+
+    Interrupcao no meio da escrita nao pode deixar um .parquet truncado com o
+    nome definitivo: a deteccao de "periodo ja coletado" e feita por nome de
+    arquivo, entao o periodo corrompido nunca seria recoletado.
+    `os.replace` e atomico dentro do mesmo filesystem, incluindo Windows.
+    """
+    tmp_path = filepath.with_name(filepath.name + _TMP_SUFFIX)
+    try:
+        yield tmp_path
+        os.replace(tmp_path, filepath)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def cleanup_partial_writes(subdir: str, base_path: Path | None = None) -> int:
+    """Remove .tmp orfaos de escritas interrompidas. Retorna quantos removeu."""
+    dir_path = _resolve_base_path(base_path) / subdir
+    if not dir_path.exists():
+        return 0
+    removed = 0
+    for tmp_file in dir_path.glob(f"*{_TMP_SUFFIX}"):
+        try:
+            tmp_file.unlink()
+            removed += 1
+        except OSError:
+            # Outro processo pode estar escrevendo neste arquivo agora
+            pass
+    return removed
 
 
 def list_parquet_files(
@@ -108,7 +148,10 @@ class DataManager:
         output_dir = ensure_dir(self.cache_path / subdir)
         filepath = output_dir / f"{filename}.parquet"
 
-        df.to_parquet(filepath, engine="pyarrow", compression=compression, index=False)
+        with _atomic_write(filepath) as tmp_path:
+            df.to_parquet(
+                tmp_path, engine="pyarrow", compression=compression, index=False
+            )
 
         self._logger.info(f"Saved: {subdir}/{filename}.parquet ({len(df):,} rows)")
         return filepath
@@ -124,11 +167,16 @@ class DataManager:
         output_dir = ensure_dir(self.cache_path / subdir)
         filepath = output_dir / f"{filename}.parquet"
 
-        self._conn.sql(query).to_parquet(str(filepath), compression=compression)
+        with _atomic_write(filepath) as tmp_path:
+            self._conn.sql(query).to_parquet(str(tmp_path), compression=compression)
 
         count = self._conn.sql(f"SELECT COUNT(*) FROM '{filepath}'").fetchone()[0]
         self._logger.info(f"Saved: {subdir}/{filename}.parquet ({count:,} rows)")
         return filepath
+
+    def cleanup_partial_writes(self, subdir: str) -> int:
+        """Remove .tmp orfaos de escritas interrompidas. Retorna quantos removeu."""
+        return cleanup_partial_writes(subdir, self.cache_path)
 
     def list_files(self, subdir: str, pattern: str = "*.parquet") -> list[str]:
         return list_parquet_files(subdir, pattern, self.cache_path)
