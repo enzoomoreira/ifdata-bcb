@@ -1,4 +1,10 @@
-"""Funcoes de construcao de condicoes SQL para DuckDB."""
+"""Funcoes de construcao de condicoes SQL para DuckDB.
+
+O escape de aspas DEVE ser a ultima transformacao aplicada a um valor.
+NFKD (usado por normalize_accents) decompoe compatibilidade, nao apenas
+acentos: U+FF07 FULLWIDTH APOSTROPHE decompoe para uma aspa simples ASCII.
+Escapar antes de normalizar deixa essa aspa sem escape, fechando o literal.
+"""
 
 from ifdata_bcb.utils.text import normalize_accents
 
@@ -12,16 +18,18 @@ def build_string_condition(
     """Constroi condicao para valores string com escape de aspas."""
     if not values:
         raise ValueError("values must not be empty")
-    escaped = [v.strip().replace("'", "''") for v in values]
+    normalized = [v.strip() for v in values]
     col_expr = column
 
     if accent_insensitive:
         col_expr = f"strip_accents({col_expr})"
-        escaped = [normalize_accents(v) for v in escaped]
+        normalized = [normalize_accents(v) for v in normalized]
 
     if case_insensitive:
         col_expr = f"UPPER({col_expr})"
-        escaped = [v.upper() for v in escaped]
+        normalized = [v.upper() for v in normalized]
+
+    escaped = [v.replace("'", "''") for v in normalized]
 
     if len(escaped) == 1:
         return f"{col_expr} = '{escaped[0]}'"
@@ -71,7 +79,7 @@ def build_like_condition(
     accent_insensitive: bool = True,
 ) -> str:
     """Constroi condicao LIKE para busca textual parcial."""
-    term_clean = term.strip().replace("'", "''")
+    term_clean = term.strip()
     col_expr = column
 
     if accent_insensitive:
@@ -82,7 +90,7 @@ def build_like_condition(
         col_expr = f"UPPER({col_expr})"
         term_clean = term_clean.upper()
 
-    term_clean = _escape_like_meta(term_clean)
+    term_clean = _escape_like_meta(term_clean).replace("'", "''")
     return f"{col_expr} LIKE '%{term_clean}%' ESCAPE '$'"
 
 

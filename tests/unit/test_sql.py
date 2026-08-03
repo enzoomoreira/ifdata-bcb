@@ -205,3 +205,96 @@ class TestBuildAccountConditionAdversarial:
     def test_empty_values_raises(self) -> None:
         with pytest.raises(ValueError, match="must not be empty"):
             build_account_condition("nome", "cod", [])
+
+
+# =========================================================================
+# Injecao SQL via normalizacao Unicode
+#
+# NFKD decompoe compatibilidade, nao apenas acentos: U+FF07 (FULLWIDTH
+# APOSTROPHE) vira uma aspa simples ASCII. Se a normalizacao rodar depois
+# do escape, a aspa resultante nunca e escapada e fecha o literal SQL.
+# U+FF07 e o unico codepoint que decompoe para "'" (varredura completa
+# de U+0020 a U+11000).
+# =========================================================================
+
+FULLWIDTH_APOSTROPHE = "＇"
+
+# Fecha o literal, injeta OR 1=1 e reabre para manter o SQL sintaticamente valido
+INJECTION_PAYLOAD = f"{FULLWIDTH_APOSTROPHE} OR 1=1 OR {FULLWIDTH_APOSTROPHE}"
+
+
+@pytest.fixture
+def conn():
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE t (NOME_CONTA VARCHAR, CODIGO INT, SALDO INT)")
+    con.execute("INSERT INTO t VALUES ('CAIXA', 10, 100), ('TITULOS', 20, 200)")
+    yield con
+    con.close()
+
+
+class TestUnicodeNormalizationInjection:
+    """O payload nao pode escapar do literal SQL e virar predicado."""
+
+    def test_string_condition_does_not_escape_literal(self, conn) -> None:
+        cond = build_string_condition(
+            "NOME_CONTA",
+            [INJECTION_PAYLOAD],
+            case_insensitive=True,
+            accent_insensitive=True,
+        )
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert rows == [], f"filtro burlado, condicao gerada: {cond}"
+
+    def test_like_condition_does_not_escape_literal(self, conn) -> None:
+        cond = build_like_condition("NOME_CONTA", INJECTION_PAYLOAD)
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert rows == [], f"filtro burlado, condicao gerada: {cond}"
+
+    def test_account_condition_does_not_escape_literal(self, conn) -> None:
+        cond = build_account_condition("NOME_CONTA", "CODIGO", [INJECTION_PAYLOAD])
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert rows == [], f"filtro burlado, condicao gerada: {cond}"
+
+    def test_in_clause_with_multiple_values(self, conn) -> None:
+        """Caminho IN (>1 valor) monta os literais separadamente do caminho '='."""
+        cond = build_string_condition(
+            "NOME_CONTA",
+            [INJECTION_PAYLOAD, "OUTRA"],
+            case_insensitive=True,
+            accent_insensitive=True,
+        )
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert rows == [], f"filtro burlado, condicao gerada: {cond}"
+
+    def test_fullwidth_apostrophe_is_escaped_in_output(self) -> None:
+        """Apos normalizar, a aspa resultante deve aparecer duplicada."""
+        result = build_string_condition(
+            "col", [FULLWIDTH_APOSTROPHE], accent_insensitive=True
+        )
+        assert result == "strip_accents(col) = ''''"
+
+    def test_subquery_exfiltration_blocked(self, conn) -> None:
+        """Sem o escape correto, DuckDB permitiria subquery arbitraria."""
+        payload = (
+            f"{FULLWIDTH_APOSTROPHE} OR (SELECT MAX(SALDO) FROM t) = 200 OR "
+            f"{FULLWIDTH_APOSTROPHE}"
+        )
+        cond = build_string_condition(
+            "NOME_CONTA", [payload], case_insensitive=True, accent_insensitive=True
+        )
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert rows == [], f"subquery executada, condicao gerada: {cond}"
+
+    def test_legitimate_accented_value_still_matches(self, conn) -> None:
+        """A correcao nao pode quebrar o proposito da normalizacao."""
+        conn.execute("INSERT INTO t VALUES ('OPERACOES', 30, 300)")
+        cond = build_string_condition(
+            "NOME_CONTA",
+            ["operações"],
+            case_insensitive=True,
+            accent_insensitive=True,
+        )
+        rows = conn.execute(f"SELECT * FROM t WHERE {cond}").fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "OPERACOES"
