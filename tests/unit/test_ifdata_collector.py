@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
-
-from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
+import pytest
+from ifdata_bcb.core.constants import TIPO_INST_MAP
 from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
-
+from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
 
 # =========================================================================
 # Helpers para escrita de CSVs
@@ -131,6 +131,89 @@ class TestValoresProcessToParquet:
         collector = _make_valores_collector()
         df = collector._process_to_parquet(workspace_tmp_dir, 202303)
         assert df is None
+
+
+# =========================================================================
+# IFDATAValoresCollector._download_period
+# =========================================================================
+
+
+class TestValoresDownloadPeriodRequiresAllTypes:
+    """
+    O periodo so pode ser gravado com os 3 tipos de instituicao.
+
+    Gravar parcialmente marcaria o periodo como coletado (deteccao por nome de
+    arquivo) e o tipo faltante nunca seria rebaixado sem force=True.
+    """
+
+    def test_all_types_succeed_returns_work_dir(self, workspace_tmp_dir: Path) -> None:
+        collector = _make_valores_collector()
+        chamadas: list[str] = []
+
+        def fake_download(url: str, output_path: Path) -> bool:
+            chamadas.append(url)
+            output_path.write_text("ok", encoding="utf-8")
+            return True
+
+        collector._download_single = fake_download
+
+        result = collector._download_period(202303, workspace_tmp_dir)
+
+        assert result == workspace_tmp_dir
+        assert len(chamadas) == len(TIPO_INST_MAP)
+
+    def test_single_type_failure_propagates(self, workspace_tmp_dir: Path) -> None:
+        collector = _make_valores_collector()
+        tipo_que_falha = list(TIPO_INST_MAP.values())[1]
+
+        def fake_download(url: str, output_path: Path) -> bool:
+            if f"@TipoInstituicao={tipo_que_falha}&" in url:
+                raise ConnectionError("timeout no BCB")
+            output_path.write_text("ok", encoding="utf-8")
+            return True
+
+        collector._download_single = fake_download
+
+        with pytest.raises(ConnectionError):
+            collector._download_period(202303, workspace_tmp_dir)
+
+    def test_all_types_failure_propagates(self, workspace_tmp_dir: Path) -> None:
+        collector = _make_valores_collector()
+
+        def fake_download(url: str, output_path: Path) -> bool:
+            raise ConnectionError("BCB fora do ar")
+
+        collector._download_single = fake_download
+
+        with pytest.raises(ConnectionError):
+            collector._download_period(202303, workspace_tmp_dir)
+
+    def test_partial_failure_does_not_save_parquet(
+        self, workspace_tmp_dir: Path
+    ) -> None:
+        """Ponta a ponta: falha parcial vira FAILED e nao chama dm.save."""
+        from ifdata_bcb.providers.base_collector import CollectStatus
+
+        collector = _make_valores_collector()
+        tipo_que_falha = list(TIPO_INST_MAP.values())[0]
+
+        def fake_download(url: str, output_path: Path) -> bool:
+            if f"@TipoInstituicao={tipo_que_falha}&" in url:
+                raise ConnectionError("timeout no BCB")
+            _write_valores_csv(
+                output_path,
+                ["202303,60872504,3,10100,ATIVO TOTAL,1000.00,Resumo,Balanco"],
+            )
+            return True
+
+        collector._download_single = fake_download
+
+        registros, status, erro = collector._process_single_period(202303)
+
+        assert status == CollectStatus.FAILED
+        assert registros == 0
+        assert erro is not None
+        collector.dm.save.assert_not_called()
 
 
 # =========================================================================

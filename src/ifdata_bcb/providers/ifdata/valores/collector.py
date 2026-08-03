@@ -29,31 +29,38 @@ class IFDATAValoresCollector(BaseCollector):
         return get_subdir("ifdata_valores")
 
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
-        """Baixa 3 tipos de instituicao em paralelo."""
-        tipos_inst = list(TIPO_INST_MAP.values())
-        downloaded = []
+        """
+        Baixa os 3 tipos de instituicao em paralelo.
 
-        def download_tipo(tipo: int) -> Path | None:
+        Exige que todos tenham sucesso. Gravar o periodo com apenas parte dos
+        tipos o marcaria como coletado (a deteccao e por nome de arquivo), e o
+        tipo faltante nunca seria rebaixado sem force=True.
+        """
+        tipos_inst = list(TIPO_INST_MAP.values())
+
+        def download_tipo(tipo: int) -> Path:
             url = (
                 f"{IFDATA_API_BASE}/IfDataValores"
                 f"(AnoMes=@AnoMes,TipoInstituicao=@TipoInstituicao,Relatorio=@Relatorio)"
                 f"?@AnoMes={period}&@TipoInstituicao={tipo}&@Relatorio='T'&$format=text/csv"
             )
             output_path = work_dir / f"ifdata_val_{period}_{tipo}.csv"
-            try:
-                self._download_single(url, output_path)
-                return output_path
-            except Exception:
-                return None
+            self._download_single(url, output_path)
+            return output_path
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(download_tipo, t) for t in tipos_inst]
+            futures = {executor.submit(download_tipo, t): t for t in tipos_inst}
             for future in as_completed(futures):
-                path = future.result()
-                if path:
-                    downloaded.append(path)
+                tipo = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    self.logger.warning(
+                        f"Periodo {period}: falha no tipo de instituicao {tipo}: {e}"
+                    )
+                    raise
 
-        return work_dir if downloaded else None
+        return work_dir
 
     def _process_to_parquet(self, csv_dir: Path, period: int) -> pd.DataFrame | None:
         """Processa CSVs do diretorio em um unico DataFrame."""
