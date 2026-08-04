@@ -124,6 +124,16 @@ class QueryEngine:
         query = query.replace("{cache}", str(self._cache_path))
         return self._conn.sql(query).df()
 
+    def close(self) -> None:
+        """Fecha a conexao DuckDB."""
+        self._conn.close()
+
+    def __enter__(self) -> "QueryEngine":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
     def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
         """Executa SQL com DataFrames registrados como tabelas virtuais.
 

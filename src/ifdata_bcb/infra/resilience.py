@@ -19,10 +19,6 @@ from tenacity import (
 DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_DELAY = 1.0
 DEFAULT_BACKOFF_FACTOR = 2.0
-DEFAULT_REQUEST_TIMEOUT = 240
-# Conectar e rapido ou nao acontece: sem um limite proprio, um host inacessivel
-# segurava o worker pelos 240s do timeout de leitura, multiplicado pelos retries.
-DEFAULT_CONNECT_TIMEOUT = 10.0
 
 # Teto de requisicoes HTTP simultaneas ao BCB, valido para o processo inteiro.
 MAX_CONCURRENT_REQUESTS = 4

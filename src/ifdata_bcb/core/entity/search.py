@@ -36,7 +36,7 @@ class EntitySearch:
     def __init__(
         self,
         lookup: EntityLookup,
-        fuzzy_threshold_suggest: int = 78,
+        fuzzy_threshold_suggest: int | None = None,
     ):
         self._lookup = lookup
         self._qe = lookup.query_engine
@@ -83,7 +83,7 @@ class EntitySearch:
 
         matches = self._fuzzy.search(
             query=termo_norm,
-            choices=nome_to_cnpj,
+            choices=nome_to_cnpj.keys(),
             score_cutoff=self._fuzzy.threshold_suggest,
         )
         if not matches:
@@ -216,9 +216,11 @@ class EntitySearch:
 
         result_df = pd.DataFrame(results)
 
-        if date_range is not None:
-            result_df = result_df[result_df["FONTES"] != ""].copy()
-        elif not result_df.empty and (result_df["FONTES"] != "").any():
+        if (
+            date_range is not None
+            or not result_df.empty
+            and (result_df["FONTES"] != "").any()
+        ):
             result_df = result_df[result_df["FONTES"] != ""].copy()
 
         result_df = result_df.sort_values(

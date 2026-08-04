@@ -9,14 +9,10 @@ import httpx
 import pandas as pd
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
+from ifdata_bcb.infra.config import get_settings
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
-from ifdata_bcb.infra.resilience import (
-    DEFAULT_CONNECT_TIMEOUT,
-    DEFAULT_REQUEST_TIMEOUT,
-    request_slot,
-    retry,
-)
+from ifdata_bcb.infra.resilience import request_slot, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.ui.display import get_display
 from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
@@ -52,7 +48,6 @@ class BaseCollector(ABC):
     """
 
     _PERIOD_TYPE: str = "monthly"
-    _MAX_WORKERS: int = 4
 
     def __init__(self, data_manager: DataManager | None = None):
         self.dm = data_manager or DataManager()
@@ -61,9 +56,12 @@ class BaseCollector(ABC):
         self._collect_total = 0
         self._collect_lock = threading.Lock()
         self._duckdb_conn = duckdb.connect()  # Conexao para cursors thread-local
+
+        settings = get_settings()
+        self._max_workers = settings.max_workers
         self._http = httpx.Client(
             timeout=httpx.Timeout(
-                DEFAULT_REQUEST_TIMEOUT, connect=DEFAULT_CONNECT_TIMEOUT
+                settings.request_timeout, connect=settings.connect_timeout
             ),
             follow_redirects=True,
             headers={"User-Agent": _user_agent()},
@@ -316,7 +314,7 @@ class BaseCollector(ABC):
         # Coleta paralela com ThreadPoolExecutor
         desc = progress_desc or "Periodos"
 
-        with ThreadPoolExecutor(max_workers=self._MAX_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
             futures = {
                 executor.submit(self._process_single_period, p): p for p in periods
             }

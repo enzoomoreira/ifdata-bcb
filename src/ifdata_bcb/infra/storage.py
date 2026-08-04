@@ -1,4 +1,5 @@
 import os
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -82,6 +83,9 @@ def get_parquet_path(
 
 
 _metadata_conn: duckdb.DuckDBPyConnection | None = None
+# Uma handle DuckDB nao pode ser usada por varias threads ao mesmo tempo, e a
+# coleta consulta metadata a partir do pool de workers.
+_metadata_lock = threading.Lock()
 
 
 def _get_metadata_conn() -> duckdb.DuckDBPyConnection:
@@ -104,13 +108,14 @@ def get_parquet_metadata(
         return None
 
     try:
-        conn = _get_metadata_conn()
-        schema = conn.sql(f"DESCRIBE SELECT * FROM '{filepath}' LIMIT 0").df()
-        n_cols = len(schema)
+        with _metadata_lock:
+            conn = _get_metadata_conn()
+            schema = conn.sql(f"DESCRIBE SELECT * FROM '{filepath}' LIMIT 0").df()
+            n_cols = len(schema)
 
-        count_sql = f"SELECT COUNT(*) as total FROM '{filepath}'"
-        count_result = conn.sql(count_sql).fetchone()
-        n_rows = count_result[0] if count_result else 0
+            count_sql = f"SELECT COUNT(*) as total FROM '{filepath}'"
+            count_result = conn.sql(count_sql).fetchone()
+            n_rows = count_result[0] if count_result else 0
 
         return {
             "arquivo": filename,
@@ -191,3 +196,13 @@ class DataManager:
     ) -> list[tuple[int, int]]:
         files = self.list_files(subdir, f"{prefix}_*.parquet")
         return extract_periods_from_files(files, prefix)
+
+    def close(self) -> None:
+        """Fecha a conexao DuckDB."""
+        self._conn.close()
+
+    def __enter__(self) -> "DataManager":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()

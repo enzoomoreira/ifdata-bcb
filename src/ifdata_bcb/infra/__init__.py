@@ -10,7 +10,7 @@ from ifdata_bcb.infra.log import (
 from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.resilience import (
-    DEFAULT_REQUEST_TIMEOUT,
+    MAX_CONCURRENT_REQUESTS,
     request_slot,
     retry,
 )
@@ -48,7 +48,7 @@ __all__ = [
     "get_log_path",
     "get_logger",
     # Resilience
-    "DEFAULT_REQUEST_TIMEOUT",
+    "MAX_CONCURRENT_REQUESTS",
     "request_slot",
     "retry",
 ]

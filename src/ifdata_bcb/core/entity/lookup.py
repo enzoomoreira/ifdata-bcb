@@ -3,11 +3,10 @@
 import pandas as pd
 
 from ifdata_bcb.core.constants import TIPO_INST_MAP, get_pattern, get_subdir
-from ifdata_bcb.utils.nulls import is_valid
-from ifdata_bcb.infra.cache import cached
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import build_in_clause, build_string_condition
+from ifdata_bcb.utils.nulls import is_valid
 
 
 class EntityLookup:
@@ -27,6 +26,10 @@ class EntityLookup:
         self._qe = query_engine or QueryEngine()
         self._logger = get_logger(__name__)
         self._name_cache: dict[str, str] = {}
+        # Cache por instancia: um lru_cache em metodo guardaria `self` na chave,
+        # mantendo viva cada EntityLookup (e sua conexao DuckDB), e o
+        # cache_clear() de uma instancia limparia o cache de todas.
+        self._identifiers_cache: dict[str, dict[str, str | None]] = {}
 
     @property
     def query_engine(self) -> QueryEngine:
@@ -235,7 +238,6 @@ class EntityLookup:
             self._logger.warning(f"Latest situacao query failed: {e}")
             return {}
 
-    @cached(maxsize=256)
     def get_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
         """
         Retorna identificadores da entidade a partir do cadastro.
@@ -243,6 +245,15 @@ class EntityLookup:
         Usa o valor mais recente nao-nulo de cada campo, o que protege contra
         periodos em que o BCB deixou de popular determinados campos.
         """
+        cached_result = self._identifiers_cache.get(cnpj_8)
+        if cached_result is not None:
+            return cached_result
+
+        result = self._fetch_entity_identifiers(cnpj_8)
+        self._identifiers_cache[cnpj_8] = result
+        return result
+
+    def _fetch_entity_identifiers(self, cnpj_8: str) -> dict[str, str | None]:
         if not cnpj_8:
             return {
                 "cnpj_interesse": cnpj_8,
@@ -374,6 +385,6 @@ class EntityLookup:
         return {cnpj: self._name_cache.get(cnpj, "") for cnpj in cnpjs}
 
     def clear_cache(self) -> None:
-        """Limpa caches LRU e cache de nomes."""
-        self.get_entity_identifiers.cache_clear()
+        """Limpa os caches desta instancia."""
+        self._identifiers_cache.clear()
         self._name_cache.clear()
