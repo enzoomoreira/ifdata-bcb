@@ -166,6 +166,9 @@ def enrich_with_cadastro(
     )
 
     if df_cad.empty:
+        # copy() antes de escrever: os demais caminhos retornam DataFrame novo,
+        # e so este mutava o objeto do chamador.
+        df = df.copy()
         for col in cadastro_columns:
             df[col] = pd.Series([None] * len(df), dtype="string")
         return df

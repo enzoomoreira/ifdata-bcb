@@ -33,7 +33,14 @@ def _parse_date_input(date_input: int | str | date | datetime | pd.Timestamp) ->
         clean_date = date_input.strip()
 
         if len(clean_date) == 6 and clean_date.isdigit():
-            return date(int(clean_date[:4]), int(clean_date[4:]), 1)
+            try:
+                return date(int(clean_date[:4]), int(clean_date[4:]), 1)
+            except ValueError:
+                # Sem isto, '202399' escapava como ValueError cru do date(),
+                # fora da hierarquia BacenAnalysisError.
+                raise InvalidDateFormatError(
+                    clean_date, f"mes invalido: {clean_date[4:]}"
+                ) from None
 
         try:
             return datetime.strptime(clean_date, "%Y-%m-%d").date()

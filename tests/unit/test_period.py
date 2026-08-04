@@ -32,12 +32,20 @@ class TestParsePeriodFromFilename:
         # re.escape deve tratar prefixos com caracteres regex
         assert parse_period_from_filename("data.file_202301", "data.file") == (2023, 1)
 
-    def test_month_zero_parsed_without_validation(self) -> None:
-        # A funcao apenas faz parsing, nao valida intervalo de mes
-        assert parse_period_from_filename("prefix_202400", "prefix") == (2024, 0)
+    def test_month_zero_is_rejected(self) -> None:
+        """Mes fora de 1..12 nao e periodo valido, e sim nome de arquivo espurio."""
+        assert parse_period_from_filename("prefix_202400", "prefix") is None
 
-    def test_month_13_parsed_without_validation(self) -> None:
-        assert parse_period_from_filename("prefix_202413", "prefix") == (2024, 13)
+    def test_month_13_is_rejected(self) -> None:
+        assert parse_period_from_filename("prefix_202413", "prefix") is None
+
+    def test_invalid_month_is_not_listed_as_available_period(self) -> None:
+        """Arquivo com mes invalido nao pode entrar na lista de periodos."""
+        from ifdata_bcb.utils.period import extract_periods_from_files
+
+        files = ["prefix_202412", "prefix_209913", "prefix_202401"]
+
+        assert extract_periods_from_files(files, "prefix") == [(2024, 1), (2024, 12)]
 
     def test_embedded_in_longer_filename(self) -> None:
         # O pattern usa re.search, deve encontrar dentro de nomes maiores

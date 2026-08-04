@@ -4,7 +4,6 @@ from datetime import date, datetime
 
 import pandas as pd
 import pytest
-
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
 from ifdata_bcb.utils.date import (
     _parse_date_input,
@@ -99,6 +98,24 @@ class TestNormalizeDateToInt:
     def test_int_month_zero_raises(self) -> None:
         with pytest.raises(InvalidDateFormatError):
             normalize_date_to_int(202400)
+
+    def test_str_invalid_month_raises_domain_error(self) -> None:
+        """
+        O caminho str validava menos que o caminho int.
+
+        '202399' escapava como ValueError cru do date(), fora da hierarquia
+        BacenAnalysisError -- quem tratava `except BacenAnalysisError` nao pegava.
+        """
+        from ifdata_bcb.domain.exceptions import BacenAnalysisError
+
+        with pytest.raises(BacenAnalysisError):
+            normalize_date_to_int("202399")
+
+    def test_str_month_zero_raises_domain_error(self) -> None:
+        from ifdata_bcb.domain.exceptions import BacenAnalysisError
+
+        with pytest.raises(BacenAnalysisError):
+            normalize_date_to_int("202400")
 
     def test_str_yyyymm(self) -> None:
         assert normalize_date_to_int("202403") == 202403

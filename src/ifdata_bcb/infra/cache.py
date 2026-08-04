@@ -1,6 +1,6 @@
 import threading
+from collections.abc import Callable
 from functools import _lru_cache_wrapper, lru_cache
-from typing import Callable
 
 _registered_caches: list[_lru_cache_wrapper] = []
 _lock = threading.Lock()
@@ -21,6 +21,7 @@ def cached(maxsize: int = 128) -> Callable:
 
 
 def clear_all_caches() -> int:
+    """Limpa todos os caches registrados. Retorna quantos caches foram limpos."""
     with _lock:
         count = 0
         for cache in _registered_caches:
@@ -34,7 +35,10 @@ def get_cache_info() -> dict[str, dict]:
     result = {}
     with _lock:
         for cache in _registered_caches:
-            name = cache.__wrapped__.__qualname__
+            # Qualificado com o modulo: so o __qualname__ colide em silencio
+            # entre classes homonimas de modulos diferentes.
+            wrapped = cache.__wrapped__
+            name = f"{wrapped.__module__}.{wrapped.__qualname__}"
             info = cache.cache_info()
             result[name] = {
                 "hits": info.hits,

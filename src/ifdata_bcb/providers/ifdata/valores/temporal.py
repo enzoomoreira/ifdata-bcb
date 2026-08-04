@@ -117,8 +117,8 @@ class TemporalResolver:
         cadastro_subdir = get_subdir("cadastro")
 
         if not self._qe.has_glob(cadastro_pattern, cadastro_subdir):
-            from ifdata_bcb.infra.log import emit_user_warning
             from ifdata_bcb.domain.exceptions import PartialDataWarning
+            from ifdata_bcb.infra.log import emit_user_warning
 
             emit_user_warning(
                 PartialDataWarning(
@@ -146,8 +146,8 @@ class TemporalResolver:
             df_cad = self._qe.sql(query)
         except Exception as e:
             self._logger.warning(f"Temporal resolution query failed: {e}")
-            from ifdata_bcb.infra.log import emit_user_warning
             from ifdata_bcb.domain.exceptions import PartialDataWarning
+            from ifdata_bcb.infra.log import emit_user_warning
 
             emit_user_warning(
                 PartialDataWarning(
@@ -196,9 +196,9 @@ class TemporalResolver:
                     if cod not in groups:
                         groups[cod] = {"periodos": set(), "cnpj_map": {}}
                     groups[cod]["periodos"].add(periodo)
-                    groups[cod]["cnpj_map"].setdefault(cod, [])
-                    if cnpj not in groups[cod]["cnpj_map"].setdefault(cod, []):
-                        groups[cod]["cnpj_map"][cod].append(cnpj)
+                    cnpjs_do_grupo = groups[cod]["cnpj_map"].setdefault(cod, [])
+                    if cnpj not in cnpjs_do_grupo:
+                        cnpjs_do_grupo.append(cnpj)
 
             if not cnpj_resolved_any:
                 unavailable_cnpjs.append(cnpj)

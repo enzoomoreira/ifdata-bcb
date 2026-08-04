@@ -50,13 +50,17 @@ def _before_sleep_log(retry_state: RetryCallState) -> None:
 
 
 def _log_final_failure(retry_state: RetryCallState) -> None:
-    # Re-levanta excecao original para o caller tratar
+    """Loga o esgotamento das tentativas e re-levanta a excecao original.
+
+    Este callback e quem propaga o erro: com retry_error_callback definido, o
+    tenacity ignora reraise=True e usa o retorno daqui.
+    """
     exception = retry_state.outcome.exception()
     _get_logger().debug(
         f"Funcao {retry_state.fn.__name__} falhou apos "
         f"{retry_state.attempt_number} tentativas. Erro: {exception}"
     )
-    raise retry_state.outcome.result()
+    raise exception
 
 
 # Status HTTP que justificam nova tentativa: sobrecarga e falha de servidor.

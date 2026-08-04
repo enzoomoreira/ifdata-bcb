@@ -11,14 +11,21 @@ def parse_period_from_filename(filename: str, prefix: str) -> tuple[int, int] | 
     match = re.search(rf"{re.escape(prefix)}_(\d{{6}})", filename)
     if match:
         period_str = match.group(1)
-        return (int(period_str[:4]), int(period_str[4:6]))
+        return _validated(int(period_str[:4]), int(period_str[4:6]))
 
     # Formato: {prefix}_YYYY-MM
     match = re.search(rf"{re.escape(prefix)}_(\d{{4}})-(\d{{2}})", filename)
     if match:
-        return (int(match.group(1)), int(match.group(2)))
+        return _validated(int(match.group(1)), int(match.group(2)))
 
     return None
+
+
+def _validated(ano: int, mes: int) -> tuple[int, int] | None:
+    """Descarta periodos com mes fora de 1..12 (ex: um arquivo '..._209913')."""
+    if not 1 <= mes <= 12:
+        return None
+    return (ano, mes)
 
 
 def extract_periods_from_files(files: list[str], prefix: str) -> list[tuple[int, int]]:

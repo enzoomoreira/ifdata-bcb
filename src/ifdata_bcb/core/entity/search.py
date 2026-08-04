@@ -216,11 +216,12 @@ class EntitySearch:
 
         result_df = pd.DataFrame(results)
 
-        if (
-            date_range is not None
-            or not result_df.empty
-            and (result_df["FONTES"] != "").any()
-        ):
+        # Com um date_range explicito, entidade sem fonte no periodo e ruido e
+        # sai. Sem date_range, so filtra se houver alguma entidade com fonte --
+        # caso contrario o cadastro esta sem dados coletados e o filtro
+        # esvaziaria o resultado inteiro em vez de mostrar as entidades achadas.
+        tem_alguma_fonte = not result_df.empty and (result_df["FONTES"] != "").any()
+        if date_range is not None or tem_alguma_fonte:
             result_df = result_df[result_df["FONTES"] != ""].copy()
 
         result_df = result_df.sort_values(
