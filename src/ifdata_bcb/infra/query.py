@@ -3,6 +3,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+from ifdata_bcb.domain.exceptions import DataProcessingError
 from ifdata_bcb.infra.config import get_settings
 from ifdata_bcb.infra.log import get_logger
 
@@ -105,20 +106,18 @@ class QueryEngine:
 
         try:
             return self._conn.sql(query).df()
-        except Exception as e:
-            self._logger.warning(f"Glob query failed: {subdir}/{pattern} - {e}")
-            from ifdata_bcb.infra.log import emit_user_warning
-            from ifdata_bcb.domain.exceptions import PartialDataWarning
-
-            emit_user_warning(
-                PartialDataWarning(
-                    f"Query de leitura falhou para {subdir}/{pattern}: {e}. "
-                    f"Isso pode indicar incompatibilidade de schema ou bug interno.",
-                    reason="query_failed",
-                ),
-                stacklevel=2,
-            )
-            return pd.DataFrame()
+        except duckdb.Error as e:
+            # Devolver DataFrame vazio aqui mascarava parquet corrompido, coluna
+            # inexistente e erro de sintaxe montado internamente -- o usuario
+            # recebia "sem dados" no lugar da causa. Schema heterogeneo entre
+            # periodos ja e resolvido por union_by_name, entao chegar aqui
+            # significa problema real.
+            self._logger.error(f"Glob query failed: {subdir}/{pattern} - {e}")
+            raise DataProcessingError(
+                f"{subdir}/{pattern}",
+                f"Falha ao ler os dados: {e}. Verifique se os parquets do periodo "
+                f"estao integros (recolete com force=True se necessario).",
+            ) from e
 
     def sql(self, query: str) -> pd.DataFrame:
         """Executa SQL com substituicao de {cache} pelo path do cache."""

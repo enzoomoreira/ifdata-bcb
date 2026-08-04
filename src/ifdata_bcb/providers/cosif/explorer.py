@@ -11,8 +11,11 @@ from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.sql import build_int_condition, build_like_condition
-from ifdata_bcb.utils.text import stem_ptbr
+from ifdata_bcb.infra.sql import (
+    build_int_condition,
+    build_like_condition,
+    build_string_condition,
+)
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.enrichment import (
@@ -20,7 +23,7 @@ from ifdata_bcb.providers.enrichment import (
     validate_cadastro_columns,
 )
 from ifdata_bcb.ui.display import get_display
-
+from ifdata_bcb.utils.text import stem_ptbr
 
 EscopoCOSIF = Literal["individual", "prudencial"]
 
@@ -382,7 +385,12 @@ class COSIFExplorer(BaseExplorer):
             raise InvalidScopeError(
                 "documento", str(documento), "valores numericos (ex: 4010, 4016)"
             )
-        return build_int_condition("DOCUMENTO", docs_int)
+        # DOCUMENTO e VARCHAR no parquet. Comparar com INT faz o DuckDB tentar
+        # converter a coluna inteira, e um unico valor nao-numerico derruba a
+        # query -- descartando tambem as linhas que casariam.
+        return build_string_condition(
+            "CAST(DOCUMENTO AS VARCHAR)", [str(d) for d in docs_int]
+        )
 
     def _build_list_conditions(
         self,

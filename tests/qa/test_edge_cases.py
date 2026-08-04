@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import (
@@ -15,6 +14,7 @@ from ifdata_bcb.infra.storage import (
 )
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.ui.display import Display
+
 from tests.conftest import _save_parquet
 
 
@@ -24,14 +24,29 @@ class TestQueryEngineEdgeCases:
         df = qe.read_glob(pattern="nonexistent_*.parquet", subdir="cosif/individual")
         assert df.empty
 
-    def test_glob_invalid_where(self, populated_cache: Path) -> None:
+    def test_glob_invalid_where_raises(self, populated_cache: Path) -> None:
+        """SQL malformado indica bug interno -- nao pode virar 'sem dados'."""
+        from ifdata_bcb.domain.exceptions import DataProcessingError
+
         qe = QueryEngine(base_path=populated_cache)
-        df = qe.read_glob(
-            pattern="cosif_ind_*.parquet",
-            subdir="cosif/individual",
-            where="WHERE = = =",
-        )
-        assert df.empty
+        with pytest.raises(DataProcessingError):
+            qe.read_glob(
+                pattern="cosif_ind_*.parquet",
+                subdir="cosif/individual",
+                where="WHERE = = =",
+            )
+
+    def test_glob_corrupted_parquet_raises(self, tmp_cache_dir: Path) -> None:
+        """Parquet corrompido precisa ser reportado, nao mascarado."""
+        from ifdata_bcb.domain.exceptions import DataProcessingError
+
+        subdir = tmp_cache_dir / "cosif/individual"
+        subdir.mkdir(parents=True)
+        (subdir / "cosif_ind_202401.parquet").write_bytes(b"nao sou um parquet")
+
+        qe = QueryEngine(base_path=tmp_cache_dir)
+        with pytest.raises(DataProcessingError):
+            qe.read_glob(pattern="cosif_ind_*.parquet", subdir="cosif/individual")
 
     def test_sql_syntax_error(self, populated_cache: Path) -> None:
         qe = QueryEngine(base_path=populated_cache)

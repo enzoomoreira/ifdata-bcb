@@ -1,13 +1,17 @@
 """Testes de integracao -- COSIF read() e list methods."""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
-
+from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
-from tests.conftest import BANCO_A_CNPJ
+
+from tests.conftest import BANCO_A_CNPJ, _save_parquet
 
 
 class TestCOSIFRead:
@@ -178,3 +182,39 @@ class TestCOSIFDocumentoValidation:
                 "2023-03", instituicao=BANCO_A_CNPJ, documento=["4010", "abc"]
             )
         assert exc_info.value.scope == "documento"
+
+    def test_documento_filter_works_with_non_numeric_values_in_column(
+        self, workspace_tmp_dir: Path
+    ) -> None:
+        """
+        Coluna DOCUMENTO mista nao pode derrubar o filtro.
+
+        DOCUMENTO e VARCHAR: comparar com INT fazia o DuckDB converter a coluna
+        inteira e falhar por causa de um unico valor nao-numerico, descartando
+        tambem as linhas que casariam.
+        """
+        _save_parquet(
+            pd.DataFrame(
+                {
+                    "DATA_BASE": pd.array([202303] * 3, dtype="Int64"),
+                    "CNPJ_8": [BANCO_A_CNPJ] * 3,
+                    "NOME_INSTITUICAO": ["BANCO ALFA S.A."] * 3,
+                    "DOCUMENTO": ["4010", "BALANCETE", "4016"],
+                    "CONTA": ["10100", "20200", "30300"],
+                    "NOME_CONTA": ["ATIVO", "PASSIVO", "PL"],
+                    "SALDO": [100.0, 200.0, 300.0],
+                }
+            ),
+            workspace_tmp_dir,
+            "cosif/individual",
+            "cosif_ind_202303",
+        )
+        qe = QueryEngine(base_path=workspace_tmp_dir)
+        cosif = COSIFExplorer(
+            query_engine=qe, entity_lookup=EntityLookup(query_engine=qe)
+        )
+
+        df = cosif.read("2023-03", instituicao=BANCO_A_CNPJ, documento="4010")
+
+        assert len(df) == 1
+        assert df.iloc[0]["DOCUMENTO"] == "4010"
