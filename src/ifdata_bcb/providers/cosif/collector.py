@@ -14,6 +14,11 @@ from ifdata_bcb.domain.exceptions import (
 from ifdata_bcb.infra.resilience import retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
+from ifdata_bcb.providers.parsing import (
+    count_parseable_rows,
+    warn_if_rows_dropped,
+    warn_if_values_nulled,
+)
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
 
 
@@ -166,6 +171,17 @@ class COSIFCollector(BaseCollector):
 
             if df.empty:
                 return None
+
+            source = f"cosif:{self.escopo} {csv_path.stem}"
+            warn_if_rows_dropped(
+                source,
+                len(df),
+                count_parseable_rows(
+                    cursor, csv_path, delim=";", skip=3, encoding=encoding
+                ),
+            )
+            warn_if_values_nulled(source, "SALDO", df["_saldo_raw"], df["SALDO"])
+            df = df.drop(columns=["_saldo_raw"])
 
             df["CNPJ_8"] = df["CNPJ"].apply(standardize_cnpj_base8)
             df["DATA_BASE"] = pd.to_numeric(df["DATA_BASE"], errors="coerce").astype(

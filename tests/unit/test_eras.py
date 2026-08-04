@@ -3,6 +3,7 @@
 import warnings
 from pathlib import Path
 
+import pytest
 from ifdata_bcb.core.eras import (
     COSIF_ERA_BOUNDARY,
     IFDATA_ERA_BOUNDARY,
@@ -16,11 +17,11 @@ from ifdata_bcb.core.eras import (
     detect_cosif_csv_era,
 )
 from ifdata_bcb.domain.exceptions import (
+    DataProcessingError,
     DroppedReportWarning,
     IncompatibleEraWarning,
     ScopeMigrationWarning,
 )
-
 
 # =========================================================================
 # Helpers
@@ -78,14 +79,34 @@ class TestDetectCosifCsvEra:
         # Ler com utf-8 (errado) -- errors=replace nao deve crashar
         assert detect_cosif_csv_era(path, "utf-8") == 2
 
-    def test_file_with_only_3_lines_returns_era_1(
-        self, workspace_tmp_dir: Path
-    ) -> None:
-        """CSV truncado sem header real -- readline retorna '' e nao contem #DATA_BASE."""
+    def test_truncated_file_raises(self, workspace_tmp_dir: Path) -> None:
+        """
+        CSV truncado sem header nao pode ser assumido como era 1.
+
+        O fallback silencioso levava o arquivo ao SELECT da era 1, que falhava
+        depois com um Binder Error criptico do DuckDB.
+        """
         path = workspace_tmp_dir / "short.csv"
         path.write_text("\n".join(METADATA_LINES), encoding="utf-8")
-        # Sem header, readline() retorna string vazia -> nao tem #DATA_BASE -> era 1
-        assert detect_cosif_csv_era(path, "utf-8") == 1
+
+        with pytest.raises(DataProcessingError, match="Formato de CSV desconhecido"):
+            detect_cosif_csv_era(path, "utf-8")
+
+    def test_unknown_header_raises_with_headers_in_message(
+        self, workspace_tmp_dir: Path
+    ) -> None:
+        """Formato novo do BCB deve dizer o que encontrou."""
+        path = workspace_tmp_dir / "futuro.csv"
+        novo_header = "COL_A;COL_B;COL_C"
+        path.write_text(
+            "\n".join(METADATA_LINES + [novo_header]),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(DataProcessingError) as exc_info:
+            detect_cosif_csv_era(path, "utf-8")
+
+        assert "COL_A" in str(exc_info.value)
 
     def test_header_with_extra_whitespace(self, workspace_tmp_dir: Path) -> None:
         """BCB por vezes inclui espacos extras nos headers."""

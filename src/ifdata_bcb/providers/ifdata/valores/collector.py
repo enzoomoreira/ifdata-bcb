@@ -12,6 +12,11 @@ from ifdata_bcb.core.constants import (
 from ifdata_bcb.domain.exceptions import DataProcessingError
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
+from ifdata_bcb.providers.parsing import (
+    count_parseable_rows,
+    warn_if_rows_dropped,
+    warn_if_values_nulled,
+)
 
 
 class IFDATAValoresCollector(BaseCollector):
@@ -81,14 +86,24 @@ class IFDATAValoresCollector(BaseCollector):
                         AnoMes, CodInst, TipoInstituicao, Conta, NomeColuna,
                         TRY_CAST(REPLACE(CAST(Saldo AS VARCHAR), ',', '.')
                             AS DOUBLE) as Saldo,
+                        CAST(Saldo AS VARCHAR) as _saldo_raw,
                         NomeRelatorio, Grupo
                     FROM read_csv('{csv_path}', delim=',', header=true,
                         ignore_errors=true)
                 """
 
                 df = cursor.sql(query).df()
-                if not df.empty:
-                    dfs.append(df)
+                if df.empty:
+                    continue
+
+                source = f"ifdata_valores {csv_path.stem}"
+                warn_if_rows_dropped(
+                    source,
+                    len(df),
+                    count_parseable_rows(cursor, csv_path, delim=","),
+                )
+                warn_if_values_nulled(source, "Saldo", df["_saldo_raw"], df["Saldo"])
+                dfs.append(df.drop(columns=["_saldo_raw"]))
 
             if not dfs:
                 return None

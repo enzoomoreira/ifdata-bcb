@@ -22,6 +22,7 @@ import unicodedata
 from pathlib import Path
 
 from ifdata_bcb.domain.exceptions import (
+    DataProcessingError,
     DroppedReportWarning,
     IncompatibleEraWarning,
     ScopeMigrationWarning,
@@ -31,6 +32,10 @@ from ifdata_bcb.infra.log import emit_user_warning
 # Primeiro periodo com codigos de conta incompativeis (novo plano contabil).
 COSIF_ERA_BOUNDARY: int = 202501
 IFDATA_ERA_BOUNDARY: int = 202503
+
+# Marcadores de header que identificam cada era do CSV COSIF.
+_ERA2_MARKER = "#DATA_BASE"
+_ERA1_MARKERS = ("NOME INSTITUICAO", "NOME CONTA")
 
 # ---------------------------------------------------------------------------
 # Metadados de relatorios IFDATA para verificacao cross-era
@@ -99,14 +104,31 @@ def detect_cosif_csv_era(csv_path: Path, encoding: str) -> int:
 
     Retorna 1 (pre-201010, 8 colunas) ou 2 (201010+, 11 colunas).
     Era 3 tem mesma estrutura de colunas que Era 2.
+
+    Raises:
+        DataProcessingError: se os headers nao correspondem a nenhuma era
+            conhecida (formato novo do BCB).
     """
     with open(csv_path, encoding=encoding, errors="replace") as f:
         for _ in range(3):
             f.readline()
         header_line = f.readline()
-    if "#DATA_BASE" in header_line:
+
+    if _ERA2_MARKER in header_line:
         return 2
-    return 1
+
+    # Sem esta checagem, um formato novo cairia no SELECT da Era 1 e produziria
+    # um Binder Error criptico do DuckDB no lugar de "formato desconhecido".
+    if all(marker in header_line for marker in _ERA1_MARKERS):
+        return 1
+
+    raise DataProcessingError(
+        "cosif",
+        f"Formato de CSV desconhecido em {csv_path.name}: os headers nao "
+        f"correspondem a nenhuma era conhecida do COSIF. Isso normalmente "
+        f"significa que o BCB mudou o layout do arquivo. "
+        f"Headers encontrados: {header_line.strip()[:300]}",
+    )
 
 
 def build_cosif_select(era: int, csv_path: Path, encoding: str) -> str:
@@ -125,7 +147,8 @@ def build_cosif_select(era: int, csv_path: Path, encoding: str) -> str:
                 DOCUMENTO,
                 CAST(CONTA AS BIGINT) as CONTA,
                 UPPER("NOME CONTA") as NOME_CONTA,
-                TRY_CAST(REPLACE(SALDO, ',', '.') AS DOUBLE) as SALDO
+                TRY_CAST(REPLACE(SALDO, ',', '.') AS DOUBLE) as SALDO,
+                SALDO as _saldo_raw
             FROM read_csv(
                 '{path_str}',
                 delim=';',
@@ -142,7 +165,8 @@ def build_cosif_select(era: int, csv_path: Path, encoding: str) -> str:
             DOCUMENTO,
             CONTA,
             UPPER(NOME_CONTA) as NOME_CONTA,
-            TRY_CAST(REPLACE(SALDO, ',', '.') AS DOUBLE) as SALDO
+            TRY_CAST(REPLACE(SALDO, ',', '.') AS DOUBLE) as SALDO,
+            SALDO as _saldo_raw
         FROM read_csv(
             '{path_str}',
             delim=';',
