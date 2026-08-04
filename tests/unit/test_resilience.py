@@ -1,15 +1,16 @@
 """Testes para ifdata_bcb.infra.resilience."""
 
-from unittest.mock import patch
+import threading
 
 import httpx
 import pytest
+
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.resilience import (
-    DEFAULT_PARALLEL_STAGGER,
+    MAX_CONCURRENT_REQUESTS,
     is_retryable,
+    request_slot,
     retry,
-    staggered_delay,
 )
 
 
@@ -244,42 +245,49 @@ class TestHttpStatusRetryBehaviour:
         assert counter["calls"] == 3
 
 
-class TestStaggeredDelay:
-    """staggered_delay: atraso escalonado para requisicoes paralelas."""
+class TestRequestSlot:
+    """request_slot: teto global de requisicoes simultaneas ao BCB."""
 
-    @patch("ifdata_bcb.infra.resilience.time.sleep")
-    @patch("ifdata_bcb.infra.resilience.random.uniform", return_value=0.1)
-    def test_index_zero_does_not_sleep(
-        self, mock_uniform: object, mock_sleep: object
-    ) -> None:
-        staggered_delay(0)
-        mock_sleep.assert_not_called()  # type: ignore[union-attr]
+    def test_limits_concurrency_across_nested_pools(self) -> None:
+        """
+        O teto vale para o processo, nao por pool.
 
-    @patch("ifdata_bcb.infra.resilience.time.sleep")
-    @patch("ifdata_bcb.infra.resilience.random.uniform", return_value=0.1)
-    def test_index_one_sleeps_correct_amount(
-        self, mock_uniform: object, mock_sleep: object
-    ) -> None:
-        staggered_delay(1, base_delay=0.5)
-        mock_uniform.assert_called_once_with(0, 0.5 * 0.5)  # type: ignore[union-attr]
-        expected_delay = (1 * 0.5) + 0.1
-        mock_sleep.assert_called_once_with(expected_delay)  # type: ignore[union-attr]
+        A coleta do IFDATA roda um pool de 3 tipos de instituicao dentro do
+        pool de periodos; sem semaforo global isso abria 12 conexoes.
+        """
+        lock = threading.Lock()
+        active = 0
+        peak = 0
+        started = threading.Barrier(MAX_CONCURRENT_REQUESTS + 4, timeout=10)
 
-    @patch("ifdata_bcb.infra.resilience.time.sleep")
-    @patch("ifdata_bcb.infra.resilience.random.uniform", return_value=0.2)
-    def test_index_three_scales_linearly(
-        self, mock_uniform: object, mock_sleep: object
-    ) -> None:
-        staggered_delay(3, base_delay=1.0)
-        expected_delay = (3 * 1.0) + 0.2
-        mock_sleep.assert_called_once_with(expected_delay)  # type: ignore[union-attr]
+        def worker() -> None:
+            nonlocal active, peak
+            started.wait()
+            with request_slot():
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                # Segura o slot tempo suficiente para outras threads tentarem
+                threading.Event().wait(0.05)
+                with lock:
+                    active -= 1
 
-    @patch("ifdata_bcb.infra.resilience.time.sleep")
-    @patch("ifdata_bcb.infra.resilience.random.uniform", return_value=0.0)
-    def test_uses_default_base_delay(
-        self, mock_uniform: object, mock_sleep: object
-    ) -> None:
-        staggered_delay(2)
-        mock_uniform.assert_called_once_with(0, DEFAULT_PARALLEL_STAGGER * 0.5)  # type: ignore[union-attr]
-        expected_delay = (2 * DEFAULT_PARALLEL_STAGGER) + 0.0
-        mock_sleep.assert_called_once_with(expected_delay)  # type: ignore[union-attr]
+        threads = [
+            threading.Thread(target=worker) for _ in range(MAX_CONCURRENT_REQUESTS + 4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        assert peak <= MAX_CONCURRENT_REQUESTS
+
+    def test_slot_is_released_on_exception(self) -> None:
+        """Falha de download nao pode vazar o slot e travar a coleta."""
+        for _ in range(MAX_CONCURRENT_REQUESTS + 2):
+            with pytest.raises(ValueError), request_slot():
+                raise ValueError("falha no download")
+
+        # Se algum slot tivesse vazado, este bloco travaria
+        with request_slot():
+            pass

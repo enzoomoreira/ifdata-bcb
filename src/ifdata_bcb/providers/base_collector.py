@@ -11,11 +11,27 @@ import pandas as pd
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
-from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay
+from ifdata_bcb.infra.resilience import (
+    DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_REQUEST_TIMEOUT,
+    request_slot,
+    retry,
+)
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.ui.display import get_display
 from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
 from ifdata_bcb.utils.text import normalize_text
+
+
+def _user_agent() -> str:
+    """Identifica a biblioteca para o BCB, que opera uma API publica."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        v = version("ifdata-bcb")
+    except PackageNotFoundError:
+        v = "dev"
+    return f"ifdata-bcb/{v} (+https://github.com/enzoomoreira/ifdata-bcb)"
 
 
 class CollectStatus(Enum):
@@ -46,8 +62,11 @@ class BaseCollector(ABC):
         self._collect_lock = threading.Lock()
         self._duckdb_conn = duckdb.connect()  # Conexao para cursors thread-local
         self._http = httpx.Client(
-            timeout=DEFAULT_REQUEST_TIMEOUT,
+            timeout=httpx.Timeout(
+                DEFAULT_REQUEST_TIMEOUT, connect=DEFAULT_CONNECT_TIMEOUT
+            ),
             follow_redirects=True,
+            headers={"User-Agent": _user_agent()},
         )
 
     def _get_cursor(self) -> duckdb.DuckDBPyConnection:
@@ -80,17 +99,35 @@ class BaseCollector(ABC):
         """
 
     @retry(delay=2.0)
-    def _download_single(self, url: str, output_path: Path) -> bool:
-        """Baixa um arquivo da URL e salva em output_path."""
-        response = self._http.get(url)
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
+    def _download_single(self, url: str, output_path: Path, period: int = 0) -> bool:
+        """
+        Baixa um arquivo da URL e salva em output_path.
+
+        Raises:
+            PeriodUnavailableError: se 404, ou seja, periodo inexistente na
+                fonte -- e um resultado definitivo, nao uma falha a retentar.
+        """
+        with request_slot(), self._http.stream("GET", url) as response:
+            if response.status_code == 404:
+                raise PeriodUnavailableError(period)
+            response.raise_for_status()
+
+            # Streaming: os ZIPs do COSIF chegam a dezenas de MB e nao precisam
+            # ser materializados em memoria antes de ir para o disco.
+            with open(output_path, "wb") as f:
+                f.writelines(response.iter_bytes())
         return True
 
     def close(self) -> None:
         """Libera recursos (HTTP client e DuckDB)."""
         self._http.close()
         self._duckdb_conn.close()
+
+    def __enter__(self) -> "BaseCollector":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
 
     def _start(self, title: str, num_items: int, verbose: bool = True) -> None:
         self._collect_total = 0
@@ -193,17 +230,16 @@ class BaseCollector(ABC):
     # =========================================================================
 
     def _process_single_period(
-        self, period: int, worker_index: int = 0
+        self, period: int
     ) -> tuple[int, CollectStatus, str | None]:
         """
         Processa um periodo: download + processamento + salvamento.
 
-        Thread-safe. Usa staggered delay para evitar rate limiting.
+        Thread-safe. A concorrencia contra o BCB e limitada pelo semaforo
+        global em request_slot(), nao pelo tamanho deste pool.
         Retorna (registros, status, erro_msg).
         """
         try:
-            staggered_delay(worker_index)
-
             with temp_dir(prefix=f"{self._get_file_prefix()}_{period}") as work_dir:
                 data_path = self._download_period(period, work_dir)
                 if data_path is None:
@@ -281,13 +317,8 @@ class BaseCollector(ABC):
         desc = progress_desc or "Periodos"
 
         with ThreadPoolExecutor(max_workers=self._MAX_WORKERS) as executor:
-            # Submeter todos os periodos com indice para staggered delay
-            # Usa modulo para que apenas os primeiros workers de cada batch tenham delay
             futures = {
-                executor.submit(
-                    self._process_single_period, p, i % self._MAX_WORKERS
-                ): p
-                for i, p in enumerate(periods)
+                executor.submit(self._process_single_period, p): p for p in periods
             }
 
             # Processar conforme completam (com barra de progresso)

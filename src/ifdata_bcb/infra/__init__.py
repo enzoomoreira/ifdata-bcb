@@ -11,8 +11,8 @@ from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.resilience import (
     DEFAULT_REQUEST_TIMEOUT,
+    request_slot,
     retry,
-    staggered_delay,
 )
 from ifdata_bcb.infra.storage import (
     DataManager,
@@ -49,6 +49,6 @@ __all__ = [
     "get_logger",
     # Resilience
     "DEFAULT_REQUEST_TIMEOUT",
+    "request_slot",
     "retry",
-    "staggered_delay",
 ]

@@ -11,7 +11,6 @@ from ifdata_bcb.domain.exceptions import (
     InvalidScopeError,
     PeriodUnavailableError,
 )
-from ifdata_bcb.infra.resilience import retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.providers.parsing import (
@@ -79,23 +78,6 @@ class COSIFCollector(BaseCollector):
 
     def _get_subdir(self) -> str:
         return self._config["subdir"]
-
-    @retry(delay=2.0)
-    def _download_single(self, url: str, output_path: Path, period: int = 0) -> bool:
-        """
-        Excecoes:
-            PeriodUnavailableError: Se 404 (sem retry).
-            httpx.HTTPError: Se falhas apos todas tentativas.
-        """
-        response = self._http.get(url)
-
-        # 404 = periodo indisponivel, propaga PeriodUnavailableError (sem retry)
-        if response.status_code == 404:
-            raise PeriodUnavailableError(period)
-
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        return True
 
     def _download_period(self, period: int, work_dir: Path) -> Path | None:
         """

@@ -50,7 +50,7 @@ class IFDATAValoresCollector(BaseCollector):
                 f"?@AnoMes={period}&@TipoInstituicao={tipo}&@Relatorio='T'&$format=text/csv"
             )
             output_path = work_dir / f"ifdata_val_{period}_{tipo}.csv"
-            self._download_single(url, output_path)
+            self._download_single(url, output_path, period)
             return output_path
 
         with ThreadPoolExecutor(max_workers=3) as executor:

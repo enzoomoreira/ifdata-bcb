@@ -1,7 +1,7 @@
 import json
-import random
-import time
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import httpx
@@ -20,7 +20,13 @@ DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_DELAY = 1.0
 DEFAULT_BACKOFF_FACTOR = 2.0
 DEFAULT_REQUEST_TIMEOUT = 240
-DEFAULT_PARALLEL_STAGGER = 0.5
+# Conectar e rapido ou nao acontece: sem um limite proprio, um host inacessivel
+# segurava o worker pelos 240s do timeout de leitura, multiplicado pelos retries.
+DEFAULT_CONNECT_TIMEOUT = 10.0
+
+# Teto de requisicoes HTTP simultaneas ao BCB, valido para o processo inteiro.
+MAX_CONCURRENT_REQUESTS = 4
+_request_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
 
 # Logger lazy - so carrega quando usado
 _logger = None
@@ -111,16 +117,15 @@ def retry(
     )
 
 
-def staggered_delay(index: int, base_delay: float = DEFAULT_PARALLEL_STAGGER) -> None:
+@contextmanager
+def request_slot() -> Iterator[None]:
     """
-    Delay escalonado para workers paralelos (evita thundering herd).
+    Limita as requisicoes HTTP simultaneas ao BCB.
 
-    Worker 0 nao espera. Worker N espera N * base_delay + jitter.
+    O semaforo e global ao processo, entao o teto vale mesmo com pools
+    aninhados -- a coleta do IFDATA roda um pool de 3 tipos de instituicao
+    dentro do pool de periodos, o que permitia 12 conexoes simultaneas contra
+    uma API publica.
     """
-    if index == 0:
-        return  # Primeiro worker nao espera
-
-    # Delay = index * base + jitter aleatorio (0-50% do base)
-    jitter = random.uniform(0, base_delay * 0.5)
-    delay = (index * base_delay) + jitter
-    time.sleep(delay)
+    with _request_semaphore:
+        yield

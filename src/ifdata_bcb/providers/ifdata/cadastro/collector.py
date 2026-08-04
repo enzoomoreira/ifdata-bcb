@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, IFDATA_API_BASE, get_subdir
-from ifdata_bcb.domain.exceptions import DataProcessingError
+from ifdata_bcb.domain.exceptions import DataProcessingError, PeriodUnavailableError
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
@@ -33,9 +33,13 @@ class IFDATACadastroCollector(BaseCollector):
         output_path = work_dir / f"ifdata_cad_{period}.csv"
 
         try:
-            self._download_single(url, output_path)
+            self._download_single(url, output_path, period)
             if output_path.stat().st_size > 100:
                 return output_path
+        except PeriodUnavailableError:
+            # Periodo inexistente na fonte: propaga para virar UNAVAILABLE em
+            # vez de ser reportado como falha de coleta.
+            raise
         except Exception as e:
             self.logger.debug(f"Periodo {period} falhou: {e}")
 

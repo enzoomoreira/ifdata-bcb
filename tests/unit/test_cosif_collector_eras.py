@@ -5,9 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
-
 
 # =========================================================================
 # Helpers
@@ -220,10 +218,16 @@ class TestDownloadSingleInheritance:
         collector = IFDATACadastroCollector(data_manager=MagicMock())
         assert type(collector)._download_single is BaseCollector._download_single
 
-    def test_cosif_overrides_download_single(self) -> None:
-        """COSIF tem override com param extra (period) para PeriodUnavailableError."""
+    def test_cosif_also_inherits_download_single(self) -> None:
+        """
+        O mapeamento de 404 vive na base, nao num override do COSIF.
+
+        Enquanto so o COSIF traduzia 404 em PeriodUnavailableError, um periodo
+        inexistente no IFDATA era reportado como falha de coleta em vez de
+        indisponibilidade.
+        """
         from ifdata_bcb.providers.base_collector import BaseCollector
         from ifdata_bcb.providers.cosif.collector import COSIFCollector
 
         collector = COSIFCollector("individual", data_manager=MagicMock())
-        assert type(collector)._download_single is not BaseCollector._download_single
+        assert type(collector)._download_single is BaseCollector._download_single

@@ -150,7 +150,7 @@ class TestValoresDownloadPeriodRequiresAllTypes:
         collector = _make_valores_collector()
         chamadas: list[str] = []
 
-        def fake_download(url: str, output_path: Path) -> bool:
+        def fake_download(url: str, output_path: Path, period: int = 0) -> bool:
             chamadas.append(url)
             output_path.write_text("ok", encoding="utf-8")
             return True
@@ -166,7 +166,7 @@ class TestValoresDownloadPeriodRequiresAllTypes:
         collector = _make_valores_collector()
         tipo_que_falha = list(TIPO_INST_MAP.values())[1]
 
-        def fake_download(url: str, output_path: Path) -> bool:
+        def fake_download(url: str, output_path: Path, period: int = 0) -> bool:
             if f"@TipoInstituicao={tipo_que_falha}&" in url:
                 raise ConnectionError("timeout no BCB")
             output_path.write_text("ok", encoding="utf-8")
@@ -180,7 +180,7 @@ class TestValoresDownloadPeriodRequiresAllTypes:
     def test_all_types_failure_propagates(self, workspace_tmp_dir: Path) -> None:
         collector = _make_valores_collector()
 
-        def fake_download(url: str, output_path: Path) -> bool:
+        def fake_download(url: str, output_path: Path, period: int = 0) -> bool:
             raise ConnectionError("BCB fora do ar")
 
         collector._download_single = fake_download
@@ -197,7 +197,7 @@ class TestValoresDownloadPeriodRequiresAllTypes:
         collector = _make_valores_collector()
         tipo_que_falha = list(TIPO_INST_MAP.values())[0]
 
-        def fake_download(url: str, output_path: Path) -> bool:
+        def fake_download(url: str, output_path: Path, period: int = 0) -> bool:
             if f"@TipoInstituicao={tipo_que_falha}&" in url:
                 raise ConnectionError("timeout no BCB")
             _write_valores_csv(
