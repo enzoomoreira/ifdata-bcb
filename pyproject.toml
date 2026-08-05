@@ -81,6 +81,12 @@ ignore = [
     "RUF022",
 ]
 
+[tool.ruff.lint.isort]
+# Explicito em vez de depender da deteccao do layout src/: sem isso, uma
+# mudanca na heuristica do ruff faria o proprio pacote virar third-party e
+# brigar com a ordenacao que o formatter aplica.
+known-first-party = ["ifdata_bcb"]
+
 [tool.ruff.lint.per-file-ignores]
 # Explorers fake espelham os class attributes dos reais; ClassVar so ruido aqui.
 "tests/**" = ["RUF012"]
