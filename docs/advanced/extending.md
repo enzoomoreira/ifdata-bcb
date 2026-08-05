@@ -166,7 +166,12 @@ from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.sql import build_string_condition, join_conditions
+from ifdata_bcb.infra.sql import (
+    build_like_condition,
+    build_string_condition,
+    join_conditions,
+    merge_params,
+)
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.providers.novo.collector import NovoCollector
 
@@ -282,10 +287,10 @@ class NovoExplorer(BaseExplorer):
         """Lista contas disponiveis."""
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
 
-        where = ""
+        cond = None
         if termo:
-            termo_clean = termo.strip().replace("'", "''").upper()
-            where = f"WHERE UPPER(COLUNA_NORMALIZADA) LIKE '%{termo_clean}%'"
+            cond = build_like_condition("COLUNA_NORMALIZADA", termo)
+        where = f"WHERE {cond}" if cond else ""
 
         query = f"""
             SELECT DISTINCT COLUNA_NORMALIZADA as CONTA
@@ -294,8 +299,19 @@ class NovoExplorer(BaseExplorer):
             ORDER BY CONTA
             LIMIT {limit}
         """
-        return self._qe.sql(query)
+        # Interpolar o fragmento por f-string descarta os valores: passe-os
+        # explicitamente. Nunca escape aspas a mao.
+        return self._qe.sql(query, params=merge_params(cond))
 ```
+
+> **Nunca monte um literal SQL a mao.** As funcoes de `infra.sql` devolvem
+> `SqlCondition`, que carrega o texto do fragmento (com placeholders `$p0`,
+> `$p1`, ...) e, em `.params`, os valores correspondentes. Quem executa a query
+> precisa repassar os params. `read_glob(where=...)` faz isso sozinho; queries
+> montadas a mao e enviadas por `sql()` precisam de `params=merge_params(...)`.
+>
+> Esquecer nao devolve resultado errado em silencio: o DuckDB recusa a query
+> com placeholder sem valor.
 
 ### Passo 4: Criar __init__.py
 
@@ -458,14 +474,20 @@ def _resolve_entidade(self, identificador: str) -> str  # Valida CNPJ
 def _resolve_date_range(self, start, end, trimestral=False) -> list[int] | None
 
 # Construcao de queries SQL (funcoes em infra.sql)
-# from ifdata_bcb.infra.sql import build_string_condition, build_int_condition, join_conditions
-build_string_condition(column, values, case_insensitive=False, accent_insensitive=False) -> str
-build_int_condition(column, values) -> str
-join_conditions(conditions: list) -> str | None
+# SqlCondition e subclasse de str: o texto tem placeholders, .params tem os valores
+# from ifdata_bcb.infra.sql import build_string_condition, join_conditions, merge_params
+build_string_condition(column, values, case_insensitive=False, accent_insensitive=False) -> SqlCondition
+build_int_condition(column, values) -> SqlCondition
+build_between_condition(column, low, high) -> SqlCondition
+build_like_condition(column, term, case_insensitive=True, accent_insensitive=True) -> SqlCondition
+build_account_condition(name_col, code_col, values) -> SqlCondition
+build_in_clause(values) -> SqlCondition  # so a lista: "$p0, $p1"
+join_conditions(conditions: list) -> SqlCondition | None  # junta com AND e mescla params
+merge_params(*fragments) -> dict  # coleta params para passar ao sql()
 
 # Metodos na classe base
-def _build_date_condition(self, start, end, trimestral=False) -> str | None
-def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> str | None
+def _build_date_condition(self, start, end, trimestral=False) -> SqlCondition | None
+def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> SqlCondition | None
 
 # Mapeamento de colunas
 def _storage_col(self, presentation_col: str) -> str  # Traduz nome

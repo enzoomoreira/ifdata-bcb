@@ -116,6 +116,77 @@ class TestPassthroughColumns:
         assert "DOCUMENTO" in df.columns
 
 
+class TestValoresNaoEntramNoSQL:
+    """Garantia estrutural: nenhum valor de filtro chega ao texto da query.
+
+    Nao basta o resultado vir vazio -- vazio tambem seria o resultado de uma
+    injecao que nao casou nada. O que se verifica aqui e que o payload nunca
+    entra no SQL enviado ao DuckDB, e sim no dict de parametros.
+    """
+
+    PAYLOADS = [
+        "'; DROP TABLE t; --",
+        # U+FF07 decompoe para aspa ASCII sob NFKD: o vetor original
+        "＇ OR 1=1 OR ＇",  # noqa: RUF001 -- a ambiguidade e o objeto do teste
+        "banco' OR '1'='1",
+    ]
+
+    def _capturar_queries(
+        self, explorer: COSIFExplorer
+    ) -> tuple[list[str], list[dict]]:
+        queries: list[str] = []
+        params_capturados: list[dict] = []
+        qe = explorer._qe
+        sql_original = qe.sql
+        glob_original = qe.read_glob
+
+        def spy_sql(query, params=None):
+            queries.append(query)
+            params_capturados.append(dict(params or {}))
+            return sql_original(query, params)
+
+        def spy_glob(*a, **kw):
+            where = kw.get("where")
+            queries.append(str(where or ""))
+            params_capturados.append(dict(getattr(where, "params", {})))
+            return glob_original(*a, **kw)
+
+        qe.sql = spy_sql  # type: ignore[method-assign]
+        qe.read_glob = spy_glob  # type: ignore[method-assign]
+        return queries, params_capturados
+
+    def test_conta_hostil_nao_entra_no_texto_da_query(
+        self, qa_cosif: COSIFExplorer
+    ) -> None:
+        queries, params = self._capturar_queries(qa_cosif)
+
+        for payload in self.PAYLOADS:
+            df = qa_cosif.read("2023-03", instituicao="60872504", conta=payload)
+            assert df.empty
+
+        assert queries, "nenhuma query capturada -- o spy nao pegou o caminho"
+        sql_completo = "\n".join(queries)
+        assert "DROP TABLE" not in sql_completo
+        assert "1=1" not in sql_completo
+        assert "'1'='1" not in sql_completo
+
+        # E o payload realmente viajou -- como dado, no bind
+        vinculados = [str(v) for p in params for v in p.values()]
+        assert any("DROP TABLE" in v for v in vinculados)
+
+    def test_termo_hostil_em_list_contas_nao_entra_no_sql(
+        self, qa_cosif: COSIFExplorer
+    ) -> None:
+        queries, params = self._capturar_queries(qa_cosif)
+
+        qa_cosif.list_contas(termo="'; DROP TABLE t; --")
+
+        sql_completo = "\n".join(queries)
+        assert "DROP TABLE" not in sql_completo
+        vinculados = [str(v) for p in params for v in p.values()]
+        assert any("DROP TABLE" in v for v in vinculados)
+
+
 class TestSearchResilience:
     def test_search_sql_injection(self, qa_search: EntitySearch) -> None:
         df = qa_search.search("'; DROP TABLE--")

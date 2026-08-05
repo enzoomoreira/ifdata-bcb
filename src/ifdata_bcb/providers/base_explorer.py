@@ -27,8 +27,11 @@ from ifdata_bcb.domain.validation import (
 from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
+    SqlCondition,
     build_int_condition,
     build_string_condition,
+    join_conditions,
+    merge_params,
 )
 from ifdata_bcb.infra.storage import list_parquet_files
 from ifdata_bcb.utils.text import format_entity_labels
@@ -333,7 +336,7 @@ class BaseExplorer(ABC):
         start: str | None,
         end: str | None,
         trimestral: bool = False,
-    ) -> str | None:
+    ) -> SqlCondition | None:
         """Constroi condicao WHERE para range de datas. Usa nome de storage."""
         datas = self._resolve_date_range(start, end, trimestral=trimestral)
         if not datas:
@@ -345,7 +348,7 @@ class BaseExplorer(ABC):
         self,
         instituicoes: InstitutionInput | None,
         column: str = "CNPJ_8",
-    ) -> str | None:
+    ) -> SqlCondition | None:
         """Constroi condicao WHERE para CNPJs."""
         cnpjs = self._normalize_instituicoes(instituicoes)
         if not cnpjs:
@@ -694,10 +697,8 @@ class BaseExplorer(ABC):
             return pd.DataFrame(columns=canonical_names)
 
         conditions = self._build_list_conditions(start=start, end=end, **filters)
-        valid_conditions = [c for c in conditions if c]
-        where_clause = (
-            f"WHERE {' AND '.join(valid_conditions)}" if valid_conditions else ""
-        )
+        where = join_conditions(conditions)
+        where_clause = f"WHERE {where}" if where else ""
 
         order_cols = ", ".join(str(i + 1) for i in range(len(select_parts)))
 
@@ -709,7 +710,7 @@ class BaseExplorer(ABC):
             f"LIMIT {limit}"
         )
 
-        df = self._qe.sql(query)
+        df = self._qe.sql(query, params=merge_params(where))
 
         if df.empty:
             return pd.DataFrame(columns=canonical_names)

@@ -24,6 +24,7 @@ from ifdata_bcb.infra.sql import (
     build_like_condition,
     build_string_condition,
     join_conditions,
+    merge_params,
 )
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.enrichment import (
@@ -316,7 +317,7 @@ class IFDATAExplorer(BaseExplorer):
         """
 
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cod_str))
             return dict(
                 zip(
                     df["COD_INST"].astype(str).values,
@@ -540,7 +541,7 @@ class IFDATAExplorer(BaseExplorer):
         escopo = filters.get("escopo")
         if escopo is not None:
             tipo_inst = TIPO_INST_MAP[self._validate_escopo(str(escopo))]
-            conditions.append(f"TipoInstituicao = {tipo_inst}")
+            conditions.append(build_int_condition("TipoInstituicao", [tipo_inst]))
 
         # Relatorio
         relatorio = filters.get("relatorio")
@@ -595,13 +596,13 @@ class IFDATAExplorer(BaseExplorer):
 
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
 
-        conditions = []
+        conditions: list[str | None] = []
         if termo:
             conditions.append(build_like_condition("NomeColuna", stem_ptbr(termo)))
 
         if escopo:
             tipo_inst = TIPO_INST_MAP[self._validate_escopo(escopo)]
-            conditions.append(f"TipoInstituicao = {tipo_inst}")
+            conditions.append(build_int_condition("TipoInstituicao", [tipo_inst]))
 
         if relatorio:
             conditions.append(build_like_condition("NomeRelatorio", relatorio))
@@ -610,7 +611,8 @@ class IFDATAExplorer(BaseExplorer):
         if datas:
             conditions.append(build_int_condition("AnoMes", datas))
 
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        cond = join_conditions(conditions)
+        where = f"WHERE {cond}" if cond else ""
 
         query = f"""
             SELECT DISTINCT Conta as COD_CONTA, NomeColuna as CONTA,
@@ -620,7 +622,7 @@ class IFDATAExplorer(BaseExplorer):
             ORDER BY RELATORIO, GRUPO, CONTA, COD_CONTA
             LIMIT {limit}
         """
-        return self._qe.sql(query)
+        return self._qe.sql(query, params=merge_params(cond))
 
     def mapeamento(
         self,

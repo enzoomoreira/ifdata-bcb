@@ -1,4 +1,5 @@
 import contextlib
+from collections.abc import Mapping
 from pathlib import Path
 
 import duckdb
@@ -7,6 +8,7 @@ import pandas as pd
 from ifdata_bcb.domain.exceptions import DataProcessingError
 from ifdata_bcb.infra.config import get_settings
 from ifdata_bcb.infra.log import get_logger
+from ifdata_bcb.infra.sql import merge_params
 
 
 class QueryEngine:
@@ -49,6 +51,7 @@ class QueryEngine:
         date_column: str | None = None,
         date_alias: str = "DATA",
         exclude_columns: list[str] | None = None,
+        params: Mapping[str, object] | None = None,
     ) -> pd.DataFrame:
         """
         Le multiplos arquivos Parquet como dataset unico.
@@ -57,11 +60,13 @@ class QueryEngine:
             pattern: Glob pattern dos arquivos parquet.
             subdir: Subdiretorio dentro do cache.
             columns: Colunas a selecionar (None = todas).
-            where: Clausula WHERE (sem a keyword WHERE).
+            where: Clausula WHERE (sem a keyword WHERE). Se for um SqlCondition,
+                seus params sao vinculados automaticamente.
             distinct: Se True, adiciona DISTINCT ao SELECT.
             date_column: Coluna YYYYMM int a converter pra datetime via DuckDB.
             date_alias: Nome da coluna datetime no output (default "DATA").
             exclude_columns: Colunas a excluir via EXCLUDE (so quando columns=None).
+            params: Params extras, para quem montou parte do WHERE a mao.
 
         Retorna DataFrame vazio se nenhum arquivo corresponder ao pattern.
         """
@@ -105,8 +110,10 @@ class QueryEngine:
         if where:
             query += f" WHERE {where}"
 
+        bound = {**merge_params(where), **(params or {})}
+
         try:
-            return self._conn.sql(query).df()
+            return self._conn.sql(query, params=bound or None).df()
         except duckdb.Error as e:
             # Devolver DataFrame vazio aqui mascarava parquet corrompido, coluna
             # inexistente e erro de sintaxe montado internamente -- o usuario
@@ -120,10 +127,17 @@ class QueryEngine:
                 f"estao integros (recolete com force=True se necessario).",
             ) from e
 
-    def sql(self, query: str) -> pd.DataFrame:
-        """Executa SQL com substituicao de {cache} pelo path do cache."""
+    def sql(
+        self, query: str, params: Mapping[str, object] | None = None
+    ) -> pd.DataFrame:
+        """Executa SQL com substituicao de {cache} pelo path do cache.
+
+        Queries que embutem fragmentos de infra.sql precisam passar
+        `params=merge_params(...)` com os fragmentos usados -- a interpolacao
+        por f-string descarta os valores.
+        """
         query = query.replace("{cache}", str(self._cache_path))
-        return self._conn.sql(query).df()
+        return self._conn.sql(query, params=params or None).df()
 
     def close(self) -> None:
         """Fecha a conexao DuckDB."""
@@ -135,17 +149,23 @@ class QueryEngine:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
-    def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
+    def sql_with_df(
+        self,
+        query: str,
+        _params: Mapping[str, object] | None = None,
+        **tables: pd.DataFrame,
+    ) -> pd.DataFrame:
         """Executa SQL com DataFrames registrados como tabelas virtuais.
 
         Permite JOINs, ASOF JOINs etc entre DataFrames em memoria e/ou
-        parquets via read_parquet() na mesma query.
+        parquets via read_parquet() na mesma query. O underscore em `_params`
+        evita colisao com um DataFrame chamado "params" em **tables.
         """
         try:
             for name, df in tables.items():
                 self._conn.register(name, df)
 
-            return self._conn.sql(query).df()
+            return self._conn.sql(query, params=_params or None).df()
         finally:
             for name in tables:
                 # Limpeza best-effort: um unregister que falha nao pode

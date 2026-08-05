@@ -148,11 +148,12 @@ def read_glob(
     pattern: str,                          # Glob (ex: "cosif_prud_*.parquet")
     subdir: str,
     columns: list[str] | None = None,
-    where: str | None = None,
+    where: str | None = None,              # SqlCondition: params vinculados automaticamente
     distinct: bool = False,                # Se True, adiciona DISTINCT ao SELECT
     date_column: str | None = None,        # Coluna YYYYMM int a converter para datetime via DuckDB
     date_alias: str = "DATA",              # Nome da coluna datetime no output
     exclude_columns: list[str] | None = None,  # Colunas a excluir via EXCLUDE (so quando columns=None)
+    params: Mapping[str, object] | None = None,  # Params extras, para WHERE montado a mao
 ) -> pd.DataFrame:
 ```
 
@@ -163,9 +164,13 @@ qe = QueryEngine()
 df = qe.read_glob(
     "cosif_prud_2024*.parquet",
     "cosif/prudencial",
-    where="CONTA = 'TOTAL GERAL DO ATIVO'",
+    where=build_string_condition("CONTA", ["TOTAL GERAL DO ATIVO"]),
 )
 ```
+
+Passar um `SqlCondition` em `where` e o caminho normal: `read_glob` extrai os
+`.params` e os vincula sozinho. `params=` existe para quem montou parte do
+WHERE a mao e precisa somar valores proprios.
 
 **Novos parametros**:
 - `distinct`: Adiciona `DISTINCT` ao SELECT para deduplicar resultados no DuckDB.
@@ -174,7 +179,7 @@ df = qe.read_glob(
 
 **union_by_name**: A leitura usa `read_parquet(..., union_by_name=true)` para compatibilidade com parquets que tenham schemas ligeiramente diferentes (ex: eras distintas de formato COSIF).
 
-**Tratamento de erros**: Se a query falhar (ex: incompatibilidade de schema entre parquets), `read_glob` emite `PartialDataWarning` e retorna DataFrame vazio em vez de levantar excecao.
+**Tratamento de erros**: Se a query falhar (parquet corrompido, coluna inexistente, erro de sintaxe montado internamente), `read_glob` levanta `DataProcessingError` com a causa. Devolver DataFrame vazio mascarava esses casos -- o usuario recebia "sem dados" no lugar do motivo. Schema heterogeneo entre periodos ja e resolvido por `union_by_name`, entao chegar ao erro significa problema real. Pattern que nao casa nenhum arquivo continua devolvendo DataFrame vazio, sem erro.
 
 **Predicate Pushdown**:
 
@@ -191,10 +196,14 @@ WHERE CNPJ_8 = '60872504' AND DATA_BASE = 202412
 Executa SQL arbitrario:
 
 ```python
-def sql(self, query: str) -> pd.DataFrame:
+def sql(self, query: str, params: Mapping[str, object] | None = None) -> pd.DataFrame:
     """
     Variaveis disponiveis:
         {cache} - Caminho para diretorio de cache
+
+    Queries que embutem fragmentos de infra.sql precisam passar
+    params=merge_params(...) com os fragmentos usados: a interpolacao
+    por f-string descarta os valores.
     """
 ```
 
@@ -255,102 +264,93 @@ Usado internamente pelo modulo de enrichment para ASOF JOINs entre dados finance
 
 ### Responsabilidades
 
-Funcoes puras para construcao de condicoes SQL compativeis com DuckDB. Usadas pelo `BaseExplorer` e `EntityLookup`.
+Funcoes puras para construcao de condicoes SQL parametrizadas para DuckDB.
+Usadas pelo `BaseExplorer` e pelo `EntityLookup`.
 
-### build_string_condition()
+**Valores nunca entram no texto da query.** Cada um vira um parametro nomeado
+(`$p0`, `$p1`, ...) e viaja separado ate o bind do DuckDB. Nao ha escape de
+aspas em lugar nenhum -- e essa a garantia: sem escape, nao ha ordem de escape
+para errar.
+
+O bug que motivou o desenho: `normalize_accents` usa NFKD, que decompoe
+compatibilidade e nao apenas acentos. `U+FF07` (FULLWIDTH APOSTROPHE) decompoe
+para uma aspa simples ASCII, entao escapar antes de normalizar deixava essa
+aspa sem escape e fechava o literal.
+
+### SqlCondition
 
 ```python
-def build_string_condition(
-    column: str,
-    values: list[str],
-    case_insensitive: bool = False,
-    accent_insensitive: bool = False,
-) -> str:
-    """
-    Constroi clausula WHERE para strings.
-
-    Exemplos:
-    - ["valor"] -> "COLUNA = 'valor'"
-    - ["a", "b"] -> "COLUNA IN ('a', 'b')"
-    - case_insensitive=True -> "UPPER(COLUNA) IN ('A', 'B')"
-    - accent_insensitive=True -> "strip_accents(COLUNA) = 'valor'"
-    """
+class SqlCondition(str):
+    params: Mapping[str, object]
 ```
 
-### build_int_condition()
+Subclasse de `str`: o valor da string e o fragmento SQL com placeholders, e
+`.params` carrega os valores. Ser `str` mantem a interpolacao textual
+funcionando onde ja funcionava.
+
+**O contrapeso**: qualquer operacao de string (`+`, f-string, `"".join`)
+devolve `str` puro e descarta os params. Componha com `join_conditions()` e
+colete com `merge_params()`. Perder os params nao produz resultado errado em
+silencio -- o DuckDB recusa a query com placeholder sem valor.
+
+### Um placeholder por valor
+
+`IN ($p0, $p1)`, e nao `IN (SELECT unnest($lista))`. A forma com subquery faz o
+DuckDB perder o filter pushdown para o parquet; a forma com um placeholder por
+valor mantem o pushdown e o mesmo tempo de query dos literais, inclusive com
+listas grandes.
+
+### Construtores
 
 ```python
-def build_int_condition(column: str, values: list[int]) -> str:
-    """
-    Constroi clausula WHERE para inteiros.
+build_string_condition(column, values, case_insensitive=False, accent_insensitive=False) -> SqlCondition
+# ["valor"]  -> "COLUNA = $p0"                 params: {"p0": "valor"}
+# ["a", "b"] -> "COLUNA IN ($p0, $p1)"         params: {"p0": "a", "p1": "b"}
+# case_insensitive=True   -> "UPPER(COLUNA) IN ($p0, $p1)", valores ja em caixa alta
+# accent_insensitive=True -> "strip_accents(COLUNA) = $p0", valor ja normalizado
 
-    Exemplos:
-    - [202412] -> "DATA = 202412"
-    - [202412, 202501] -> "DATA IN (202412, 202501)"
-    """
+build_int_condition(column, values) -> SqlCondition
+# [202412] -> "DATA = $p0"    params: {"p0": 202412}
+# Levanta ValueError se algum valor nao for inteiro -- a anotacao list[int]
+# nao e verificada em runtime, o int() e.
+
+build_between_condition(column, low, high) -> SqlCondition
+# "AnoMes BETWEEN $p0 AND $p1"
+
+build_account_condition(name_col, code_col, values) -> SqlCondition
+# Match por nome (accent/case insensitive) OU por codigo, na mesma chamada.
+
+build_like_condition(column, term, case_insensitive=True, accent_insensitive=True) -> SqlCondition
+# "UPPER(strip_accents(COLUNA)) LIKE $p0 ESCAPE '$'"   params: {"p0": "%TERMO%"}
+# Metacaracteres LIKE (%, _, $) sao escapados no valor, nao no SQL.
+# O ESCAPE '$' e literal: '$' seguido de aspa nao forma nome de parametro.
+
+build_in_clause(values) -> SqlCondition
+# So a lista, sem parenteses: "$p0, $p1". Para montar `... IN ({clause})` a mao.
 ```
 
-### build_account_condition()
+### Composicao
 
 ```python
-def build_account_condition(
-    name_col: str,
-    code_col: str,
-    values: list[str],
-) -> str:
-    """
-    Match por nome (accent/case insensitive) OU por codigo.
+join_conditions(conditions: list[str | None]) -> SqlCondition | None
+# Junta com AND, ignorando None e strings vazias, e mescla os params dos
+# fragmentos que sobreviveram. Os params dos descartados saem junto -- param
+# orfao faria o DuckDB recusar a query.
 
-    Permite filtrar contas por nome textual ou codigo numerico
-    na mesma chamada.
-    """
+merge_params(*fragments) -> dict[str, object]
+# Coleta os params de fragmentos SqlCondition, ignorando str puro e None.
 ```
 
-### build_like_condition()
+### Quem repassa os params
+
+`QueryEngine.read_glob(where=...)` faz isso sozinho quando recebe um
+`SqlCondition`. Queries montadas a mao e enviadas por `QueryEngine.sql()`
+precisam passar `params=merge_params(...)` com os fragmentos usados:
 
 ```python
-def build_like_condition(
-    column: str,
-    term: str,
-    case_insensitive: bool = True,
-    accent_insensitive: bool = True,
-) -> str:
-    """
-    Constroi condicao LIKE para busca textual parcial.
-
-    Escapa metacaracteres LIKE (%, _) automaticamente.
-    """
-```
-
-### join_conditions()
-
-```python
-def join_conditions(conditions: list[str | None]) -> str | None:
-    """
-    Junta condicoes com AND, ignorando None e strings vazias.
-
-    Exemplo:
-    ["DATA = 202412", None, "CNPJ_8 = '12345678'"]
-    -> "DATA = 202412 AND CNPJ_8 = '12345678'"
-    """
-```
-
-### build_in_clause()
-
-```python
-def build_in_clause(values: list[str], escape: bool = True) -> str:
-    """
-    Constroi lista SQL IN sem parenteses: 'a', 'b', 'c'.
-
-    Usado internamente pelo EntityLookup para montar queries.
-    """
-```
-
-### escape_sql_string()
-
-```python
-def escape_sql_string(value: str) -> str:
-    """Escapa aspas simples para uso em SQL."""
+cond = join_conditions([build_string_condition("CNPJ_8", cnpjs), date_cond])
+query = f"SELECT * FROM '{path}' WHERE {cond}"
+df = qe.sql(query, params=merge_params(cond))
 ```
 
 ---

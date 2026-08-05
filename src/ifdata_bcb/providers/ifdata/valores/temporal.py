@@ -13,7 +13,13 @@ from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.validation import NormalizedDates
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.sql import build_in_clause, build_int_condition
+from ifdata_bcb.infra.sql import (
+    SqlCondition,
+    build_in_clause,
+    build_int_condition,
+    join_conditions,
+    merge_params,
+)
 
 
 @dataclass(frozen=True)
@@ -76,12 +82,13 @@ class TemporalResolver:
         self,
         start: str | None = None,
         end: str | None = None,
-    ) -> str:
+    ) -> SqlCondition:
         """Constroi WHERE clause para datas AnoMes (trimestral)."""
         periodos = _resolve_quarter_dates(start, end)
         if not periodos:
-            return ""
-        return f"WHERE {build_int_condition('AnoMes', periodos)}"
+            return SqlCondition("", {})
+        cond = build_int_condition("AnoMes", periodos)
+        return SqlCondition(f"WHERE {cond}", cond.params)
 
     def resolve(
         self,
@@ -143,7 +150,7 @@ class TemporalResolver:
             ORDER BY CNPJ_8, Data
         """
         try:
-            df_cad = self._qe.sql(query)
+            df_cad = self._qe.sql(query, params=merge_params(cnpjs_str))
         except Exception as e:
             self._logger.warning(f"Temporal resolution query failed: {e}")
             from ifdata_bcb.domain.exceptions import PartialDataWarning
@@ -237,11 +244,13 @@ class TemporalResolver:
 
         # Filtros de data
         valores_where = self._ifdata_date_where(start, end)
-        cadastro_where_parts = [self._resolver.real_entity_condition()]
+        cadastro_where_parts: list[str | None] = [
+            self._resolver.real_entity_condition()
+        ]
         periodos = _resolve_quarter_dates(start, end)
         if periodos:
             cadastro_where_parts.append(build_int_condition("Data", periodos))
-        cadastro_where = " AND ".join(cadastro_where_parts)
+        cadastro_where = join_conditions(cadastro_where_parts)
 
         tipo_ind = TIPO_INST_MAP["individual"]
         tipo_prud = TIPO_INST_MAP["prudencial"]
@@ -304,7 +313,7 @@ class TemporalResolver:
         """
 
         try:
-            df = self._qe.sql(query)
+            df = self._qe.sql(query, params=merge_params(valores_where, cadastro_where))
         except Exception as e:
             self._logger.warning(f"resolve_mapeamento query failed: {e}")
             return pd.DataFrame(columns=_EMPTY_MAPEAMENTO_COLUMNS)

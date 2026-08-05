@@ -10,7 +10,7 @@ from ifdata_bcb.core.constants import TIPO_INST_MAP
 from ifdata_bcb.core.entity.lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.infra.log import get_logger
-from ifdata_bcb.infra.sql import build_in_clause
+from ifdata_bcb.infra.sql import build_in_clause, merge_params
 from ifdata_bcb.utils.date import normalize_date_to_int
 
 if TYPE_CHECKING:
@@ -277,7 +277,7 @@ class CadastroSearch:
         WHERE CNPJ_8 IN ({cnpjs_str}){date_cond}
         """
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpjs_str, date_cond))
             return set(df["CNPJ_8"].astype(str))
         except Exception as e:
             self._logger.warning(f"search: COSIF escopo check failed ({escopo}): {e}")
@@ -315,7 +315,7 @@ class CadastroSearch:
           AND CodInst IN ({cnpjs_str}){date_cond}
         """
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpjs_str, date_cond))
             return set(df["CodInst"].astype(str))
         except Exception as e:
             self._logger.warning(f"search: IFDATA individual escopo check failed: {e}")
@@ -346,7 +346,7 @@ class CadastroSearch:
           AND {cod_col} IS NOT NULL
         """
         try:
-            df_congl = self._qe.sql(sql)
+            df_congl = self._qe.sql(sql, params=merge_params(cnpjs_str))
             if df_congl.empty:
                 return set()
 
@@ -364,7 +364,9 @@ class CadastroSearch:
             SELECT DISTINCT CodInst FROM '{ifdata_path}'
             WHERE CodInst IN ({cods_str}){date_cond}
             """
-            df_ifdata = self._qe.sql(sql_ifdata)
+            df_ifdata = self._qe.sql(
+                sql_ifdata, params=merge_params(cods_str, date_cond)
+            )
 
             result: set[str] = set()
             for cod in df_ifdata["CodInst"].astype(str):

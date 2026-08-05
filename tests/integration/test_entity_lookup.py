@@ -140,22 +140,21 @@ class TestGetCanonicalNames:
         lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ])
 
         # Agora pedir A + B: A ja esta no cache, so B precisa de query
-        calls: list[str] = []
+        calls: list[dict[str, object]] = []
         original_sql = lookup._qe.sql
 
-        def tracking_sql(query: str) -> object:
-            calls.append(query)
-            return original_sql(query)
+        def tracking_sql(query: str, params: dict[str, object] | None = None) -> object:
+            calls.append(params or {})
+            return original_sql(query, params)
 
         lookup._qe.sql = tracking_sql  # type: ignore[assignment]
         try:
             names = lookup.get_canonical_names_for_cnpjs([BANCO_A_CNPJ, BANCO_B_CNPJ])
             assert names[BANCO_A_CNPJ] == "BANCO ALFA S.A."
             assert names[BANCO_B_CNPJ] == "BANCO BETA S.A."
-            # Query deve conter apenas BANCO_B, nao BANCO_A
+            # Os CNPJs viajam como parametros: so BANCO_B deve ser vinculado
             assert len(calls) == 1
-            assert BANCO_B_CNPJ in calls[0]
-            assert BANCO_A_CNPJ not in calls[0]
+            assert list(calls[0].values()) == [BANCO_B_CNPJ]
         finally:
             lookup._qe.sql = original_sql
 

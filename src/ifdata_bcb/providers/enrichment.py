@@ -9,7 +9,7 @@ from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError, PartialDataWarning
 from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.sql import build_in_clause
+from ifdata_bcb.infra.sql import build_in_clause, merge_params
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,7 @@ def _derive_nome_congl_prud(
     """
 
     try:
-        df_names = query_engine.sql(sql)
+        df_names = query_engine.sql(sql, params=merge_params(cod_str))
         if df_names.empty:
             df_cad["NOME_CONGL_PRUD"] = None
             return df_cad

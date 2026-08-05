@@ -13,9 +13,12 @@ from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
+    build_account_condition,
     build_int_condition,
     build_like_condition,
     build_string_condition,
+    join_conditions,
+    merge_params,
 )
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
@@ -127,8 +130,6 @@ class COSIFExplorer(BaseExplorer):
         columns: list[str] | None,
         documento: str | list[str] | None = None,
     ) -> pd.DataFrame:
-        from ifdata_bcb.infra.sql import build_account_condition
-
         contas = self._normalize_contas(conta) if conta else None
 
         conditions = [
@@ -148,8 +149,6 @@ class COSIFExplorer(BaseExplorer):
         if documento:
             conditions.append(self._build_documento_condition(documento))
 
-        from ifdata_bcb.infra.sql import join_conditions as jc
-
         return self._read_glob(
             pattern=self._get_pattern_for_escopo(escopo),
             subdir=self._get_escopo_config(escopo)["subdir"],
@@ -159,7 +158,7 @@ class COSIFExplorer(BaseExplorer):
                     self._resolve_date_range(start, end)
                 ),
             ),
-            where=jc(conditions),
+            where=join_conditions(conditions),
         )
 
     def collect(
@@ -416,7 +415,7 @@ class COSIFExplorer(BaseExplorer):
         escopo = filters.get("escopo")
         if escopo is not None:
             esc_val = self._validate_escopo(str(escopo))
-            conditions.append(f"ESCOPO = '{esc_val}'")
+            conditions.append(build_string_condition("ESCOPO", [esc_val]))
 
         # Documento filter
         documento = filters.get("documento")
@@ -488,20 +487,22 @@ class COSIFExplorer(BaseExplorer):
         path = self._qe.cache_path / cfg["subdir"] / pattern
 
         # Base conditions for the CTE (date filter + non-null names)
-        base_conditions: list[str] = ["NOME_CONTA IS NOT NULL"]
+        base_conditions: list[str | None] = ["NOME_CONTA IS NOT NULL"]
         if datas:
             base_conditions.append(build_int_condition("DATA_BASE", datas))
 
-        base_where = f"WHERE {' AND '.join(base_conditions)}"
+        base_cond = join_conditions(base_conditions)
+        base_where = f"WHERE {base_cond}"
 
         # Outer conditions (applied after dedup): term filter
-        outer_conditions: list[str] = ["rn = 1"]
+        outer_conditions: list[str | None] = ["rn = 1"]
         if termo:
             outer_conditions.append(
                 build_like_condition("NOME_CONTA", stem_ptbr(termo))
             )
 
-        outer_where = f"WHERE {' AND '.join(outer_conditions)}"
+        outer_cond = join_conditions(outer_conditions)
+        outer_where = f"WHERE {outer_cond}"
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
 
         query = f"""
@@ -519,4 +520,4 @@ class COSIFExplorer(BaseExplorer):
             ORDER BY CONTA, COD_CONTA
             {limit_clause}
         """
-        return self._qe.sql(query)
+        return self._qe.sql(query, params=merge_params(base_cond, outer_cond))

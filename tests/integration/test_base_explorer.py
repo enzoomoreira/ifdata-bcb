@@ -97,8 +97,10 @@ class TestBuildDateCondition:
 
     def test_single_date_uses_storage_col(self, explorer: ConcreteExplorer) -> None:
         result = explorer._build_date_condition("2024-06", None)
+        assert result is not None
         assert "DATA_BASE" in result
-        assert "202406" in result
+        # O periodo viaja como parametro, nao no texto da query
+        assert list(result.params.values()) == [202406]
 
     def test_date_range(self, explorer: ConcreteExplorer) -> None:
         result = explorer._build_date_condition("2024-01", "2024-03")

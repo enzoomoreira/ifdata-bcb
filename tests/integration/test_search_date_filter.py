@@ -9,6 +9,7 @@ e cadastro em 202303 + 202306.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
@@ -48,11 +49,13 @@ class TestDateFilter:
 
     def test_single_period(self) -> None:
         result = EntityLookupDirect._date_filter("AnoMes", (202303, 202303))
-        assert result == " AND AnoMes BETWEEN 202303 AND 202303"
+        assert re.fullmatch(r" AND AnoMes BETWEEN \$p\d+ AND \$p\d+", result)
+        assert sorted(result.params.values()) == [202303, 202303]
 
     def test_range(self) -> None:
         result = EntityLookupDirect._date_filter("DATA_BASE", (202301, 202312))
-        assert result == " AND DATA_BASE BETWEEN 202301 AND 202312"
+        assert re.fullmatch(r" AND DATA_BASE BETWEEN \$p\d+ AND \$p\d+", result)
+        assert sorted(result.params.values()) == [202301, 202312]
 
     def test_different_columns(self) -> None:
         for col in ("DATA_BASE", "AnoMes", "Data"):

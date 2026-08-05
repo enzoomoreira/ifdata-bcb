@@ -5,7 +5,13 @@ import pandas as pd
 from ifdata_bcb.core.constants import TIPO_INST_MAP, get_pattern, get_subdir
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
-from ifdata_bcb.infra.sql import build_in_clause, build_string_condition
+from ifdata_bcb.infra.sql import (
+    SqlCondition,
+    build_between_condition,
+    build_in_clause,
+    build_string_condition,
+    merge_params,
+)
 from ifdata_bcb.utils.nulls import is_valid
 
 
@@ -97,11 +103,12 @@ class EntityLookup:
         """
 
     @staticmethod
-    def _date_filter(col: str, date_range: tuple[int, int] | None) -> str:
-        """Clausula SQL AND para filtro de periodo. Vazio se date_range=None."""
+    def _date_filter(col: str, date_range: tuple[int, int] | None) -> SqlCondition:
+        """Clausula SQL AND para filtro de periodo. Vazia se date_range=None."""
         if date_range is None:
-            return ""
-        return f" AND {col} BETWEEN {date_range[0]} AND {date_range[1]}"
+            return SqlCondition("", {})
+        cond = build_between_condition(col, date_range[0], date_range[1])
+        return SqlCondition(f" AND {cond}", cond.params)
 
     def _get_data_sources_for_cnpjs(
         self,
@@ -128,7 +135,7 @@ class EntityLookup:
 
     def _check_cosif_sources(
         self,
-        cnpjs_str: str,
+        cnpjs_str: SqlCondition,
         result: dict[str, set[str]],
         date_range: tuple[int, int] | None = None,
     ) -> None:
@@ -143,7 +150,7 @@ class EntityLookup:
         )
         """
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpjs_str, date_cond))
             for cnpj in df["CNPJ_8"].astype(str):
                 result[cnpj].add("cosif")
         except Exception as e:
@@ -151,7 +158,7 @@ class EntityLookup:
 
     def _check_ifdata_individual_sources(
         self,
-        cnpjs_str: str,
+        cnpjs_str: SqlCondition,
         result: dict[str, set[str]],
         date_range: tuple[int, int] | None = None,
     ) -> None:
@@ -162,7 +169,7 @@ class EntityLookup:
         WHERE TipoInstituicao = {TIPO_INST_MAP["individual"]} AND CodInst IN ({cnpjs_str}){date_cond}
         """
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpjs_str, date_cond))
             for cnpj in df["CodInst"].astype(str):
                 result[cnpj].add("ifdata")
         except Exception as e:
@@ -171,7 +178,7 @@ class EntityLookup:
     def _check_ifdata_conglomerate_sources(
         self,
         cnpjs: list[str],
-        cnpjs_str: str,
+        cnpjs_str: SqlCondition,
         result: dict[str, set[str]],
         date_range: tuple[int, int] | None = None,
     ) -> None:
@@ -189,7 +196,7 @@ class EntityLookup:
                OR CodConglomeradoFinanceiro IS NOT NULL)
         """
         try:
-            df_congl = self._qe.sql(sql)
+            df_congl = self._qe.sql(sql, params=merge_params(cnpjs_str))
             if not df_congl.empty:
                 cod_to_cnpjs: dict[str, list[str]] = {}
                 cnpjs_col = df_congl["CNPJ_8"].astype(str).values
@@ -209,7 +216,9 @@ class EntityLookup:
                     SELECT DISTINCT CodInst FROM '{ifdata_path}'
                     WHERE CodInst IN ({cods_str}){date_cond}
                     """
-                    df_ifdata = self._qe.sql(sql_ifdata)
+                    df_ifdata = self._qe.sql(
+                        sql_ifdata, params=merge_params(cods_str, date_cond)
+                    )
                     for cod in df_ifdata["CodInst"].astype(str):
                         for cnpj in cod_to_cnpjs.get(cod, []):
                             result[cnpj].add("ifdata")
@@ -229,7 +238,7 @@ class EntityLookup:
         )
 
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpjs_str))
             return dict(
                 zip(
                     df["CNPJ_8"].astype(str).values,
@@ -288,7 +297,7 @@ class EntityLookup:
         """
 
         try:
-            df = self._qe.sql(sql)
+            df = self._qe.sql(sql, params=merge_params(cnpj_condition))
         except Exception as e:
             self._logger.warning(
                 f"get_entity_identifiers query failed for {cnpj_8}: {e}"
@@ -331,7 +340,7 @@ class EntityLookup:
             LIMIT 1
             """
             try:
-                df_lider = self._qe.sql(sql_lider)
+                df_lider = self._qe.sql(sql_lider, params=merge_params(prud_condition))
                 if not df_lider.empty:
                     lider = df_lider["CNPJ_LIDER_8"].iloc[0]
                     if is_valid(lider):
@@ -372,7 +381,7 @@ class EntityLookup:
             )
 
             try:
-                df = self._qe.sql(sql)
+                df = self._qe.sql(sql, params=merge_params(cnpjs_str))
             except Exception as e:
                 self._logger.warning(f"get_canonical_names_for_cnpjs query failed: {e}")
                 for cnpj in missing:
