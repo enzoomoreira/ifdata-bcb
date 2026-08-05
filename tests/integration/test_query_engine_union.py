@@ -6,7 +6,6 @@ import pandas as pd
 
 from ifdata_bcb.infra.query import QueryEngine
 
-
 # =========================================================================
 # union_by_name behavior
 # =========================================================================

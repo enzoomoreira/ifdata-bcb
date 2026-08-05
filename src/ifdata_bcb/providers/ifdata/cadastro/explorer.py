@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
@@ -20,12 +22,12 @@ from ifdata_bcb.providers.ifdata.cadastro.search import CadastroSearch
 class CadastroExplorer(BaseExplorer):
     """Explorer para dados cadastrais IFDATA (trimestrais)."""
 
-    _DROP_COLUMNS = ["CodInst"]
-    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "CNPJ_LIDER_8"}
+    _DROP_COLUMNS: ClassVar[list[str]] = ["CodInst"]
+    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "CNPJ_LIDER_8"}
 
     _DATE_COLUMN = "Data"
 
-    _COLUMN_MAP = {
+    _COLUMN_MAP: ClassVar[dict[str, str]] = {
         "Data": "DATA",
         "NomeInstituicao": "INSTITUICAO",
         "SegmentoTb": "SEGMENTO",
@@ -42,7 +44,7 @@ class CadastroExplorer(BaseExplorer):
         "DataInicioAtividade": "DATA_INICIO_ATIVIDADE",
     }
 
-    _COLUMN_ORDER = [
+    _COLUMN_ORDER: ClassVar[list[str]] = [
         "DATA",
         "CNPJ_8",
         "INSTITUICAO",
@@ -61,7 +63,7 @@ class CadastroExplorer(BaseExplorer):
         "DATA_INICIO_ATIVIDADE",
     ]
 
-    _LIST_COLUMNS: dict[str, str] = {
+    _LIST_COLUMNS: ClassVar[dict[str, str]] = {
         "DATA": "Data",
         "SEGMENTO": "SegmentoTb",
         "UF": "Uf",
@@ -74,7 +76,7 @@ class CadastroExplorer(BaseExplorer):
         "MUNICIPIO": "Municipio",
     }
 
-    _BLOCKED_COLUMNS: dict[str, str] = {
+    _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
         "CNPJ_8": "Use cadastro.search() para buscar instituicoes.",
         "INSTITUICAO": "Use cadastro.search() para buscar instituicoes.",
     }

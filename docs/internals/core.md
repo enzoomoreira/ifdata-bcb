@@ -33,9 +33,9 @@ Mapeamento entre escopo e codigo TipoInstituicao do IFDATA:
 
 ```python
 TIPO_INST_MAP: dict[str, int] = {
-    "individual": 3,      # Instituicao individual
-    "prudencial": 1,      # Conglomerado prudencial
-    "financeiro": 2,      # Conglomerado financeiro
+    "individual": 3,  # Instituicao individual
+    "prudencial": 1,  # Conglomerado prudencial
+    "financeiro": 2,  # Conglomerado financeiro
 }
 ```
 
@@ -84,13 +84,16 @@ def get_pattern(source: str) -> str:
     """Retorna glob pattern para arquivos da fonte."""
     # get_pattern("cosif_individual") -> "cosif_ind_*.parquet"
 
+
 def get_subdir(source: str) -> str:
     """Retorna subdiretorio da fonte."""
     # get_subdir("cosif_individual") -> "cosif/individual"
 
+
 def get_source_key(prefix: str) -> str | None:
     """Reverse lookup: prefix -> source key."""
     # get_source_key("cosif_ind") -> "cosif_individual"
+
 
 def get_first_available(prefix: str) -> int | None:
     """Retorna primeiro periodo disponivel para um prefix."""
@@ -139,7 +142,15 @@ class COSIFExplorer(BaseExplorer):
     _DROP_COLUMNS: list[str] = []
 
     # Ordem das colunas no resultado
-    _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "ESCOPO", "COD_CONTA", "CONTA", ...]
+    _COLUMN_ORDER = [
+        "DATA",
+        "CNPJ_8",
+        "INSTITUICAO",
+        "ESCOPO",
+        "COD_CONTA",
+        "CONTA",
+        ...,
+    ]
 
     # Escopos validos para _validate_escopo()
     _VALID_ESCOPOS = ["individual", "prudencial"]
@@ -168,6 +179,7 @@ Subclasses **devem** implementar:
 @abstractmethod
 def _get_subdir(self) -> str:
     """Retorna subdiretorio dos dados (ex: 'cosif/individual')."""
+
 
 @abstractmethod
 def _get_file_prefix(self) -> str:
@@ -199,6 +211,7 @@ _ESCOPOS = {
     "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
     "prudencial": {"subdir": "cosif/prudencial", "prefix": "cosif_prud"},
 }
+
 
 def _get_sources(self):
     return self._ESCOPOS
@@ -246,9 +259,7 @@ def _normalize_datas(self, datas: DateInput) -> list[int]:
 #### _normalize_contas()
 
 ```python
-def _normalize_contas(
-    self, contas: AccountInput | None
-) -> list[str] | None:
+def _normalize_contas(self, contas: AccountInput | None) -> list[str] | None:
     """
     Normaliza contas para lista de strings.
 
@@ -420,7 +431,11 @@ def _resolve_date_range(
 As funcoes de construcao SQL foram extraidas para `infra.sql` como funcoes de modulo:
 
 ```python
-from ifdata_bcb.infra.sql import build_string_condition, build_int_condition, join_conditions
+from ifdata_bcb.infra.sql import (
+    build_string_condition,
+    build_int_condition,
+    join_conditions,
+)
 ```
 
 #### build_string_condition()
@@ -754,6 +769,7 @@ def real_entity_condition(
     E um @staticmethod -- nao depende de estado de instancia.
     """
 
+
 def resolved_entity_cnpj_expr(
     self,
     cnpj_col: str = "CNPJ_8",
@@ -826,10 +842,13 @@ class COSIFExplorer(BaseExplorer):
 ```python
 from ifdata_bcb.core.constants import get_pattern, get_subdir
 
+
 class EntityLookup:  # em core/entity/lookup.py
     def _source_path(self, source_key: str) -> str:
         """Retorna path completo para glob de arquivos de uma fonte."""
-        return f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
+        return (
+            f"{self._qe.cache_path}/{get_subdir(source_key)}/{get_pattern(source_key)}"
+        )
 ```
 
 ---
@@ -849,7 +868,7 @@ O diagnostico e **derivado do dado**, nao de tabelas de metadados: `diagnose_era
 ### Constantes
 
 ```python
-COSIF_ERA_BOUNDARY: int = 202501   # Primeiro periodo COSIF com novo plano contabil
+COSIF_ERA_BOUNDARY: int = 202501  # Primeiro periodo COSIF com novo plano contabil
 IFDATA_ERA_BOUNDARY: int = 202503  # Primeiro trimestre IFDATA com codigos novos
 ```
 
@@ -929,8 +948,12 @@ Degrada quando o chamador restringiu `columns`: sem `group_col` a analise e glob
     "periodos_ausentes": [],
     "grupos": {
         "Resumo": {
-            "status": "renumerado", "n_pre": 9, "n_post": 10,
-            "n_comum": 3, "pct_overlap": 30.0, "motivo": None,
+            "status": "renumerado",
+            "n_pre": 9,
+            "n_post": 10,
+            "n_comum": 3,
+            "pct_overlap": 30.0,
+            "motivo": None,
         },
     },
 }

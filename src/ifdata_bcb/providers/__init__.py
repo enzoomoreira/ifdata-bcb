@@ -6,15 +6,14 @@ Data providers para diferentes fontes do BCB.
 """
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
-from ifdata_bcb.providers.base_collector import BaseCollector
+from ifdata_bcb.providers.base_collector import BaseCollector, CollectStatus
 from ifdata_bcb.providers.base_explorer import BaseExplorer
-from ifdata_bcb.providers.base_collector import CollectStatus
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
-from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
 from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
-from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 __all__ = [
     # Base

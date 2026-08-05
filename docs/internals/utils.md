@@ -138,7 +138,9 @@ def normalize_date_to_int(date_val: int | str | date | datetime | pd.Timestamp) 
 Gera lista de meses consecutivos:
 
 ```python
-def generate_month_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
+def generate_month_range(
+    start: int | str | date | datetime | pd.Timestamp, end: ...
+) -> list[int]:
     """
     Gera meses entre start e end (inclusive).
 
@@ -158,7 +160,9 @@ def generate_month_range(start: int | str | date | datetime | pd.Timestamp, end:
 Gera lista de fins de trimestre:
 
 ```python
-def generate_quarter_range(start: int | str | date | datetime | pd.Timestamp, end: ...) -> list[int]:
+def generate_quarter_range(
+    start: int | str | date | datetime | pd.Timestamp, end: ...
+) -> list[int]:
     """
     Gera fins de trimestre (03, 06, 09, 12) no range.
 
@@ -213,7 +217,7 @@ def search(
     self,
     query: str,
     choices: dict[str, str],  # {identificador: label}
-    score_cutoff: int = 0
+    score_cutoff: int = 0,
 ) -> list[tuple[str, int]]:
     """
     Retorna: [(identificador, score), ...]
@@ -329,6 +333,7 @@ def get_latest_period(files: list[str], prefix: str) -> tuple[int, int] | None:
 ```python
 from ifdata_bcb.utils import normalize_accents, FuzzyMatcher
 
+
 class EntityLookup:
     def search(self, termo: str, limit: int = 10):
         # Normaliza termo para comparacao
@@ -346,6 +351,7 @@ class EntityLookup:
 
 ```python
 from ifdata_bcb.utils import generate_month_range
+
 
 class BaseExplorer:
     def _resolve_date_range(self, start, end, trimestral=False):

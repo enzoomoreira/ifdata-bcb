@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pandas as pd
 
@@ -25,7 +25,7 @@ class EntitySearch:
     - Montagem de resultados com dedup, fontes e situacao
     """
 
-    _SEARCH_RESULT_COLUMNS: list[str] = [
+    _SEARCH_RESULT_COLUMNS: ClassVar[list[str]] = [
         "CNPJ_8",
         "INSTITUICAO",
         "SITUACAO",
@@ -132,14 +132,16 @@ class EntitySearch:
         cnpjs_arr = df_entities["CNPJ_8"].astype(str).values
         nomes_arr = df_entities["NOME"].astype(str).values
         nomes_norm_arr = df_entities["NOME_NORM"].astype(str).values
-        for cnpj, nome, nome_norm in zip(cnpjs_arr, nomes_arr, nomes_norm_arr):
+        for cnpj, nome, nome_norm in zip(
+            cnpjs_arr, nomes_arr, nomes_norm_arr, strict=True
+        ):
             if cnpj not in cnpj_data:
                 cnpj_data[cnpj] = {"nome": nome, "nome_norm": nome_norm}
 
         nome_to_cnpj: dict[str, str] = {}
         alias_cnpjs = df_aliases["CNPJ_8"].astype(str).values
         alias_norms = df_aliases["NOME_NORM"].astype(str).values
-        for cnpj, nome_norm in zip(alias_cnpjs, alias_norms):
+        for cnpj, nome_norm in zip(alias_cnpjs, alias_norms, strict=True):
             if cnpj in cnpj_data and nome_norm not in nome_to_cnpj:
                 nome_to_cnpj[nome_norm] = cnpj
 

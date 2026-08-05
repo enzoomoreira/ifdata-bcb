@@ -1,10 +1,12 @@
 """Testes para o logging de ifdata_bcb.infra.log."""
 
+import contextlib
 import sys
 
-import ifdata_bcb.infra.log as log_module
 import pytest
 from loguru import logger
+
+import ifdata_bcb.infra.log as log_module
 
 
 @pytest.fixture
@@ -13,10 +15,8 @@ def consumer_sink():
     received: list[str] = []
     sink_id = logger.add(received.append, format="{message}", level="DEBUG")
     yield received
-    try:
+    with contextlib.suppress(ValueError):
         logger.remove(sink_id)
-    except ValueError:
-        pass
 
 
 @pytest.fixture(autouse=True)

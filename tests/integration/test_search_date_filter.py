@@ -16,7 +16,6 @@ from ifdata_bcb.core.entity.lookup import EntityLookup as EntityLookupDirect
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 from ifdata_bcb.providers.ifdata.cadastro.search import CadastroSearch
-
 from tests.conftest import BANCO_A_CNPJ, BANCO_B_CNPJ
 
 

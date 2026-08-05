@@ -30,10 +30,12 @@ class Settings(BaseSettings):
     data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
 
     @property
-    def cache_path(self) -> Path: ...   # data_dir (sem mkdir -- nao cria diretorios como side-effect)
+    def cache_path(
+        self,
+    ) -> Path: ...  # data_dir (sem mkdir -- nao cria diretorios como side-effect)
 
     @property
-    def logs_path(self) -> Path: ...    # data_dir.parent / "Logs" com mkdir
+    def logs_path(self) -> Path: ...  # data_dir.parent / "Logs" com mkdir
 ```
 
 ```python
@@ -161,7 +163,7 @@ qe = QueryEngine()
 df = qe.read_glob(
     "cosif_prud_2024*.parquet",
     "cosif/prudencial",
-    where="CONTA = 'TOTAL GERAL DO ATIVO'"
+    where="CONTA = 'TOTAL GERAL DO ATIVO'",
 )
 ```
 
@@ -232,13 +234,17 @@ qe = QueryEngine()
 df_financial = pd.DataFrame(...)
 df_cadastro = pd.DataFrame(...)
 
-result = qe.sql_with_df("""
+result = qe.sql_with_df(
+    """
     SELECT f.*, c.SEGMENTO
     FROM _financial f
     ASOF LEFT JOIN _cadastro c
         ON f.CNPJ_8 = c.CNPJ_8
         AND f.DATA >= c.DATA
-""", _financial=df_financial, _cadastro=df_cadastro)
+""",
+    _financial=df_financial,
+    _cadastro=df_cadastro,
+)
 ```
 
 Usado internamente pelo modulo de enrichment para ASOF JOINs entre dados financeiros e cadastrais.
@@ -408,11 +414,7 @@ def get_metadata(self, filename: str, subdir: str) -> dict | None:
 ### get_periodos_disponiveis()
 
 ```python
-def get_periodos_disponiveis(
-    self,
-    prefix: str,
-    subdir: str
-) -> list[tuple[int, int]]:
+def get_periodos_disponiveis(self, prefix: str, subdir: str) -> list[tuple[int, int]]:
     """Retorna lista de (ano, mes) ordenada."""
 ```
 
@@ -456,9 +458,9 @@ def enable_logging(
 ```python
 import ifdata_bcb as bcb
 
-bcb.enable_logging()                                  # console, WARNING+
-bcb.enable_logging(level="DEBUG", to_file=True)       # console + arquivo
-bcb.enable_logging(to_stderr=False)                   # usa os sinks da propria app
+bcb.enable_logging()  # console, WARNING+
+bcb.enable_logging(level="DEBUG", to_file=True)  # console + arquivo
+bcb.enable_logging(to_stderr=False)  # usa os sinks da propria app
 ```
 
 Com `to_stderr=False` e `to_file=False` nenhum sink e criado: as mensagens fluem
@@ -592,13 +594,16 @@ info = get_cache_info()
 _registered_caches: list[Callable] = []
 _lock = threading.Lock()
 
+
 def cached(maxsize: int = 128):
     def decorator(func):
         cached_func = lru_cache(maxsize=maxsize)(func)
         with _lock:
             _registered_caches.append(cached_func)
         return cached_func
+
     return decorator
+
 
 def clear_all_caches() -> int:
     with _lock:
@@ -653,6 +658,7 @@ def retry(
 ```python
 from ifdata_bcb.infra.resilience import retry
 
+
 @retry(max_attempts=3, delay=2.0)
 def download_data(client: httpx.Client, url: str):
     response = client.get(url)
@@ -690,6 +696,7 @@ with ThreadPoolExecutor(max_workers=4) as executor:
         for index, period in enumerate(periods)
     }
 
+
 def _process_single_period(self, period, index):
     staggered_delay(index)  # Delay baseado no indice
     csv = self._download_period(period)
@@ -708,14 +715,14 @@ from ifdata_bcb.infra import QueryEngine
 qe = QueryEngine()
 
 # Verificar existencia
-qe.has_glob('cosif_prud_*.parquet', 'cosif/prudencial')
+qe.has_glob("cosif_prud_*.parquet", "cosif/prudencial")
 
 # Ler com filtros
 df = qe.read_glob(
-    pattern='cosif_prud_*.parquet',
-    subdir='cosif/prudencial',
-    columns=['CNPJ_8', 'VALOR'],
-    where="DATA_BASE = 202412"
+    pattern="cosif_prud_*.parquet",
+    subdir="cosif/prudencial",
+    columns=["CNPJ_8", "VALOR"],
+    where="DATA_BASE = 202412",
 )
 
 # SQL direto
@@ -730,10 +737,10 @@ from ifdata_bcb.infra import DataManager
 dm = DataManager()
 
 # Verificar periodos
-periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis("cosif_prud", "cosif/prudencial")
 
 # Salvar DataFrame
-dm.save(df, 'meu_arquivo', 'meu_subdir')
+dm.save(df, "meu_arquivo", "meu_subdir")
 ```
 
 ### Settings
@@ -774,7 +781,13 @@ bcb.disable_logging()
 # infra/__init__.py
 from ifdata_bcb.infra.cache import cached, clear_all_caches, get_cache_info
 from ifdata_bcb.infra.config import Settings, get_settings
-from ifdata_bcb.infra.log import disable_logging, emit_user_warning, enable_logging, get_log_path, get_logger
+from ifdata_bcb.infra.log import (
+    disable_logging,
+    emit_user_warning,
+    enable_logging,
+    get_log_path,
+    get_logger,
+)
 from ifdata_bcb.infra.paths import ensure_dir, temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.resilience import DEFAULT_REQUEST_TIMEOUT, retry, staggered_delay

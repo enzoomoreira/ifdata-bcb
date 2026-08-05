@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer

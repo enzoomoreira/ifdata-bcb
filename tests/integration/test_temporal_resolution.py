@@ -15,7 +15,6 @@ from tests.conftest import (
     COD_CONGL_PRUD_OLD,
 )
 
-
 # =========================================================================
 # Resolucao temporal basica
 # =========================================================================
@@ -203,7 +202,7 @@ class TestTemporalResolutionFailure:
         try:
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                groups, unavailable = ifdata._temporal.resolve(
+                groups, _unavailable = ifdata._temporal.resolve(
                     [BANCO_A_CNPJ], "prudencial", [202303]
                 )
             assert groups == []

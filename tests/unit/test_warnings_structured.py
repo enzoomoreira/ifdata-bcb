@@ -6,7 +6,6 @@ permitindo captura programatica em backends e agents.
 
 import warnings
 
-
 from ifdata_bcb.domain.exceptions import (
     DroppedReportWarning,
     EmptyFilterWarning,

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 
 # =========================================================================
@@ -23,13 +24,13 @@ ERA_2_HEADER = "#DATA_BASE;DOCUMENTO;CNPJ;AGENCIA;NOME_INSTITUICAO;COD_CONGL;NOM
 
 
 def _write_era1_csv(path: Path, rows: list[str]) -> Path:
-    lines = ERA_1_METADATA + [ERA_1_HEADER] + rows
+    lines = [*ERA_1_METADATA, ERA_1_HEADER, *rows]
     path.write_text("\n".join(lines), encoding="CP1252")
     return path
 
 
 def _write_era2_csv(path: Path, rows: list[str], encoding: str = "CP1252") -> Path:
-    lines = ERA_1_METADATA + [ERA_2_HEADER] + rows
+    lines = [*ERA_1_METADATA, ERA_2_HEADER, *rows]
     path.write_text("\n".join(lines), encoding=encoding)
     return path
 

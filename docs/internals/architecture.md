@@ -147,11 +147,13 @@ Explorers sao carregados sob demanda para startup rapido (~17ms):
 # Em __init__.py
 _cosif = None
 
+
 def __getattr__(name):
     global _cosif
     if name == "cosif":
         if _cosif is None:
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
+
             _cosif = COSIFExplorer()
         return _cosif
     # ... ifdata, cadastro analogos
@@ -164,12 +166,12 @@ Define esqueleto da coleta, subclasses implementam detalhes:
 ```python
 class BaseCollector(ABC):
     def collect(self, start, end):
-        periods = self._generate_periods(start, end)      # Template
+        periods = self._generate_periods(start, end)  # Template
         with ThreadPoolExecutor(max_workers=4) as executor:
             for period in periods:  # Paralelo via executor.submit()
                 data = self._download_period(period, work_dir)  # Abstract
-                df = self._process_to_parquet(data, period)     # Abstract
-                self.dm.save(df, filename, subdir)              # Template
+                df = self._process_to_parquet(data, period)  # Abstract
+                self.dm.save(df, filename, subdir)  # Template
 
     @abstractmethod
     def _download_period(self, period, work_dir): ...
@@ -185,11 +187,11 @@ Construcao incremental de clausulas WHERE (funcoes em `infra.sql`):
 from ifdata_bcb.infra.sql import build_string_condition, join_conditions
 
 conditions = [
-    self._build_cnpj_condition(instituicao),     # Pode ser None
-    self._build_date_condition(start, end),      # Pode ser None
-    build_string_condition(col, conta),          # Pode ser None
+    self._build_cnpj_condition(instituicao),  # Pode ser None
+    self._build_date_condition(start, end),  # Pode ser None
+    build_string_condition(col, conta),  # Pode ser None
 ]
-where = join_conditions(conditions)              # Filtra Nones, junta com AND
+where = join_conditions(conditions)  # Filtra Nones, junta com AND
 ```
 
 ### Dependency Injection
@@ -214,12 +216,15 @@ Caches registrados globalmente para limpeza centralizada:
 ```python
 _registered_caches: list[Callable] = []
 
+
 def cached(maxsize: int = 128):
     def decorator(func):
         cached_func = lru_cache(maxsize=maxsize)(func)
         _registered_caches.append(cached_func)
         return cached_func
+
     return decorator
+
 
 def clear_all_caches():
     for cache in _registered_caches:
@@ -233,6 +238,7 @@ Double-checked locking para instancia unica:
 ```python
 _display_instance = None
 _display_lock = threading.Lock()
+
 
 def get_display():
     global _display_instance
@@ -438,7 +444,7 @@ from ifdata_bcb.infra import QueryEngine
 from ifdata_bcb.providers.cosif import COSIFExplorer
 
 # QueryEngine com path customizado
-qe = QueryEngine(base_path='/custom/cache')
+qe = QueryEngine(base_path="/custom/cache")
 explorer = COSIFExplorer(query_engine=qe)
 ```
 

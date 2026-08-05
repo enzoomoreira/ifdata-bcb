@@ -27,13 +27,13 @@ Requer Python 3.12+.
 import ifdata_bcb as bcb
 
 # 1. Coletar dados (primeira vez ou atualizar)
-bcb.cadastro.collect('2024-01', '2024-12')
-bcb.cosif.collect('2024-01', '2024-12')
-bcb.ifdata.collect('2024-01', '2024-12')
+bcb.cadastro.collect("2024-01", "2024-12")
+bcb.cosif.collect("2024-01", "2024-12")
+bcb.ifdata.collect("2024-01", "2024-12")
 
 # 2. Buscar instituicao por nome (fuzzy matching)
-bcb.cadastro.search('Itau')
-bcb.cadastro.search('Bradesco')
+bcb.cadastro.search("Itau")
+bcb.cadastro.search("Bradesco")
 #    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
 # 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
 
@@ -43,40 +43,34 @@ bcb.cadastro.search('Bradesco')
 
 # COSIF (escopo=None busca em todos os escopos)
 df = bcb.cosif.read(
-    '2024-12',
-    instituicao='60872504',
-    conta='TOTAL GERAL DO ATIVO',
-    escopo='prudencial'
+    "2024-12", instituicao="60872504", conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
 )
 
 # IFDATA
 df = bcb.ifdata.read(
-    '2024-01',
-    '2024-12',
-    instituicao='60872504',
-    conta='Lucro Liquido'
+    "2024-01", "2024-12", instituicao="60872504", conta="Lucro Liquido"
 )
 
 # Bulk read: todas as instituicoes (sem instituicao)
-df = bcb.cosif.read('2024-12', escopo='prudencial')
+df = bcb.cosif.read("2024-12", escopo="prudencial")
 
 # Enriquecer com dados cadastrais inline
 df = bcb.ifdata.read(
-    '2024-01',
-    '2024-12',
-    instituicao='60872504',
-    escopo='prudencial',
-    cadastro=['TCB', 'SEGMENTO']
+    "2024-01",
+    "2024-12",
+    instituicao="60872504",
+    escopo="prudencial",
+    cadastro=["TCB", "SEGMENTO"],
 )
 
 # Cadastro
-df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read("2024-12", segmento="Banco Multiplo")
 
 # 4. Listar valores distintos e contas
 bcb.ifdata.list(["RELATORIO"])
 bcb.cosif.list(["DATA", "ESCOPO"])
-bcb.cadastro.list(["SEGMENTO"], uf='SP')
-bcb.cosif.list_contas(escopo='prudencial')
+bcb.cadastro.list(["SEGMENTO"], uf="SP")
+bcb.cosif.list_contas(escopo="prudencial")
 
 # 5. SQL direto com DuckDB (para analises avancadas)
 from ifdata_bcb.infra import QueryEngine
@@ -146,13 +140,13 @@ Customizavel via variavel de ambiente `BACEN_DATA_DIR`.
 import ifdata_bcb as bcb
 
 # Explorers (lazy loading)
-bcb.cosif       # COSIFExplorer
-bcb.ifdata      # IFDATAExplorer
-bcb.cadastro    # CadastroExplorer
+bcb.cosif  # COSIFExplorer
+bcb.ifdata  # IFDATAExplorer
+bcb.cadastro  # CadastroExplorer
 
 # Exceptions
-bcb.BacenAnalysisError       # Classe base para todos os erros
-bcb.DataUnavailableError     # Dados nao disponiveis
+bcb.BacenAnalysisError  # Classe base para todos os erros
+bcb.DataUnavailableError  # Dados nao disponiveis
 ```
 
 ### Metodos dos Explorers

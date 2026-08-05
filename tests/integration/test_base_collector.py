@@ -6,8 +6,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 from ifdata_bcb.domain.exceptions import DataProcessingError, PeriodUnavailableError
-from ifdata_bcb.providers.base_collector import BaseCollector
-from ifdata_bcb.providers.base_collector import CollectStatus
+from ifdata_bcb.providers.base_collector import BaseCollector, CollectStatus
 
 
 class StubCollector(BaseCollector):

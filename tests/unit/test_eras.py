@@ -43,7 +43,7 @@ CREDITO_NOVO = "Carteira de credito ativa - por carteiras de instrumentos financ
 
 
 def _write_csv(path: Path, header: str, rows: list[str] | None = None) -> Path:
-    lines = METADATA_LINES + [header]
+    lines = [*METADATA_LINES, header]
     if rows:
         lines.extend(rows)
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -106,14 +106,14 @@ class TestDetectCosifCsvEra:
     def test_cp1252_encoding(self, workspace_tmp_dir: Path) -> None:
         """Headers reais usam CP1252 com acentos."""
         path = workspace_tmp_dir / "cp.csv"
-        lines = METADATA_LINES + [ERA_2_HEADER]
+        lines = [*METADATA_LINES, ERA_2_HEADER]
         path.write_text("\n".join(lines), encoding="CP1252")
         assert detect_cosif_csv_era(path, "CP1252") == 2
 
     def test_corrupted_encoding_still_detects(self, workspace_tmp_dir: Path) -> None:
         """errors='replace' deve permitir deteccao mesmo com encoding errado."""
         path = workspace_tmp_dir / "bad.csv"
-        lines = METADATA_LINES + [ERA_2_HEADER]
+        lines = [*METADATA_LINES, ERA_2_HEADER]
         path.write_bytes("\n".join(lines).encode("CP1252"))
         # Ler com utf-8 (errado) -- errors=replace nao deve crashar
         assert detect_cosif_csv_era(path, "utf-8") == 2
@@ -138,7 +138,7 @@ class TestDetectCosifCsvEra:
         path = workspace_tmp_dir / "futuro.csv"
         novo_header = "COL_A;COL_B;COL_C"
         path.write_text(
-            "\n".join(METADATA_LINES + [novo_header]),
+            "\n".join([*METADATA_LINES, novo_header]),
             encoding="utf-8",
         )
 
@@ -308,8 +308,12 @@ class TestDiagnoseErasCobertura:
 class TestDiagnoseErasClassificacao:
     def test_contas_identicas_sao_estaveis(self) -> None:
         diag = _diagnose(
-            [(202412, "Credito", "1"), (202412, "Credito", "2")]
-            + [(202503, "Credito", "1"), (202503, "Credito", "2")],
+            [
+                (202412, "Credito", "1"),
+                (202412, "Credito", "2"),
+                (202503, "Credito", "1"),
+                (202503, "Credito", "2"),
+            ],
             CRUZA,
         )
         grupo = diag["grupos"]["Credito"]
@@ -363,8 +367,12 @@ class TestDiagnoseErasClassificacao:
 
     def test_grupos_independentes_na_mesma_query(self) -> None:
         diag = _diagnose(
-            [(202412, "Ativo", "1"), (202503, "Ativo", "9")]
-            + [(202412, "Credito", "7"), (202503, "Credito", "7")],
+            [
+                (202412, "Ativo", "1"),
+                (202503, "Ativo", "9"),
+                (202412, "Credito", "7"),
+                (202503, "Credito", "7"),
+            ],
             CRUZA,
         )
         assert diag["grupos"]["Ativo"]["status"] == "renumerado"
@@ -435,8 +443,12 @@ class TestEmitEraWarnings:
 
     def test_varios_renumerados_agregam_em_um_warning(self) -> None:
         diag = _diagnose(
-            [(202412, "Ativo", "1"), (202503, "Ativo", "9")]
-            + [(202412, "Passivo", "2"), (202503, "Passivo", "8")],
+            [
+                (202412, "Ativo", "1"),
+                (202503, "Ativo", "9"),
+                (202412, "Passivo", "2"),
+                (202503, "Passivo", "8"),
+            ],
             CRUZA,
         )
         w = _emit(diag)

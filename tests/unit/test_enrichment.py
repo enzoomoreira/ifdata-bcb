@@ -10,7 +10,6 @@ from ifdata_bcb.providers.enrichment import (
     validate_cadastro_columns,
 )
 
-
 # =========================================================================
 # validate_cadastro_columns
 # =========================================================================

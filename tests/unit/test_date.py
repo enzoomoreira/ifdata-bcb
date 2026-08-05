@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 import pandas as pd
 import pytest
+
 from ifdata_bcb.domain.exceptions import InvalidDateFormatError
 from ifdata_bcb.utils.date import (
     _parse_date_input,

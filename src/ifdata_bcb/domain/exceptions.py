@@ -1,8 +1,6 @@
 class BacenAnalysisError(Exception):
     """Excecao base da biblioteca. Use `except BacenAnalysisError` para capturar todos os erros."""
 
-    pass
-
 
 class InvalidScopeError(BacenAnalysisError):
     def __init__(self, scope: str, value: str, valid_values: list[str]):

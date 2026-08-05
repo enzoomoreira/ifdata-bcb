@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
-
 from tests.conftest import BANCO_A_CNPJ, _save_parquet
 
 

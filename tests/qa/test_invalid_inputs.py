@@ -1,5 +1,7 @@
 """QA: inputs invalidos -- simula usuario real passando dados errados."""
 
+import contextlib
+
 import pytest
 
 from ifdata_bcb.core.entity import EntitySearch
@@ -125,10 +127,9 @@ class TestSearchResilience:
 
     def test_search_unicode_special(self, qa_search: EntitySearch) -> None:
         for term in ["\x00\x01\x02", "\ud800", "banco"]:
-            try:
+            # Erros de encoding sao aceitaveis; crash de outro tipo nao.
+            with contextlib.suppress(UnicodeError, ValueError):
                 qa_search.search(term)
-            except (UnicodeError, ValueError):
-                pass  # Erros de encoding sao aceitaveis
 
     def test_search_with_quotes_in_term(self, qa_search: EntitySearch) -> None:
         """Aspas no termo de busca nao crasheiam a query SQL."""
@@ -150,5 +151,5 @@ class TestGracefulEmpty:
         assert df.empty
 
     def test_list_contas_negative_limit(self, qa_cosif: COSIFExplorer) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="limit deve ser > 0"):
             qa_cosif.list_contas(limit=-1)

@@ -6,6 +6,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import pytest
+
 from ifdata_bcb.domain.exceptions import PartialDataWarning
 from ifdata_bcb.providers.parsing import (
     count_parseable_rows,

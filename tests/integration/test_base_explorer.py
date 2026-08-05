@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.domain.exceptions import (
     InvalidDateFormatError,
     InvalidDateRangeError,
@@ -13,6 +12,7 @@ from ifdata_bcb.domain.exceptions import (
     InvalidScopeError,
     MissingRequiredParameterError,
 )
+from ifdata_bcb.providers.base_explorer import BaseExplorer
 
 
 class ConcreteExplorer(BaseExplorer):

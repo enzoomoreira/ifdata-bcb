@@ -166,7 +166,7 @@ class TemporalResolver:
         cnpjs_arr = df_cad["CNPJ_8"].astype(str).values
         datas_arr = df_cad["Data"].values
         cods_arr = df_cad["cod"].astype(str).values
-        for cnpj, data, cod in zip(cnpjs_arr, datas_arr, cods_arr):
+        for cnpj, data, cod in zip(cnpjs_arr, datas_arr, cods_arr, strict=True):
             cnpj_history.setdefault(cnpj, []).append((int(data), cod))
 
         groups: dict[str, dict] = {}

@@ -31,10 +31,10 @@ O IFDATA suporta tres escopos que determinam a visao dos dados:
 
 ```python
 # Filtrar por escopo
-df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
+df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
 
 # Buscar em todos os escopos (escopo=None)
-df = bcb.ifdata.read('2024-12', instituicao='60872504')
+df = bcb.ifdata.read("2024-12", instituicao="60872504")
 # Resultado inclui coluna ESCOPO
 ```
 
@@ -59,11 +59,11 @@ bcb.ifdata.collect(
 
 ```python
 # Coletar dados de 2024
-bcb.ifdata.collect('2024-01', '2024-12')
+bcb.ifdata.collect("2024-01", "2024-12")
 # Coleta apenas: 202403, 202406, 202409, 202412
 
 # Forcar recoleta
-bcb.ifdata.collect('2024-12', '2024-12', force=True)
+bcb.ifdata.collect("2024-12", "2024-12", force=True)
 ```
 
 ### read()
@@ -101,38 +101,27 @@ bcb.ifdata.read(
 
 ```python
 # Data unica em um escopo especifico
-df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
+df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
 
 # Buscar em TODOS os escopos
-df = bcb.ifdata.read('2024-12', instituicao='60872504')
+df = bcb.ifdata.read("2024-12", instituicao="60872504")
 
 # Bulk read: todas as instituicoes
-df = bcb.ifdata.read('2024-12', escopo='prudencial')
+df = bcb.ifdata.read("2024-12", escopo="prudencial")
 
 # Conta especifica (filtro case-insensitive)
-df = bcb.ifdata.read('2024-12', instituicao='60872504', conta='lucro liquido')
+df = bcb.ifdata.read("2024-12", instituicao="60872504", conta="lucro liquido")
 
 # Multiplas contas com range de datas
 df = bcb.ifdata.read(
-    '2024-03',
-    '2024-12',
-    instituicao='60872504',
-    conta=['Lucro Liquido', 'Ativo Total']
+    "2024-03", "2024-12", instituicao="60872504", conta=["Lucro Liquido", "Ativo Total"]
 )
 
 # Filtrar por relatorio
-df = bcb.ifdata.read(
-    '2024-12',
-    instituicao='60872504',
-    relatorio='Resumo'
-)
+df = bcb.ifdata.read("2024-12", instituicao="60872504", relatorio="Resumo")
 
 # Filtrar por grupo de conta
-df = bcb.ifdata.read(
-    '2024-12',
-    instituicao='60872504',
-    grupo='Resumo'
-)
+df = bcb.ifdata.read("2024-12", instituicao="60872504", grupo="Resumo")
 ```
 
 ### list_contas()
@@ -161,13 +150,13 @@ bcb.ifdata.list_contas(
 contas = bcb.ifdata.list_contas()
 
 # Buscar contas que contenham "lucro"
-contas = bcb.ifdata.list_contas(termo='lucro')
+contas = bcb.ifdata.list_contas(termo="lucro")
 
 # Listar contas do escopo individual
-contas = bcb.ifdata.list_contas(escopo='individual', limit=50)
+contas = bcb.ifdata.list_contas(escopo="individual", limit=50)
 
 # Filtrar contas por relatorio
-contas = bcb.ifdata.list_contas(relatorio='Resumo')
+contas = bcb.ifdata.list_contas(relatorio="Resumo")
 ```
 
 ### list()
@@ -233,15 +222,15 @@ bcb.ifdata.mapeamento(
 
 ```python
 # Ver mapeamento completo
-reporters = bcb.ifdata.mapeamento(start='2024-12')
-print(reporters[reporters['CNPJ_8'] == '60872504'])
+reporters = bcb.ifdata.mapeamento(start="2024-12")
+print(reporters[reporters["CNPJ_8"] == "60872504"])
 
 # Descobrir COD_INST de um banco por escopo
-df = bcb.ifdata.mapeamento(start='2024-12')
-df[df['CNPJ_8'] == '60746948']  # Bradesco: individual=60746948, prudencial=C0080075
+df = bcb.ifdata.mapeamento(start="2024-12")
+df[df["CNPJ_8"] == "60746948"]  # Bradesco: individual=60746948, prudencial=C0080075
 
 # Listar membros de um conglomerado
-df[df['COD_INST'] == 'C0080075']
+df[df["COD_INST"] == "C0080075"]
 ```
 
 ### list_periodos()
@@ -267,7 +256,7 @@ valores (herdado de BaseExplorer). Ver
 [Diagnostico de era programatico](#diagnostico-de-era-programatico).
 
 ```python
-diag = bcb.ifdata.check_era('2024-12', '2025-03', escopo='prudencial')
+diag = bcb.ifdata.check_era("2024-12", "2025-03", escopo="prudencial")
 ```
 
 ## Colunas Disponiveis
@@ -313,11 +302,11 @@ O parametro `cadastro` permite adicionar colunas do cadastro diretamente no resu
 ```python
 # Adicionar tipo de banco e segmento
 df = bcb.ifdata.read(
-    '2024-03',
-    '2024-12',
-    instituicao=['60872504', '60746948'],
-    escopo='prudencial',
-    cadastro=['TCB', 'TC', 'SEGMENTO']
+    "2024-03",
+    "2024-12",
+    instituicao=["60872504", "60746948"],
+    escopo="prudencial",
+    cadastro=["TCB", "TC", "SEGMENTO"],
 )
 # Resultado inclui colunas TCB, TC e SEGMENTO
 ```
@@ -330,11 +319,11 @@ Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `
 
 ```python
 # Apenas escopo prudencial (conglomerados)
-df_prud = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
+df_prud = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
 print(f"Escopo: {df_prud['ESCOPO'].iloc[0]}")
 
 # Todos os escopos disponiveis
-df_todos = bcb.ifdata.read('2024-12', instituicao='60872504')
+df_todos = bcb.ifdata.read("2024-12", instituicao="60872504")
 print(f"Escopos: {df_todos['ESCOPO'].unique()}")
 ```
 
@@ -342,8 +331,8 @@ print(f"Escopos: {df_todos['ESCOPO'].unique()}")
 
 ```python
 # Listar grupos disponiveis
-df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
-grupos = df['GRUPO'].unique()
+df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
+grupos = df["GRUPO"].unique()
 print(f"Grupos: {grupos}")
 ```
 
@@ -352,15 +341,15 @@ print(f"Grupos: {grupos}")
 ```python
 # Evolucao trimestral do Lucro Liquido
 df = bcb.ifdata.read(
-    '2023-01',
-    '2024-12',
-    instituicao='60872504',
-    conta=['Lucro Liquido'],
+    "2023-01",
+    "2024-12",
+    instituicao="60872504",
+    conta=["Lucro Liquido"],
 )
 
 # Ordenar e plotar
-df_sorted = df.sort_values('DATA')
-print(df_sorted[['DATA', 'VALOR']])
+df_sorted = df.sort_values("DATA")
+print(df_sorted[["DATA", "VALOR"]])
 ```
 
 ### Ranking por Ativo Total (SQL)
@@ -422,29 +411,34 @@ A partir de 202503 (marco/2025), o BCB mudou a estrutura dos dados IFDATA. Quand
 
 ```python
 # Emite IncompatibleEraWarning: 30% dos codigos em comum entre as eras
-df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', relatorio='Resumo')
+df = bcb.ifdata.read("2024-12", "2025-03", instituicao="60872504", relatorio="Resumo")
 ```
 
 **ScopeMigrationWarning**: Relatorios de credito migraram de escopo `financeiro` para `prudencial` a partir de 202503:
 
 ```python
 # Emite ScopeMigrationWarning: periodos < 202503 nao tem dados no escopo prudencial
-df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', escopo='prudencial')
+df = bcb.ifdata.read("2024-12", "2025-03", instituicao="60872504", escopo="prudencial")
 ```
 
 **DroppedReportWarning**: Relatorio descontinuado (ex: "por nivel de risco da operacao" apos 202412):
 
 ```python
 # Emite DroppedReportWarning: relatorio descontinuado
-df = bcb.ifdata.read('2025-03', relatorio='Carteira de credito ativa - por nivel de risco da operacao')
+df = bcb.ifdata.read(
+    "2025-03", relatorio="Carteira de credito ativa - por nivel de risco da operacao"
+)
 ```
 
 **PartialDataWarning** (`reason='era_coverage_gap'`): Parte do resultado cobre so um lado da transicao, sem causa conhecida -- inclui relatorios que o BCB **introduziu** em 202503 e cache incompleto:
 
 ```python
 # Este relatorio so existe a partir de 202503: metade da serie pedida nao existe
-df = bcb.ifdata.read('2024-12', '2025-03',
-                     relatorio='Carteira de credito ativa - por carteiras de instrumentos financeiros')
+df = bcb.ifdata.read(
+    "2024-12",
+    "2025-03",
+    relatorio="Carteira de credito ativa - por carteiras de instrumentos financeiros",
+)
 ```
 
 Nenhum warning bloqueia a query -- apenas alertam sobre potenciais incompatibilidades nos resultados.
@@ -454,8 +448,8 @@ Nenhum warning bloqueia a query -- apenas alertam sobre potenciais incompatibili
 Os warnings sao deduplicados pelo Python (a segunda chamada identica nao reavisa) e nao viajam com o DataFrame. Para consumo programatico, o mesmo diagnostico esta disponivel como estrutura:
 
 ```python
-df = bcb.ifdata.read('2024-12', '2025-03', relatorio='Resumo')
-df.attrs['era']['grupos']['Resumo']
+df = bcb.ifdata.read("2024-12", "2025-03", relatorio="Resumo")
+df.attrs["era"]["grupos"]["Resumo"]
 # {'status': 'renumerado', 'n_pre': 9, 'n_post': 10,
 #  'n_comum': 3, 'pct_overlap': 30.0, 'motivo': None}
 ```
@@ -463,10 +457,10 @@ df.attrs['era']['grupos']['Resumo']
 E consultavel antes de puxar os dados, com `check_era()` -- que le apenas as colunas de dimensao e serializa direto para JSON:
 
 ```python
-diag = bcb.ifdata.check_era('2024-12', '2025-03')
-diag['cruza_boundary']       # True
-diag['periodos_ausentes']    # []
-[nome for nome, g in diag['grupos'].items() if g['status'] == 'estavel']
+diag = bcb.ifdata.check_era("2024-12", "2025-03")
+diag["cruza_boundary"]  # True
+diag["periodos_ausentes"]  # []
+[nome for nome, g in diag["grupos"].items() if g["status"] == "estavel"]
 # relatorios cuja serie atravessa a transicao sem quebra
 ```
 
@@ -499,15 +493,15 @@ except MissingRequiredParameterError as e:
 # Erro: range de datas invalido
 try:
     df = bcb.ifdata.read(
-        '2024-12',
-        '2024-01',  # start > end!
-        instituicao='60872504',
+        "2024-12",
+        "2024-01",  # start > end!
+        instituicao="60872504",
     )
 except InvalidDateRangeError as e:
     print(f"Erro: {e}")
 
 # Sem erro: retorna DataFrame vazio se nao encontrar dados
-df = bcb.ifdata.read('2024-12', instituicao='99999999')
+df = bcb.ifdata.read("2024-12", instituicao="99999999")
 if df.empty:
     print("Instituicao nao encontrada nos dados IFDATA")
 ```

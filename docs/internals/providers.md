@@ -44,7 +44,7 @@ Classe base que implementa logica comum de coleta:
 
 ```python
 _PERIOD_TYPE: str = "monthly"  # 'monthly' ou 'quarterly'
-_MAX_WORKERS: int = 4          # Workers para coleta paralela
+_MAX_WORKERS: int = 4  # Workers para coleta paralela
 ```
 
 ### Metodos Abstratos
@@ -56,13 +56,16 @@ Subclasses **devem** implementar:
 def _get_file_prefix(self) -> str:
     """Prefixo do arquivo (ex: 'cosif_ind')."""
 
+
 @abstractmethod
 def _get_subdir(self) -> str:
     """Subdiretorio (ex: 'cosif/individual')."""
 
+
 @abstractmethod
 def _download_period(self, period: int, work_dir: Path) -> Path | None:
     """Baixa dados de um periodo para work_dir. Retorna Path do CSV ou None."""
+
 
 @abstractmethod
 def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
@@ -158,6 +161,7 @@ def _start(self, title, num_items, verbose=True):
     self.display.banner(title, indicator_count=num_items)
     self.logger.info(f"Coleta iniciada: {num_items} periodos")
 
+
 def _end(self, verbose=True, periodos=None, falhas=None):
     """Banner de conclusao."""
     self.display.end_banner(total=total, periodos=periodos, falhas=falhas)
@@ -171,9 +175,9 @@ Enum para status de coleta:
 ```python
 # base_collector.py
 class CollectStatus(Enum):
-    SUCCESS = auto()      # Arquivo salvo
+    SUCCESS = auto()  # Arquivo salvo
     UNAVAILABLE = auto()  # Periodo nao disponivel no BCB
-    FAILED = auto()       # Erro no download/processamento
+    FAILED = auto()  # Erro no download/processamento
 ```
 
 ---
@@ -251,7 +255,7 @@ class COSIFExplorer(BaseExplorer):
     _DATE_COLUMN = "DATA_BASE"
 
     # Analise de era (ver core/eras.py)
-    _ERA_BOUNDARY = COSIF_ERA_BOUNDARY   # 202501
+    _ERA_BOUNDARY = COSIF_ERA_BOUNDARY  # 202501
     _ERA_GROUP_COLUMN = "DOCUMENTO"
     _ERA_SOURCE_NAME = "COSIF"
 
@@ -389,7 +393,7 @@ class IFDATAExplorer(BaseExplorer):
     }
 
     # Analise de era (ver core/eras.py)
-    _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY   # 202503
+    _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY  # 202503
     _ERA_GROUP_COLUMN = "RELATORIO"
     _ERA_SOURCE_NAME = "IFDATA"
     _TRIMESTRAL = True
@@ -554,10 +558,22 @@ Modulo de enriquecimento cadastral inline. Permite adicionar colunas cadastrais 
 
 ```python
 VALID_CADASTRO_COLUMNS = {
-    "SEGMENTO", "COD_CONGL_PRUD", "COD_CONGL_FIN", "CNPJ_LIDER_8",
-    "SITUACAO", "ATIVIDADE", "TCB", "TD", "TC", "UF", "MUNICIPIO", "SR",
-    "DATA_INICIO_ATIVIDADE", "NOME_CONGL_PRUD",
+    "SEGMENTO",
+    "COD_CONGL_PRUD",
+    "COD_CONGL_FIN",
+    "CNPJ_LIDER_8",
+    "SITUACAO",
+    "ATIVIDADE",
+    "TCB",
+    "TD",
+    "TC",
+    "UF",
+    "MUNICIPIO",
+    "SR",
+    "DATA_INICIO_ATIVIDADE",
+    "NOME_CONGL_PRUD",
 }
+
 
 def validate_cadastro_columns(columns: list[str] | None) -> None:
     """Valida nomes de colunas cadastrais. Raises InvalidScopeError."""
@@ -610,6 +626,7 @@ Classe que agrupa periodos com mesmo `cod_inst` para um escopo, permitindo queri
 from ifdata_bcb.providers.base_collector import BaseCollector
 from ifdata_bcb.infra.resilience import retry
 
+
 class NovoCollector(BaseCollector):
     _PERIOD_TYPE = "monthly"  # ou "quarterly"
 
@@ -641,6 +658,7 @@ class NovoCollector(BaseCollector):
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.infra.sql import join_conditions
 
+
 class NovoExplorer(BaseExplorer):
     _COLUMN_MAP = {
         "data_original": "DATA",
@@ -671,6 +689,7 @@ class NovoExplorer(BaseExplorer):
 
     def collect(self, start, end, force=False):
         from .collector import NovoCollector
+
         collector = NovoCollector()
         return collector.collect(start, end, force=force)
 ```
@@ -691,11 +710,13 @@ DATA_SOURCES["novo"] = {
 # ifdata_bcb/__init__.py
 _novo = None
 
+
 def __getattr__(name):
     global _novo
     if name == "novo":
         if _novo is None:
             from ifdata_bcb.providers.novo.explorer import NovoExplorer
+
             _novo = NovoExplorer()
         return _novo
     raise AttributeError(f"module has no attribute '{name}'")

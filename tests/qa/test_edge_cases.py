@@ -3,8 +3,10 @@
 import io
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import pytest
+
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.storage import (
@@ -14,7 +16,6 @@ from ifdata_bcb.infra.storage import (
 )
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
 from ifdata_bcb.ui.display import Display
-
 from tests.conftest import _save_parquet
 
 
@@ -50,7 +51,7 @@ class TestQueryEngineEdgeCases:
 
     def test_sql_syntax_error(self, populated_cache: Path) -> None:
         qe = QueryEngine(base_path=populated_cache)
-        with pytest.raises(Exception):
+        with pytest.raises(duckdb.Error):
             qe.sql("SELECT FROM WHERE INVALID")
 
     def test_multiple_engines_same_dir(self, populated_cache: Path) -> None:

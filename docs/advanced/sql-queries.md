@@ -51,10 +51,10 @@ Le multiplos arquivos Parquet como dataset unico:
 
 ```python
 df = qe.read_glob(
-    pattern='cosif_prud_2024*.parquet',
-    subdir='cosif/prudencial',
-    columns=['CNPJ_8', 'NOME_CONTA', 'SALDO'],
-    where="CNPJ_8 = '60872504'"
+    pattern="cosif_prud_2024*.parquet",
+    subdir="cosif/prudencial",
+    columns=["CNPJ_8", "NOME_CONTA", "SALDO"],
+    where="CNPJ_8 = '60872504'",
 )
 ```
 
@@ -328,10 +328,10 @@ Especificar colunas evita carregar dados desnecessarios:
 ```python
 # BOM: apenas colunas necessarias
 df = qe.read_glob(
-    pattern='cosif_prud_*.parquet',
-    subdir='cosif/prudencial',
-    columns=['CNPJ_8', 'SALDO'],  # So carrega estas
-    where="DATA_BASE = 202412"
+    pattern="cosif_prud_*.parquet",
+    subdir="cosif/prudencial",
+    columns=["CNPJ_8", "SALDO"],  # So carrega estas
+    where="DATA_BASE = 202412",
 )
 
 # EVITAR: SELECT * carrega tudo
@@ -390,7 +390,7 @@ df = qe.sql("""
 from ifdata_bcb.infra import list_parquet_files
 
 # Lista arquivos em um subdiretorio
-arquivos = list_parquet_files('cosif/prudencial')
+arquivos = list_parquet_files("cosif/prudencial")
 # ['cosif_prud_202401', 'cosif_prud_202402', ...]
 ```
 
@@ -399,7 +399,7 @@ arquivos = list_parquet_files('cosif/prudencial')
 ```python
 from ifdata_bcb.infra import get_parquet_metadata
 
-meta = get_parquet_metadata('cosif_prud_202412', 'cosif/prudencial')
+meta = get_parquet_metadata("cosif_prud_202412", "cosif/prudencial")
 # {
 #     'arquivo': 'cosif_prud_202412.parquet',
 #     'subdir': 'cosif/prudencial',
@@ -419,10 +419,10 @@ from ifdata_bcb.infra import DataManager
 dm = DataManager()
 
 # Salvar DataFrame como Parquet
-path = dm.save(df, 'meu_arquivo', 'minha_pasta')
+path = dm.save(df, "meu_arquivo", "minha_pasta")
 
 # Periodos disponiveis
-periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis("cosif_prud", "cosif/prudencial")
 # [(2024, 1), (2024, 2), ...]
 ```
 

@@ -195,7 +195,9 @@ class EntityLookup:
                 cnpjs_col = df_congl["CNPJ_8"].astype(str).values
                 prud_col = df_congl["cod_prud"].values
                 fin_col = df_congl["cod_fin"].values
-                for cnpj, cod_prud, cod_fin in zip(cnpjs_col, prud_col, fin_col):
+                for cnpj, cod_prud, cod_fin in zip(
+                    cnpjs_col, prud_col, fin_col, strict=True
+                ):
                     for cod in (cod_prud, cod_fin):
                         if is_valid(cod):
                             cod_to_cnpjs.setdefault(str(cod), []).append(cnpj)
@@ -232,6 +234,7 @@ class EntityLookup:
                 zip(
                     df["CNPJ_8"].astype(str).values,
                     df["Situacao"].astype(str).values,
+                    strict=True,
                 )
             )
         except Exception as e:
@@ -377,7 +380,11 @@ class EntityLookup:
                 return {cnpj: self._name_cache.get(cnpj, "") for cnpj in cnpjs}
 
             fetched = dict(
-                zip(df["CNPJ_8"].astype(str).values, df["NOME"].astype(str).values)
+                zip(
+                    df["CNPJ_8"].astype(str).values,
+                    df["NOME"].astype(str).values,
+                    strict=True,
+                )
             )
             for cnpj in missing:
                 self._name_cache[cnpj] = fetched.get(cnpj, "")

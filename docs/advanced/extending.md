@@ -112,9 +112,7 @@ class NovoCollector(BaseCollector):
             self.logger.error(f"Download failed for {period}: {e}")
             return None
 
-    def _process_to_parquet(
-        self, csv_path: Path, period: int
-    ) -> pd.DataFrame | None:
+    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
         """
         Processa CSV para DataFrame normalizado.
 
@@ -261,8 +259,10 @@ class NovoExplorer(BaseExplorer):
             if contas:
                 conditions.append(
                     build_string_condition(
-                        self._storage_col("CONTA"), contas,
-                        case_insensitive=True, accent_insensitive=True,
+                        self._storage_col("CONTA"),
+                        contas,
+                        case_insensitive=True,
+                        accent_insensitive=True,
                     )
                 )
 
@@ -278,9 +278,7 @@ class NovoExplorer(BaseExplorer):
 
         return self._finalize_read(df)
 
-    def list_contas(
-        self, termo: str | None = None, limit: int = 100
-    ) -> pd.DataFrame:
+    def list_contas(self, termo: str | None = None, limit: int = 100) -> pd.DataFrame:
         """Lista contas disponiveis."""
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
 
@@ -319,6 +317,7 @@ Para acesso via `bcb.novo`:
 
 _novo = None
 
+
 def __getattr__(name: str):
     global _novo
     # ... outros providers ...
@@ -326,10 +325,12 @@ def __getattr__(name: str):
     if name == "novo":
         if _novo is None:
             from ifdata_bcb.providers.novo.explorer import NovoExplorer
+
             _novo = NovoExplorer()
         return _novo
 
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
+
 
 __all__ = [
     # ... outros ...
@@ -351,8 +352,10 @@ Fornece infraestrutura completa para coleta paralela, logging e tratamento de er
 def _get_file_prefix(self) -> str:
     """Prefixo unico para os arquivos (ex: 'cosif_ind', 'ifdata_val')."""
 
+
 def _get_subdir(self) -> str:
     """Subdiretorio de armazenamento (ex: 'cosif/individual')."""
+
 
 def _download_period(self, period: int, work_dir: Path) -> Path | None:
     """
@@ -368,6 +371,7 @@ def _download_period(self, period: int, work_dir: Path) -> Path | None:
     Raises:
         PeriodUnavailableError: Se o periodo nao esta disponivel (404)
     """
+
 
 def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
     """
@@ -386,7 +390,7 @@ def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | No
 
 ```python
 _PERIOD_TYPE: str = "monthly"  # ou "quarterly"
-_MAX_WORKERS: int = 4          # Threads paralelas
+_MAX_WORKERS: int = 4  # Threads paralelas
 ```
 
 #### Metodos Auxiliares Fornecidos
@@ -420,6 +424,7 @@ Fornece infraestrutura para leitura e consulta de dados.
 def _get_subdir(self) -> str:
     """Subdiretorio dos dados."""
 
+
 def _get_file_prefix(self) -> str:
     """Prefixo dos arquivos Parquet."""
 ```
@@ -427,13 +432,17 @@ def _get_file_prefix(self) -> str:
 #### Atributos de Classe
 
 ```python
-_COLUMN_MAP: dict[str, str] = {}      # Mapeamento storage -> apresentacao
-_DERIVED_COLUMNS: set[str] = set()     # Colunas adicionadas pos-query por Python
-_PASSTHROUGH_COLUMNS: set[str] = set() # Colunas nativas do parquet aceitas em columns= sem _COLUMN_MAP
-_DROP_COLUMNS: list[str] = []          # Colunas a remover antes do mapeamento
-_COLUMN_ORDER: list[str] = []          # Ordem desejada das colunas no output
-_VALID_ESCOPOS: list[str] = []         # Escopos validos para _validate_escopo
-_DATE_COLUMN: str | None = None        # Coluna YYYYMM int para conversao automatica em datetime
+_COLUMN_MAP: dict[str, str] = {}  # Mapeamento storage -> apresentacao
+_DERIVED_COLUMNS: set[str] = set()  # Colunas adicionadas pos-query por Python
+_PASSTHROUGH_COLUMNS: set[str] = (
+    set()
+)  # Colunas nativas do parquet aceitas em columns= sem _COLUMN_MAP
+_DROP_COLUMNS: list[str] = []  # Colunas a remover antes do mapeamento
+_COLUMN_ORDER: list[str] = []  # Ordem desejada das colunas no output
+_VALID_ESCOPOS: list[str] = []  # Escopos validos para _validate_escopo
+_DATE_COLUMN: str | None = (
+    None  # Coluna YYYYMM int para conversao automatica em datetime
+)
 ```
 
 #### Metodos Auxiliares Fornecidos
@@ -563,12 +572,13 @@ from ifdata_bcb.domain.exceptions import (
 
 # Capturar todas
 try:
-    df = explorer.read('invalido', '2024-01')
+    df = explorer.read("invalido", "2024-01")
 except BacenAnalysisError as e:
     print(f"Erro: {e}")
 
 # Capturar especificas
 from pathlib import Path
+
 try:
     collector._download_period(202499, Path("/tmp/work"))
 except PeriodUnavailableError:
@@ -640,10 +650,12 @@ class BaseExplorer:
 ```python
 from ifdata_bcb.infra import retry, cached
 
+
 @retry(delay=2.0)
 def _download_single(self, url: str) -> bool:
     # Retry automatico em falhas
     pass
+
 
 @cached(maxsize=256)
 def get_entity_identifiers(self, cnpj_8: str) -> dict:
@@ -656,11 +668,13 @@ def get_entity_identifiers(self, cnpj_8: str) -> dict:
 ```python
 _cosif = None
 
+
 def __getattr__(name: str):
     global _cosif
     if name == "cosif":
         if _cosif is None:
             from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
+
             _cosif = COSIFExplorer()
         return _cosif
 ```

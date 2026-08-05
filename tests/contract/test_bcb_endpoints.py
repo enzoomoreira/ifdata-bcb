@@ -9,9 +9,9 @@ NAO rodar no CI (dependem de rede e disponibilidade do BCB).
 import io
 import zipfile
 
+import httpx
 import pandas as pd
 import pytest
-import httpx
 
 # Periodo recente que sabemos existir
 _TEST_PERIOD = 202412

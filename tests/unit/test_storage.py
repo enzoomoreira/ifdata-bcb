@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+
 from ifdata_bcb.infra.storage import DataManager, cleanup_partial_writes
 
 

@@ -45,7 +45,7 @@ bcb.cadastro.collect(
 
 ```python
 # Coletar cadastro de 2024
-bcb.cadastro.collect('2024-01', '2024-12')
+bcb.cadastro.collect("2024-01", "2024-12")
 ```
 
 ### read()
@@ -87,28 +87,24 @@ bcb.cadastro.read(
 
 ```python
 # Dados de uma instituicao em um periodo especifico
-df = bcb.cadastro.read('2024-12', instituicao='60872504')
+df = bcb.cadastro.read("2024-12", instituicao="60872504")
 
 # Filtrar por segmento (accent-insensitive)
-df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read("2024-12", segmento="Banco Multiplo")
 
 # Filtrar por UF
-df = bcb.cadastro.read('2024-12', instituicao='60872504', uf='SP')
+df = bcb.cadastro.read("2024-12", instituicao="60872504", uf="SP")
 
 # Filtrar apenas instituicoes ativas
-df = bcb.cadastro.read('2024-12', situacao='A')
+df = bcb.cadastro.read("2024-12", situacao="A")
 
 # Novos filtros: atividade, tcb, td, tc, sr, municipio
-df = bcb.cadastro.read('2024-12', tcb='B1', sr='S1')
-df = bcb.cadastro.read('2024-12', municipio='Sao Paulo', uf='SP')
+df = bcb.cadastro.read("2024-12", tcb="B1", sr="S1")
+df = bcb.cadastro.read("2024-12", municipio="Sao Paulo", uf="SP")
 
 # Combinar filtros
 df = bcb.cadastro.read(
-    '2024-12',
-    instituicao='60872504',
-    segmento='Banco Multiplo',
-    uf='SP',
-    situacao='A'
+    "2024-12", instituicao="60872504", segmento="Banco Multiplo", uf="SP", situacao="A"
 )
 ```
 
@@ -152,10 +148,10 @@ bcb.cadastro.list(["SEGMENTO"])
 bcb.cadastro.list(["UF"])
 
 # Listar municipios de SP (sem filtro, trunca em 100)
-bcb.cadastro.list(["MUNICIPIO"], uf='SP')
+bcb.cadastro.list(["MUNICIPIO"], uf="SP")
 
 # Combinacao de colunas
-bcb.cadastro.list(["SEGMENTO", "UF"], situacao='A')
+bcb.cadastro.list(["SEGMENTO", "UF"], situacao="A")
 ```
 
 ### search()
@@ -195,22 +191,22 @@ bcb.cadastro.search(
 
 ```python
 # Buscar por nome
-bcb.cadastro.search('Itau')
+bcb.cadastro.search("Itau")
 
 # Listar todas com dados no IFDATA
-bcb.cadastro.search(fonte='ifdata')
+bcb.cadastro.search(fonte="ifdata")
 
 # Listar instituicoes no COSIF prudencial
-bcb.cadastro.search(fonte='cosif', escopo='prudencial')
+bcb.cadastro.search(fonte="cosif", escopo="prudencial")
 
 # Buscar + filtrar por fonte
-bcb.cadastro.search('Bradesco', fonte='cosif')
+bcb.cadastro.search("Bradesco", fonte="cosif")
 
 # Buscar com filtro temporal -- so instituicoes com dados em 2025
-bcb.cadastro.search('Itau', start='2025-03', end='2025-12')
+bcb.cadastro.search("Itau", start="2025-03", end="2025-12")
 
 # Listar todas com dados no IFDATA em Q2 2025
-bcb.cadastro.search(fonte='ifdata', start='2025-06')
+bcb.cadastro.search(fonte="ifdata", start="2025-06")
 ```
 
 ## Colunas Disponiveis
@@ -273,8 +269,8 @@ bcb.cadastro.search(fonte='ifdata', start='2025-06')
 
 ```python
 # Bancos do Segmento S1 (maiores)
-df = bcb.cadastro.read('2024-12', instituicao='60872504')
-if df['SR'].iloc[0] == 'S1':
+df = bcb.cadastro.read("2024-12", instituicao="60872504")
+if df["SR"].iloc[0] == "S1":
     print("Banco sistemicamente importante")
 ```
 
@@ -291,13 +287,13 @@ if df['SR'].iloc[0] == 'S1':
 
 ```python
 # Usar mapeamento IFDATA para ver membros
-df = bcb.ifdata.mapeamento(start='2024-12')
+df = bcb.ifdata.mapeamento(start="2024-12")
 
 # Descobrir cod_inst de um banco
-df[df['CNPJ_8'] == '60872504']
+df[df["CNPJ_8"] == "60872504"]
 
 # Listar todos os membros do conglomerado
-df[df['COD_INST'] == 'C0080075']
+df[df["COD_INST"] == "C0080075"]
 ```
 
 ## Exemplos Avancados
@@ -411,14 +407,15 @@ Mapeamento para colunas de apresentacao:
 
 ```python
 # start e obrigatorio em read()
-df = bcb.cadastro.read('2024-12', instituicao='60872504')  # OK!
+df = bcb.cadastro.read("2024-12", instituicao="60872504")  # OK!
 
 # search() sem resultados retorna DataFrame vazio
-df = bcb.cadastro.search('XYZNONEXISTENT')
+df = bcb.cadastro.search("XYZNONEXISTENT")
 assert df.empty
 
 # Coluna invalida em list()
 from ifdata_bcb.domain.exceptions import InvalidColumnError
+
 try:
     bcb.cadastro.list(["FOO"])
 except InvalidColumnError as e:
@@ -427,8 +424,9 @@ except InvalidColumnError as e:
 
 # Fonte/escopo invalido em search()
 from ifdata_bcb.domain.exceptions import InvalidScopeError
+
 try:
-    bcb.cadastro.search(fonte='cosif', escopo='financeiro')  # COSIF nao tem financeiro
+    bcb.cadastro.search(fonte="cosif", escopo="financeiro")  # COSIF nao tem financeiro
 except InvalidScopeError as e:
     print(f"Erro: {e}")
 ```

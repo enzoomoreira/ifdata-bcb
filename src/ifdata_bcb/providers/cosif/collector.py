@@ -1,6 +1,6 @@
 import zipfile
 from pathlib import Path
-from typing import TypedDict
+from typing import ClassVar, TypedDict
 
 import httpx
 import pandas as pd
@@ -37,7 +37,7 @@ class COSIFCollector(BaseCollector):
 
     # Configuracao por escopo
     # Nota: BCB usa encodings diferentes por escopo
-    _CONFIG: dict[str, _EscopoConfig] = {
+    _CONFIG: ClassVar[dict[str, _EscopoConfig]] = {
         "individual": {
             "url_segment": "Bancos",
             "file_pattern": "BANCOS",

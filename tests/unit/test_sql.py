@@ -217,7 +217,7 @@ class TestBuildAccountConditionAdversarial:
 # de U+0020 a U+11000).
 # =========================================================================
 
-FULLWIDTH_APOSTROPHE = "＇"
+FULLWIDTH_APOSTROPHE = "＇"  # noqa: RUF001 -- a ambiguidade e o objeto do teste
 
 # Fecha o literal, injeta OR 1=1 e reabre para manter o SQL sintaticamente valido
 INJECTION_PAYLOAD = f"{FULLWIDTH_APOSTROPHE} OR 1=1 OR {FULLWIDTH_APOSTROPHE}"

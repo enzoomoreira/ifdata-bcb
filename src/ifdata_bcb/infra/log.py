@@ -11,6 +11,7 @@ Para ativar, o consumidor chama `enable_logging()`. Sem sinks proprios
 aplicacao ja tiver configurado.
 """
 
+import contextlib
 import sys
 import warnings
 from pathlib import Path
@@ -28,11 +29,9 @@ _PACKAGE = "ifdata_bcb"
 def _remove_own_sinks() -> None:
     global _sink_ids
     for sink_id in _sink_ids:
-        try:
+        # ValueError: sink ja removido pela aplicacao consumidora
+        with contextlib.suppress(ValueError):
             logger.remove(sink_id)
-        except ValueError:
-            # Sink ja removido pela aplicacao consumidora
-            pass
     _sink_ids = []
 
 

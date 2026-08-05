@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pandas as pd
 
@@ -32,8 +32,13 @@ class CadastroSearch:
     _COSIF_ESCOPOS = ("individual", "prudencial")
     _IFDATA_ESCOPOS = ("individual", "prudencial", "financeiro")
 
-    _SEARCH_COLUMNS = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES"]
-    _SEARCH_COLUMNS_WITH_SCORE = [
+    _SEARCH_COLUMNS: ClassVar[list[str]] = [
+        "CNPJ_8",
+        "INSTITUICAO",
+        "SITUACAO",
+        "FONTES",
+    ]
+    _SEARCH_COLUMNS_WITH_SCORE: ClassVar[list[str]] = [
         "CNPJ_8",
         "INSTITUICAO",
         "SITUACAO",
@@ -176,7 +181,7 @@ class CadastroSearch:
         cnpjs_arr = all_entities["CNPJ_8"].values
         insts_arr = all_entities["INSTITUICAO"].values
         sits_arr = all_entities["SITUACAO"].values
-        for cnpj, inst, sit in zip(cnpjs_arr, insts_arr, sits_arr):
+        for cnpj, inst, sit in zip(cnpjs_arr, insts_arr, sits_arr, strict=True):
             fontes = cnpj_sources.get(cnpj, set())
             if not fontes:
                 continue
@@ -349,6 +354,7 @@ class CadastroSearch:
             for cnpj, cod in zip(
                 df_congl["CNPJ_8"].astype(str).values,
                 df_congl["cod_congl"].astype(str).values,
+                strict=True,
             ):
                 cod_to_cnpjs.setdefault(cod, []).append(cnpj)
 

@@ -86,10 +86,12 @@ proprios sinks de logging. Tambem criava arquivo de log em disco sem ser pedido.
 ```python
 # Antes (v0.4.1) -- logging ativo por padrao, destruindo os sinks da app
 from ifdata_bcb.infra.log import configure_logging, set_log_level
+
 set_log_level("DEBUG")
 
 # Agora (v0.4.2) -- opt-in explicito
 import ifdata_bcb as bcb
+
 bcb.enable_logging(level="DEBUG", to_file=True)
 bcb.disable_logging()
 ```
@@ -130,13 +132,13 @@ Refatoracao arquitetural com mudancas de API, migracao de HTTP client, novos met
 
 ```python
 # Antes (v0.3.0)
-df = bcb.ifdata.read('60872504', '2024-12')
-df = bcb.cosif.read('60872504', '2024-12')
+df = bcb.ifdata.read("60872504", "2024-12")
+df = bcb.cosif.read("60872504", "2024-12")
 
 # Agora (v0.4.0)
-df = bcb.ifdata.read('2024-12', instituicao='60872504')
-df = bcb.cosif.read('2024-12', instituicao='60872504')
-df = bcb.ifdata.read('2024-12')  # bulk: todas as instituicoes
+df = bcb.ifdata.read("2024-12", instituicao="60872504")
+df = bcb.cosif.read("2024-12", instituicao="60872504")
+df = bcb.ifdata.read("2024-12")  # bulk: todas as instituicoes
 ```
 
 **`cadastro.read()`: `start` agora e obrigatorio** (antes era opcional com fallback para ultimo periodo).

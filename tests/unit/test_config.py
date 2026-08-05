@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from ifdata_bcb.infra.config import Settings, get_settings
 
 

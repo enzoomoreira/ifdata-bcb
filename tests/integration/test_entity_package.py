@@ -10,7 +10,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-
 # =========================================================================
 # Re-export contract: core.entity expoe EntityLookup + EntitySearch
 # =========================================================================
@@ -38,7 +37,8 @@ class TestEntityPackageExports:
             __import__("ifdata_bcb.core.entity_lookup", fromlist=["EntityLookup"])
 
     def test_submodule_imports_match_package(self) -> None:
-        from ifdata_bcb.core.entity import EntityLookup as EL1, EntitySearch as ES1
+        from ifdata_bcb.core.entity import EntityLookup as EL1
+        from ifdata_bcb.core.entity import EntitySearch as ES1
         from ifdata_bcb.core.entity.lookup import EntityLookup as EL2
         from ifdata_bcb.core.entity.search import EntitySearch as ES2
 

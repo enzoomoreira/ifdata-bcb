@@ -57,6 +57,7 @@ class BacenAnalysisError(Exception):
         except BacenAnalysisError as e:
             print(f"Erro: {e}")
     """
+
     pass
 ```
 
@@ -70,6 +71,7 @@ class InvalidScopeError(BacenAnalysisError):
         self.scope = scope
         self.value = value
         self.valid_values = valid_values
+
 
 # Uso
 raise InvalidScopeError(
@@ -91,6 +93,7 @@ class DataUnavailableError(BacenAnalysisError):
         self.scope_type = scope_type
         self.reason = reason
 
+
 # Uso
 raise DataUnavailableError(
     entity="60872504",
@@ -109,6 +112,7 @@ class InvalidIdentifierError(BacenAnalysisError):
     def __init__(self, identificador: str):
         self.identificador = identificador
 
+
 # Uso
 raise InvalidIdentifierError(identificador="Itau")
 # Mensagem: "Identificador 'Itau' invalido. Esperado CNPJ de 8 digitos."
@@ -122,6 +126,7 @@ Parametro obrigatorio ausente:
 class MissingRequiredParameterError(BacenAnalysisError):
     def __init__(self, param_name: str):
         self.param_name = param_name
+
 
 # Uso
 raise MissingRequiredParameterError(param_name="start")
@@ -138,6 +143,7 @@ class InvalidDateRangeError(BacenAnalysisError):
         self.start = start
         self.end = end
 
+
 # Uso
 raise InvalidDateRangeError(start="2024-12", end="2024-01")
 # Mensagem: "Data inicial (2024-12) maior que data final (2024-01)."
@@ -153,6 +159,7 @@ class InvalidDateFormatError(BacenAnalysisError):
         self.value = value
         self.detail = detail
 
+
 # Uso
 raise InvalidDateFormatError(value="2024/12/01")
 # Mensagem: "Formato de data invalido: '2024/12/01'."
@@ -166,6 +173,7 @@ Periodo nao disponivel no BCB (usado internamente na coleta):
 class PeriodUnavailableError(BacenAnalysisError):
     def __init__(self, period: int):
         self.period = period
+
 
 # Uso interno
 raise PeriodUnavailableError(period=202501)
@@ -182,6 +190,7 @@ class DataProcessingError(BacenAnalysisError):
         self.source = source
         self.detail = detail
 
+
 # Uso interno
 raise DataProcessingError("cosif:prudencial", "Erro na leitura do CSV")
 ```
@@ -193,9 +202,11 @@ Warning emitido quando uma query abrange periodos com codigos de conta incompati
 ```python
 class IncompatibleEraWarning(UserWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
+
     def __init__(self, message: str, boundary: int, source: str):
         self.boundary = boundary  # Periodo fronteira (ex: 202501)
-        self.source = source      # Fonte (ex: "COSIF")
+        self.source = source  # Fonte (ex: "COSIF")
+
 
 # Emitido automaticamente por emit_era_warnings() em core/eras.py, a partir do
 # overlap de codigos de conta medido no proprio resultado.
@@ -210,7 +221,7 @@ from ifdata_bcb.domain.exceptions import IncompatibleEraWarning
 
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always")
-    df = bcb.cosif.read('2024-12', '2025-01', instituicao='60872504')
+    df = bcb.cosif.read("2024-12", "2025-01", instituicao="60872504")
     if w and issubclass(w[0].category, IncompatibleEraWarning):
         era_warning = w[0].message
         print(f"Boundary: {era_warning.boundary}, Source: {era_warning.source}")
@@ -223,8 +234,9 @@ Warning emitido quando o resultado pode estar incompleto -- por exemplo, quando 
 ```python
 class PartialDataWarning(UserWarning):
     """Resultado incompleto - alguns periodos/entidades sem dados."""
+
     def __init__(self, message: str, reason: str = "", detail: dict | None = None):
-        self.reason = reason    # Ex: "query_failed", "no_cnpj_for_enrichment"
+        self.reason = reason  # Ex: "query_failed", "no_cnpj_for_enrichment"
         self.detail = detail
 ```
 
@@ -235,9 +247,12 @@ Warning emitido quando um escopo nao esta disponivel para uma entidade em parte 
 ```python
 class ScopeUnavailableWarning(UserWarning):
     """Escopo indisponivel para entidade em parte do range temporal."""
-    def __init__(self, message: str, entities: list[str], escopo: str, periodos: list[int]):
+
+    def __init__(
+        self, message: str, entities: list[str], escopo: str, periodos: list[int]
+    ):
         self.entities = entities  # CNPJs afetados
-        self.escopo = escopo      # Escopo indisponivel
+        self.escopo = escopo  # Escopo indisponivel
         self.periodos = periodos  # Periodos afetados
 ```
 
@@ -248,6 +263,7 @@ Warning emitido quando uma entidade esta presente nos dados mas com todos os val
 ```python
 class NullValuesWarning(UserWarning):
     """Entidade presente nos dados mas com todos os valores financeiros NULL."""
+
     def __init__(self, message: str, entities: list[str]):
         self.entities = entities  # CNPJs com valores NULL
 ```
@@ -259,6 +275,7 @@ Warning emitido quando um relatorio migrou de escopo entre eras (ex: relatorios 
 ```python
 class ScopeMigrationWarning(UserWarning):
     """Relatorio migrou de escopo entre eras."""
+
     def __init__(
         self,
         message: str,
@@ -267,10 +284,10 @@ class ScopeMigrationWarning(UserWarning):
         escopo_post: str,
         boundary: int,
     ):
-        self.relatorio = relatorio      # Nome do relatorio afetado
-        self.escopo_pre = escopo_pre    # Escopo antes do boundary (ex: "financeiro")
+        self.relatorio = relatorio  # Nome do relatorio afetado
+        self.escopo_pre = escopo_pre  # Escopo antes do boundary (ex: "financeiro")
         self.escopo_post = escopo_post  # Escopo apos o boundary (ex: "prudencial")
-        self.boundary = boundary        # Periodo boundary (ex: 202503)
+        self.boundary = boundary  # Periodo boundary (ex: 202503)
 ```
 
 ### DroppedReportWarning
@@ -280,8 +297,9 @@ Warning emitido quando um relatorio foi descontinuado a partir de determinada er
 ```python
 class DroppedReportWarning(UserWarning):
     """Relatorio descontinuado a partir de determinada era."""
+
     def __init__(self, message: str, relatorio: str, last_period: int):
-        self.relatorio = relatorio      # Nome do relatorio descontinuado
+        self.relatorio = relatorio  # Nome do relatorio descontinuado
         self.last_period = last_period  # Ultimo periodo disponivel (ex: 202412)
 ```
 
@@ -292,6 +310,7 @@ Warning emitido quando um filtro vazio e passado a um parametro (ex: `columns=[]
 ```python
 class EmptyFilterWarning(UserWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
+
     def __init__(self, message: str, parameter: str):
         self.parameter = parameter  # Nome do parametro vazio
 ```
@@ -313,6 +332,7 @@ class NormalizedDates(BaseModel):
     @field_validator("values", mode="before")
     def normalize(cls, v: DateInput) -> list[int]: ...
 
+
 # Uso
 NormalizedDates(values="2024-12").values  # [202412]
 NormalizedDates(values=[202401, "2024-02"]).values  # [202401, 202402]
@@ -325,6 +345,7 @@ Valida CNPJ de exatamente 8 digitos:
 ```python
 class ValidatedCnpj8(BaseModel):
     value: str
+
 
 # Uso
 ValidatedCnpj8(value="60872504").value  # "60872504"
@@ -339,6 +360,7 @@ Normaliza `InstitutionInput` para lista de CNPJs validados:
 class InstitutionList(BaseModel):
     values: list[str]
 
+
 # Uso
 InstitutionList(values="60872504").values  # ["60872504"]
 InstitutionList(values=["60872504", "60746948"]).values  # ["60872504", "60746948"]
@@ -351,6 +373,7 @@ Normaliza `AccountInput` para lista de strings:
 ```python
 class AccountList(BaseModel):
     values: list[str]
+
 
 # Uso
 AccountList(values="TOTAL DO ATIVO").values  # ["TOTAL DO ATIVO"]
@@ -418,7 +441,7 @@ Aceita:
 from ifdata_bcb import BacenAnalysisError
 
 try:
-    df = bcb.cosif.read('2024-12', instituicao='60872504')
+    df = bcb.cosif.read("2024-12", instituicao="60872504")
 except BacenAnalysisError as e:
     print(f"Erro: {e}")
 ```
@@ -434,7 +457,7 @@ from ifdata_bcb.domain.exceptions import (
 )
 
 try:
-    df = bcb.ifdata.read('2024-12', instituicao='Itau', escopo='prudencial')
+    df = bcb.ifdata.read("2024-12", instituicao="Itau", escopo="prudencial")
 except InvalidIdentifierError as e:
     print(f"CNPJ invalido: {e.identificador}")
 except MissingRequiredParameterError as e:

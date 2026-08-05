@@ -1,6 +1,7 @@
 """Classe base abstrata para Explorers de dados do BCB."""
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 import pandas as pd
 
@@ -65,12 +66,12 @@ class BaseExplorer(ABC):
     - _ERA_GROUP_COLUMN: Coluna que agrupa contas para a analise de era
     """
 
-    _COLUMN_MAP: dict[str, str] = {}
-    _DERIVED_COLUMNS: set[str] = set()
-    _PASSTHROUGH_COLUMNS: set[str] = set()
-    _DROP_COLUMNS: list[str] = []
-    _COLUMN_ORDER: list[str] = []
-    _VALID_ESCOPOS: list[str] = []
+    _COLUMN_MAP: ClassVar[dict[str, str]] = {}
+    _DERIVED_COLUMNS: ClassVar[set[str]] = set()
+    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = set()
+    _DROP_COLUMNS: ClassVar[list[str]] = []
+    _COLUMN_ORDER: ClassVar[list[str]] = []
+    _VALID_ESCOPOS: ClassVar[list[str]] = []
     _DATE_COLUMN: str | None = None
     _ERA_BOUNDARY: int | None = None
     _ERA_GROUP_COLUMN: str | None = None
@@ -78,8 +79,8 @@ class BaseExplorer(ABC):
     _TRIMESTRAL: bool = False
 
     # list() infrastructure -- overridden by subclasses
-    _LIST_COLUMNS: dict[str, str] = {}
-    _BLOCKED_COLUMNS: dict[str, str] = {}
+    _LIST_COLUMNS: ClassVar[dict[str, str]] = {}
+    _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {}
 
     def __init__(
         self,

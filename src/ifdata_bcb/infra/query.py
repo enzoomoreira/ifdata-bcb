@@ -1,3 +1,4 @@
+import contextlib
 from pathlib import Path
 
 import duckdb
@@ -147,7 +148,7 @@ class QueryEngine:
             return self._conn.sql(query).df()
         finally:
             for name in tables:
-                try:
+                # Limpeza best-effort: um unregister que falha nao pode
+                # mascarar a excecao original da query.
+                with contextlib.suppress(duckdb.Error):
                     self._conn.unregister(name)
-                except Exception:
-                    pass

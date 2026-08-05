@@ -43,8 +43,8 @@ uv add ifdata-bcb
 import ifdata_bcb as bcb
 
 # Verificar componentes disponiveis
-print(f"bcb.cosif: {type(bcb.cosif).__name__}")      # COSIFExplorer
-print(f"bcb.ifdata: {type(bcb.ifdata).__name__}")    # IFDATAExplorer
+print(f"bcb.cosif: {type(bcb.cosif).__name__}")  # COSIFExplorer
+print(f"bcb.ifdata: {type(bcb.ifdata).__name__}")  # IFDATAExplorer
 print(f"bcb.cadastro: {type(bcb.cadastro).__name__}")  # CadastroExplorer
 print(f"bcb.cadastro.search: {type(bcb.cadastro.search).__name__}")  # method
 ```
@@ -63,8 +63,8 @@ Antes de consultar, e necessario coletar os dados do site do BCB:
 
 ```python
 # Definir periodo
-START = '2024-01'
-END = '2024-12'
+START = "2024-01"
+END = "2024-12"
 
 # Coletar cadastro (necessario para busca por nome)
 bcb.cadastro.collect(START, END)
@@ -84,18 +84,18 @@ A biblioteca usa o padrao "search + select" para identificar instituicoes:
 
 ```python
 # Buscar instituicao por nome (fuzzy matching)
-bcb.cadastro.search('Itau')
+bcb.cadastro.search("Itau")
 #    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
 # 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
 
-bcb.cadastro.search('Bradesco')
-bcb.cadastro.search('Santander')
+bcb.cadastro.search("Bradesco")
+bcb.cadastro.search("Santander")
 
 # Listar todas as instituicoes com dados no COSIF
-bcb.cadastro.search(fonte='cosif')
+bcb.cadastro.search(fonte="cosif")
 
 # Filtrar por fonte e escopo
-bcb.cadastro.search(fonte='ifdata', escopo='prudencial')
+bcb.cadastro.search(fonte="ifdata", escopo="prudencial")
 ```
 
 O resultado retorna:
@@ -118,24 +118,17 @@ Use o CNPJ de 8 digitos nas consultas:
 # COSIF: start e OBRIGATORIO (posicional). instituicao e keyword-only e opcional
 # start sozinho = data unica; start + end = range de datas
 df = bcb.cosif.read(
-    '2024-12',
-    instituicao='60872504',
-    conta='TOTAL GERAL DO ATIVO',
-    escopo='prudencial'
+    "2024-12", instituicao="60872504", conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
 )
 
 # Bulk read: sem instituicao, retorna todas
-df = bcb.cosif.read('2024-12', escopo='prudencial')
+df = bcb.cosif.read("2024-12", escopo="prudencial")
 
 # IFDATA: start e OBRIGATORIO. instituicao e keyword-only e opcional
-df = bcb.ifdata.read(
-    '2024-12',
-    instituicao='60872504',
-    conta='Lucro Liquido'
-)
+df = bcb.ifdata.read("2024-12", instituicao="60872504", conta="Lucro Liquido")
 
 # Cadastro: start obrigatorio em read(), instituicao opcional
-df = bcb.cadastro.read('2024-12', segmento='Banco Multiplo')
+df = bcb.cadastro.read("2024-12", segmento="Banco Multiplo")
 ```
 
 ## Conceitos Fundamentais
@@ -146,16 +139,16 @@ A biblioteca usa CNPJ de 8 digitos (base do CNPJ, sem filial e digito verificado
 
 ```python
 # Correto: start posicional, instituicao keyword-only
-bcb.cosif.read('2024-12', instituicao='60872504', escopo='prudencial')
+bcb.cosif.read("2024-12", instituicao="60872504", escopo="prudencial")
 
 # Correto: lista de instituicoes
-bcb.cosif.read('2024-12', instituicao=['60872504', '60746948'])
+bcb.cosif.read("2024-12", instituicao=["60872504", "60746948"])
 
 # Correto: bulk read (sem instituicao)
-bcb.cosif.read('2024-12', escopo='prudencial')
+bcb.cosif.read("2024-12", escopo="prudencial")
 
 # ERRO: nome direto gera InvalidIdentifierError
-bcb.cosif.read('2024-12', instituicao='Itau')  # Erro!
+bcb.cosif.read("2024-12", instituicao="Itau")  # Erro!
 
 # ERRO: sem start gera MissingRequiredParameterError
 bcb.cosif.read(start=None)  # Erro!
@@ -174,14 +167,14 @@ O COSIF tem dois escopos que representam visoes diferentes dos dados:
 
 ```python
 # Escopo prudencial (conglomerado)
-df = bcb.cosif.read('2024-12', instituicao='60872504', escopo='prudencial')
+df = bcb.cosif.read("2024-12", instituicao="60872504", escopo="prudencial")
 
 # Escopo individual
-df = bcb.cosif.read('2024-12', instituicao='60872504', escopo='individual')
+df = bcb.cosif.read("2024-12", instituicao="60872504", escopo="individual")
 
 # Buscar em AMBOS os escopos (escopo=None, padrao)
 # Retorna coluna ESCOPO indicando a origem
-df = bcb.cosif.read('2024-12', instituicao='60872504')
+df = bcb.cosif.read("2024-12", instituicao="60872504")
 ```
 
 ### Escopos IFDATA
@@ -196,10 +189,10 @@ O IFDATA tem tres escopos:
 
 ```python
 # Escopo individual
-df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='individual')
+df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="individual")
 
 # Buscar em TODOS os escopos (escopo=None, padrao)
-df = bcb.ifdata.read('2024-12', instituicao='60872504')
+df = bcb.ifdata.read("2024-12", instituicao="60872504")
 ```
 
 ### Periodicidade
@@ -219,12 +212,12 @@ from datetime import date, datetime
 import pandas as pd
 
 # Formatos aceitos para start/end
-start = '2024-12'              # String YYYY-MM
-start = '202412'               # String YYYYMM
-start = 202412                 # Inteiro YYYYMM
-start = date(2024, 12, 1)     # date do Python
+start = "2024-12"  # String YYYY-MM
+start = "202412"  # String YYYYMM
+start = 202412  # Inteiro YYYYMM
+start = date(2024, 12, 1)  # date do Python
 start = datetime(2024, 12, 1)  # datetime do Python
-start = pd.Timestamp('2024-12-01')  # pd.Timestamp
+start = pd.Timestamp("2024-12-01")  # pd.Timestamp
 ```
 
 Comportamento:
@@ -242,15 +235,12 @@ A coluna `DATA` retornada e sempre do tipo `datetime64` (resolucao microsegundos
 import ifdata_bcb as bcb
 
 # Buscar CNPJ
-bcb.cadastro.search('Bradesco')
+bcb.cadastro.search("Bradesco")
 # CNPJ do Bradesco: 60746948
 
 # Consultar Ativo Total
 df = bcb.cosif.read(
-    '2024-12',
-    instituicao='60746948',
-    conta='TOTAL GERAL DO ATIVO',
-    escopo='prudencial'
+    "2024-12", instituicao="60746948", conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
 )
 print(f"Ativo Total: R$ {df['VALOR'].iloc[0]:,.2f}")
 ```
@@ -263,28 +253,22 @@ import ifdata_bcb as bcb
 
 # CNPJs dos maiores bancos
 bancos = {
-    'Itau': '60872504',
-    'Bradesco': '60746948',
-    'Santander': '90400888',
-    'BB': '00000000'
+    "Itau": "60872504",
+    "Bradesco": "60746948",
+    "Santander": "90400888",
+    "BB": "00000000",
 }
 
 # Coletar Ativo Total de cada banco
 resultados = []
 for nome, cnpj in bancos.items():
     df = bcb.cosif.read(
-        '2024-12',
-        instituicao=cnpj,
-        conta='TOTAL GERAL DO ATIVO',
-        escopo='prudencial'
+        "2024-12", instituicao=cnpj, conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
     )
     if not df.empty:
-        resultados.append({
-            'Banco': nome,
-            'Ativo': df['VALOR'].iloc[0]
-        })
+        resultados.append({"Banco": nome, "Ativo": df["VALOR"].iloc[0]})
 
-pd.DataFrame(resultados).sort_values('Ativo', ascending=False)
+pd.DataFrame(resultados).sort_values("Ativo", ascending=False)
 ```
 
 ### Serie Temporal
@@ -295,17 +279,17 @@ import ifdata_bcb as bcb
 
 # Evolucao do Patrimonio Liquido do Itau em 2024
 df = bcb.cosif.read(
-    '2024-01',
-    '2024-12',
-    instituicao='60872504',
-    conta='PATRIMONIO LIQUIDO',
-    escopo='prudencial'
+    "2024-01",
+    "2024-12",
+    instituicao="60872504",
+    conta="PATRIMONIO LIQUIDO",
+    escopo="prudencial",
 )
 
 # Plotar
-df.plot(x='DATA', y='VALOR', kind='line')
-plt.title('Patrimonio Liquido - Itau Unibanco')
-plt.ylabel('R$')
+df.plot(x="DATA", y="VALOR", kind="line")
+plt.title("Patrimonio Liquido - Itau Unibanco")
+plt.ylabel("R$")
 plt.show()
 ```
 
@@ -321,13 +305,13 @@ bcb.ifdata.list(["RELATORIO"])
 bcb.cadastro.list(["SEGMENTO"])
 
 # Listar UFs com filtro
-bcb.cadastro.list(["UF"], situacao='A')
+bcb.cadastro.list(["UF"], situacao="A")
 
 # Listar combinacoes de DATA + ESCOPO no COSIF
 bcb.cosif.list(["DATA", "ESCOPO"])
 
 # Listar municipios de SP
-bcb.cadastro.list(["MUNICIPIO"], uf='SP')
+bcb.cadastro.list(["MUNICIPIO"], uf="SP")
 ```
 
 ### Enriquecimento Cadastral Inline
@@ -336,16 +320,13 @@ Em vez de consultar cadastro separadamente e fazer merge manual, use o parametro
 
 ```python
 # Sem cadastro inline (3 passos)
-df = bcb.ifdata.read('2024-12', instituicao='60872504', escopo='prudencial')
-df_cad = bcb.cadastro.read('2024-12', instituicao='60872504')
-df = df.merge(df_cad[['CNPJ_8', 'TCB', 'SEGMENTO']], on='CNPJ_8', how='left')
+df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
+df_cad = bcb.cadastro.read("2024-12", instituicao="60872504")
+df = df.merge(df_cad[["CNPJ_8", "TCB", "SEGMENTO"]], on="CNPJ_8", how="left")
 
 # Com cadastro inline (1 passo)
 df = bcb.ifdata.read(
-    '2024-12',
-    instituicao='60872504',
-    escopo='prudencial',
-    cadastro=['TCB', 'SEGMENTO']
+    "2024-12", instituicao="60872504", escopo="prudencial", cadastro=["TCB", "SEGMENTO"]
 )
 ```
 
@@ -422,15 +403,15 @@ export BACEN_DATA_DIR="/dados/bcb"
 
 ```python
 # Via explorers
-bcb.cosif.list_periodos()                    # Todos os periodos (ambos escopos)
-bcb.cosif.list_periodos(source='individual')  # Apenas individual
-bcb.cosif.has_data()                         # True se tem dados
+bcb.cosif.list_periodos()  # Todos os periodos (ambos escopos)
+bcb.cosif.list_periodos(source="individual")  # Apenas individual
+bcb.cosif.has_data()  # True se tem dados
 
 # Via DataManager (mais baixo nivel)
 from ifdata_bcb.infra import DataManager
 
 dm = DataManager()
-periodos = dm.get_periodos_disponiveis('cosif_prud', 'cosif/prudencial')
+periodos = dm.get_periodos_disponiveis("cosif_prud", "cosif/prudencial")
 print(f"Periodos: {periodos}")  # [(2024, 1), (2024, 2), ...]
 ```
 
@@ -444,7 +425,7 @@ from ifdata_bcb.infra import get_settings
 
 cache = get_settings().cache_path
 # Deletar arquivo especifico
-(cache / 'cosif' / 'prudencial' / 'cosif_prud_202412.parquet').unlink()
+(cache / "cosif" / "prudencial" / "cosif_prud_202412.parquet").unlink()
 ```
 
 ## Tratamento de Erros
@@ -461,7 +442,7 @@ from ifdata_bcb.domain.exceptions import (
 )
 
 try:
-    df = bcb.cosif.read('2024-12', instituicao='60872504')
+    df = bcb.cosif.read("2024-12", instituicao="60872504")
 except InvalidIdentifierError as e:
     print(f"CNPJ invalido: {e}")
 except MissingRequiredParameterError as e:

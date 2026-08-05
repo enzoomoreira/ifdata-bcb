@@ -63,7 +63,7 @@ class TestGetCacheInfo:
     def test_returns_dict(self) -> None:
         info = get_cache_info()
         assert isinstance(info, dict)
-        for name, stats in info.items():
+        for _name, stats in info.items():
             assert "hits" in stats
             assert "misses" in stats
             assert "maxsize" in stats

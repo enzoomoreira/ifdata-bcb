@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import ClassVar, Literal, cast
 
 import pandas as pd
 
@@ -39,7 +39,7 @@ class COSIFExplorer(BaseExplorer):
     Multi-source: escopos 'individual' e 'prudencial' (mesmo schema).
     """
 
-    _COLUMN_MAP = {
+    _COLUMN_MAP: ClassVar[dict[str, str]] = {
         "DATA_BASE": "DATA",
         "NOME_INSTITUICAO": "INSTITUICAO",
         "NOME_CONTA": "CONTA",
@@ -47,12 +47,12 @@ class COSIFExplorer(BaseExplorer):
         "SALDO": "VALOR",
     }
 
-    _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
-    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+    _DERIVED_COLUMNS: ClassVar[set[str]] = {"ESCOPO"}
+    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "DOCUMENTO"}
 
     _DATE_COLUMN = "DATA_BASE"
 
-    _COLUMN_ORDER = [
+    _COLUMN_ORDER: ClassVar[list[str]] = [
         "DATA",
         "CNPJ_8",
         "INSTITUICAO",
@@ -63,13 +63,13 @@ class COSIFExplorer(BaseExplorer):
         "VALOR",
     ]
 
-    _VALID_ESCOPOS = ["individual", "prudencial"]
+    _VALID_ESCOPOS: ClassVar[list[str]] = ["individual", "prudencial"]
 
     _ERA_BOUNDARY = COSIF_ERA_BOUNDARY
     _ERA_GROUP_COLUMN = "DOCUMENTO"
     _ERA_SOURCE_NAME = "COSIF"
 
-    _ESCOPOS: dict[str, dict[str, str]] = {
+    _ESCOPOS: ClassVar[dict[str, dict[str, str]]] = {
         "individual": {
             "subdir": get_subdir("cosif_individual"),
             "prefix": DATA_SOURCES["cosif_individual"]["prefix"],
@@ -80,13 +80,13 @@ class COSIFExplorer(BaseExplorer):
         },
     }
 
-    _LIST_COLUMNS: dict[str, str] = {
+    _LIST_COLUMNS: ClassVar[dict[str, str]] = {
         "DATA": "DATA_BASE",
         "ESCOPO": "ESCOPO",
         "DOCUMENTO": "DOCUMENTO",
     }
 
-    _BLOCKED_COLUMNS: dict[str, str] = {
+    _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
         "CONTA": "Use list_contas(termo='...') para buscar contas.",
         "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
         "CNPJ_8": "Use cadastro.search() para buscar instituicoes.",
@@ -392,7 +392,7 @@ class COSIFExplorer(BaseExplorer):
         except (ValueError, TypeError):
             raise InvalidScopeError(
                 "documento", str(documento), "valores numericos (ex: 4010, 4016)"
-            )
+            ) from None
         # DOCUMENTO e VARCHAR no parquet. Comparar com INT faz o DuckDB tentar
         # converter a coluna inteira, e um unico valor nao-numerico derruba a
         # query -- descartando tambem as linhas que casariam.

@@ -51,7 +51,39 @@ dev = [
     "ipykernel==6.29.5",
     "openpyxl>=3.1.5",
     "pytest>=9.0.2",
+    # Pin exato: o rule set default do ruff muda entre minors, e um `uvx ruff`
+    # sem versao quebra o CI sozinho. Subir a versao e um PR deliberado.
+    "ruff==0.16.1",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = ["temp"]
+
+[tool.ruff.lint]
+select = [
+    "E4",   # pycodestyle: imports
+    "E7",   # pycodestyle: statements
+    "E9",   # pycodestyle: erros de runtime/sintaxe
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "PIE",  # flake8-pie
+    "SIM",  # flake8-simplify
+    "RUF",  # regras especificas do ruff
+]
+ignore = [
+    # __all__ e agrupado por dominio, com comentario por bloco; ordenar
+    # alfabeticamente destruiria o agrupamento sem ganho nenhum.
+    "RUF022",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Explorers fake espelham os class attributes dos reais; ClassVar so ruido aqui.
+"tests/**" = ["RUF012"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

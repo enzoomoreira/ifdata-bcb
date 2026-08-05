@@ -324,7 +324,8 @@ class BaseCollector(ABC):
                 as_completed(futures), total=len(periods), desc=desc, verbose=verbose
             ):
                 period = futures[future]
-                registros, status, erro_msg = future.result()
+                # erro_msg ja foi logado em debug por _process_single_period
+                registros, status, _erro_msg = future.result()
 
                 if status == CollectStatus.FAILED:
                     periodos_falhos.append(period)

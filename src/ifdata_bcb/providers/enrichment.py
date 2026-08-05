@@ -103,6 +103,7 @@ def _derive_nome_congl_prud(
             zip(
                 df_names["COD_CONGL_PRUD"].astype(str).values,
                 df_names["NOME_CONGL_PRUD"].astype(str).values,
+                strict=True,
             )
         )
         df_cad = df_cad.copy()
@@ -177,7 +178,7 @@ def enrich_with_cadastro(
     if "NOME_CONGL_PRUD" in cadastro_columns:
         df_cad = _derive_nome_congl_prud(df_cad, query_engine)
 
-    cad_cols = ["CNPJ_8", "DATA"] + cadastro_columns
+    cad_cols = ["CNPJ_8", "DATA", *cadastro_columns]
     df_cad = df_cad[[c for c in cad_cols if c in df_cad.columns]]
 
     # Colunas de cadastro presentes para o SELECT

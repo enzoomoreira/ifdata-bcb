@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+
 from ifdata_bcb.core.constants import TIPO_INST_MAP
 from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
 from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
@@ -195,7 +196,7 @@ class TestValoresDownloadPeriodRequiresAllTypes:
         from ifdata_bcb.providers.base_collector import CollectStatus
 
         collector = _make_valores_collector()
-        tipo_que_falha = list(TIPO_INST_MAP.values())[0]
+        tipo_que_falha = next(iter(TIPO_INST_MAP.values()))
 
         def fake_download(url: str, output_path: Path, period: int = 0) -> bool:
             if f"@TipoInstituicao={tipo_que_falha}&" in url:

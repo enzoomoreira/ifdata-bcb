@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar, Literal
 
 import pandas as pd
 
@@ -46,7 +46,7 @@ class IFDATAExplorer(BaseExplorer):
     Para dados cadastrais, use CadastroExplorer.
     """
 
-    _COLUMN_MAP = {
+    _COLUMN_MAP: ClassVar[dict[str, str]] = {
         "AnoMes": "DATA",
         "CodInst": "COD_INST",
         "NomeColuna": "CONTA",
@@ -56,13 +56,13 @@ class IFDATAExplorer(BaseExplorer):
         "Grupo": "GRUPO",
     }
 
-    _DERIVED_COLUMNS: set[str] = {"CNPJ_8", "INSTITUICAO", "ESCOPO"}
+    _DERIVED_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "INSTITUICAO", "ESCOPO"}
 
-    _DROP_COLUMNS = ["TipoInstituicao"]
+    _DROP_COLUMNS: ClassVar[list[str]] = ["TipoInstituicao"]
 
     _DATE_COLUMN = "AnoMes"
 
-    _COLUMN_ORDER = [
+    _COLUMN_ORDER: ClassVar[list[str]] = [
         "DATA",
         "CNPJ_8",
         "INSTITUICAO",
@@ -75,14 +75,14 @@ class IFDATAExplorer(BaseExplorer):
         "GRUPO",
     ]
 
-    _VALID_ESCOPOS = ["individual", "prudencial", "financeiro"]
+    _VALID_ESCOPOS: ClassVar[list[str]] = ["individual", "prudencial", "financeiro"]
 
     _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY
     _ERA_GROUP_COLUMN = "RELATORIO"
     _ERA_SOURCE_NAME = "IFDATA"
     _TRIMESTRAL = True
 
-    _LIST_COLUMNS: dict[str, str] = {
+    _LIST_COLUMNS: ClassVar[dict[str, str]] = {
         "DATA": "AnoMes",
         "ESCOPO": (
             "CASE TipoInstituicao "
@@ -94,7 +94,7 @@ class IFDATAExplorer(BaseExplorer):
         "GRUPO": "Grupo",
     }
 
-    _BLOCKED_COLUMNS: dict[str, str] = {
+    _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
         "CONTA": "Use list_contas(termo='...') para buscar contas.",
         "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
         "COD_INST": "Use cadastro.search(fonte='ifdata') para listar instituicoes.",
@@ -209,7 +209,7 @@ class IFDATAExplorer(BaseExplorer):
         """Coleta frames por escopo. Resolve temporal se instituicao fornecida."""
         extra_conditions = self._build_common_conditions(conta, relatorio, grupo)
         storage_columns = self._storage_columns_for_query(
-            columns, required=["CodInst"] + self._era_required_columns(periodos)
+            columns, required=["CodInst", *self._era_required_columns(periodos)]
         )
         frames: list[pd.DataFrame] = []
 
@@ -240,7 +240,8 @@ class IFDATAExplorer(BaseExplorer):
                 conditions = [
                     build_int_condition("TipoInstituicao", [tipo_inst]),
                     build_int_condition("AnoMes", periodos),
-                ] + extra_conditions
+                    *extra_conditions,
+                ]
 
                 df = self._read_glob(
                     pattern=self._get_pattern(),
@@ -320,6 +321,7 @@ class IFDATAExplorer(BaseExplorer):
                 zip(
                     df["COD_INST"].astype(str).values,
                     df["CNPJ_LIDER_8"].astype(str).values,
+                    strict=True,
                 )
             )
         except Exception as e:
@@ -347,7 +349,8 @@ class IFDATAExplorer(BaseExplorer):
                 build_string_condition("CodInst", cnpjs),
                 build_int_condition("TipoInstituicao", [tipo_inst]),
                 build_int_condition("AnoMes", group.periodos),
-            ] + extra_conditions
+                *extra_conditions,
+            ]
 
             df = self._read_glob(
                 pattern=self._get_pattern(),
@@ -379,7 +382,8 @@ class IFDATAExplorer(BaseExplorer):
                 build_string_condition("CodInst", all_codes),
                 build_int_condition("TipoInstituicao", [tipo_inst]),
                 build_int_condition("AnoMes", list(periodos_key)),
-            ] + extra_conditions
+                *extra_conditions,
+            ]
 
             df = self._read_glob(
                 pattern=self._get_pattern(),
