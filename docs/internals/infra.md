@@ -539,7 +539,7 @@ def emit_user_warning(
 
 Aceita tanto uma string de mensagem (com `category` separado) quanto uma instancia de `Warning` diretamente. No segundo caso, o tipo do warning e extraido automaticamente.
 
-Dual output: chama `warnings.warn()` para o usuario e registra no logger interno em nivel `DEBUG`. Usado por `BaseExplorer._diagnose_empty_result()`, `QueryEngine.read_glob()` e `check_ifdata_era()` para comunicar problemas sem levantar excecao.
+Dual output: chama `warnings.warn()` para o usuario e registra no logger interno em nivel `DEBUG`. Usado por `BaseExplorer._diagnose_empty_result()`, `QueryEngine.read_glob()` e `emit_era_warnings()` para comunicar problemas sem levantar excecao.
 
 ---
 

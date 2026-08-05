@@ -197,7 +197,8 @@ class IncompatibleEraWarning(UserWarning):
         self.boundary = boundary  # Periodo fronteira (ex: 202501)
         self.source = source      # Fonte (ex: "COSIF")
 
-# Emitido automaticamente por check_era_boundary() em core/eras.py
+# Emitido automaticamente por emit_era_warnings() em core/eras.py, a partir do
+# overlap de codigos de conta medido no proprio resultado.
 # Exemplo: cosif.read('2024-12', '2025-01') emite este warning
 ```
 

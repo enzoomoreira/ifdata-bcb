@@ -275,6 +275,17 @@ info = bcb.cosif.describe()
 # }
 ```
 
+### check_era()
+
+Diagnostica se a serie sobrevive a transicao Era 2/Era 3 (202501), sem trazer os
+valores (herdado de BaseExplorer). Agrupa por `DOCUMENTO`. Ver
+[Warning de Compatibilidade](#warning-de-compatibilidade).
+
+```python
+diag = bcb.cosif.check_era('2024-12', '2025-01', escopo='individual')
+diag['grupos']['4010']['status']  # 'renumerado'
+```
+
 ## Colunas Disponiveis
 
 | Coluna | Tipo | Descricao |
@@ -437,14 +448,16 @@ Colunas armazenadas em Parquet (uniformes para todas as eras):
 
 ### Warning de Compatibilidade
 
-Ao consultar periodos que cruzam a fronteira Era 2/Era 3 (202501), um `IncompatibleEraWarning` e emitido automaticamente:
+Ao consultar periodos que cruzam a fronteira Era 2/Era 3 (202501), a biblioteca compara os codigos de conta dos dois lados no proprio resultado e emite `IncompatibleEraWarning`:
 
 ```python
-# Emite IncompatibleEraWarning: codigos de conta foram renumerados
+# Emite IncompatibleEraWarning: 0% dos codigos em comum entre as eras
 df = bcb.cosif.read('2024-12', '2025-01', instituicao='60872504')
 ```
 
-O warning nao bloqueia a query -- apenas alerta que os codigos de conta podem ser incompativeis entre os periodos.
+A renumeracao do COSIF e total: os codigos da Era 2 tem 8 digitos e os da Era 3 tem 10, entao **nenhum** codigo sobrevive a transicao. Mesmo pelo nome da conta a serie nao e continua -- so uma minoria dos nomes se mantem. Trate os periodos antes e depois de 202501 como duas series distintas.
+
+O warning nao bloqueia a query. O diagnostico completo fica em `df.attrs['era']` e pode ser consultado antes com `bcb.cosif.check_era('2024-12', '2025-01')` -- o agrupamento no COSIF e por `DOCUMENTO`. Ver [ifdata.md](ifdata.md#diagnostico-de-era-programatico) para o formato da estrutura.
 
 ## Tratamento de Erros
 

@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 
 from ifdata_bcb.core.entity import EntityLookup
+from ifdata_bcb.core.eras import EraDiagnostic, diagnose_eras, emit_era_warnings
 from ifdata_bcb.domain.exceptions import (
     EmptyFilterWarning,
     InvalidColumnError,
@@ -60,6 +61,8 @@ class BaseExplorer(ABC):
     - _DROP_COLUMNS: Colunas a remover antes do mapeamento
     - _COLUMN_ORDER: Ordem desejada das colunas no output
     - _VALID_ESCOPOS: Lista de escopos validos para _validate_escopo
+    - _ERA_BOUNDARY: Periodo da mudanca de plano contabil (None desliga a checagem)
+    - _ERA_GROUP_COLUMN: Coluna que agrupa contas para a analise de era
     """
 
     _COLUMN_MAP: dict[str, str] = {}
@@ -69,6 +72,10 @@ class BaseExplorer(ABC):
     _COLUMN_ORDER: list[str] = []
     _VALID_ESCOPOS: list[str] = []
     _DATE_COLUMN: str | None = None
+    _ERA_BOUNDARY: int | None = None
+    _ERA_GROUP_COLUMN: str | None = None
+    _ERA_SOURCE_NAME: str = ""
+    _TRIMESTRAL: bool = False
 
     # list() infrastructure -- overridden by subclasses
     _LIST_COLUMNS: dict[str, str] = {}
@@ -372,6 +379,104 @@ class BaseExplorer(ABC):
             df = df[existing + remaining]
 
         return df
+
+    def _era_required_columns(self, periodos: list[int] | None) -> list[str]:
+        """Colunas de dimensao a forcar na query para viabilizar a analise de era.
+
+        `columns=` projeta na propria query, entao um read(columns=['DATA','VALOR'])
+        -- justamente quem esta montando serie temporal -- nao teria como detectar
+        a renumeracao. Sao lidas apenas quando o range cruza o boundary; no caso
+        comum o custo e zero.
+        """
+        if self._ERA_BOUNDARY is None or not periodos:
+            return []
+        cruza = any(p < self._ERA_BOUNDARY for p in periodos) and any(
+            p >= self._ERA_BOUNDARY for p in periodos
+        )
+        if not cruza:
+            return []
+        cols = [self._storage_col("COD_CONTA")]
+        if self._ERA_GROUP_COLUMN:
+            cols.append(self._storage_col(self._ERA_GROUP_COLUMN))
+        return cols
+
+    def _check_eras(
+        self,
+        df: pd.DataFrame,
+        periodos: list[int] | None,
+        *,
+        escopo: str | None = None,
+    ) -> EraDiagnostic | None:
+        """Analisa continuidade dos dados atraves do boundary de era e avisa.
+
+        Roda apos _finalize_read e antes de _filter_columns -- precisa das
+        colunas de dimensao, que o filtro de columns pode remover.
+        """
+        if self._ERA_BOUNDARY is None:
+            return None
+
+        diag = diagnose_eras(
+            df,
+            boundary=self._ERA_BOUNDARY,
+            source=self._ERA_SOURCE_NAME,
+            periodos_solicitados=periodos,
+            group_col=self._ERA_GROUP_COLUMN,
+            escopo=escopo,
+        )
+        emit_era_warnings(diag, stacklevel=4)
+        return diag
+
+    def check_era(
+        self,
+        start: str,
+        end: str | None = None,
+        *,
+        escopo: str | None = None,
+    ) -> EraDiagnostic:
+        """Diagnostico de continuidade entre eras, sem trazer os valores.
+
+        Le apenas as colunas de dimensao (data, codigo de conta e o grupo da
+        fonte). Util para decidir como montar a query antes de puxar os dados,
+        ou para recuperar o diagnostico quando o DataFrame ja perdeu `attrs`
+        no caminho. O ganho de tempo sobre um read() completo e modesto -- a
+        leitura do parquet domina o custo.
+
+        Emite os mesmos warnings de read(): o retorno estruturado e um canal
+        adicional, nao um substituto silencioso.
+
+        Args:
+            start: Periodo inicial. Formato: '2024-12' ou '202412'.
+            end: Periodo final. Se None, apenas start.
+            escopo: Filtro de escopo, necessario para detectar migracao.
+
+        Raises:
+            NotImplementedError: Se o explorer nao declara boundary de era.
+        """
+        if self._ERA_BOUNDARY is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} nao tem transicao de era conhecida."
+            )
+
+        cols = ["DATA", "COD_CONTA"]
+        if self._ERA_GROUP_COLUMN:
+            cols.append(self._ERA_GROUP_COLUMN)
+
+        df = self.read(start, end, escopo=escopo, columns=cols)  # type: ignore[attr-defined]
+        diag = df.attrs.get("era")
+        if diag is not None:
+            return diag
+
+        # read() vazio nao passa pela analise -- devolve a estrutura assim mesmo
+        return diagnose_eras(
+            df,
+            boundary=self._ERA_BOUNDARY,
+            source=self._ERA_SOURCE_NAME,
+            periodos_solicitados=self._resolve_date_range(
+                start, end, trimestral=self._TRIMESTRAL
+            ),
+            group_col=self._ERA_GROUP_COLUMN,
+            escopo=escopo,
+        )
 
     def _check_null_value_instituicoes(self, df: pd.DataFrame) -> None:
         """Emite warning para instituicoes com todos os VALOR NULL."""

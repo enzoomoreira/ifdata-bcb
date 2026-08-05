@@ -250,6 +250,11 @@ class COSIFExplorer(BaseExplorer):
     _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
     _DATE_COLUMN = "DATA_BASE"
 
+    # Analise de era (ver core/eras.py)
+    _ERA_BOUNDARY = COSIF_ERA_BOUNDARY   # 202501
+    _ERA_GROUP_COLUMN = "DOCUMENTO"
+    _ERA_SOURCE_NAME = "COSIF"
+
     _ESCOPOS = {
         "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
         "prudencial": {"subdir": "cosif/prudencial", "prefix": "cosif_prud"},
@@ -382,6 +387,12 @@ class IFDATAExplorer(BaseExplorer):
         "NomeRelatorio": "RELATORIO",
         "Grupo": "GRUPO",
     }
+
+    # Analise de era (ver core/eras.py)
+    _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY   # 202503
+    _ERA_GROUP_COLUMN = "RELATORIO"
+    _ERA_SOURCE_NAME = "IFDATA"
+    _TRIMESTRAL = True
 
     def read(
         self,

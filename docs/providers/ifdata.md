@@ -260,6 +260,16 @@ Retorna informacoes sobre os dados disponiveis (herdado de BaseExplorer).
 info = bcb.ifdata.describe()
 ```
 
+### check_era()
+
+Diagnostica se a serie sobrevive a transicao de era de 202503, sem trazer os
+valores (herdado de BaseExplorer). Ver
+[Diagnostico de era programatico](#diagnostico-de-era-programatico).
+
+```python
+diag = bcb.ifdata.check_era('2024-12', '2025-03', escopo='prudencial')
+```
+
 ## Colunas Disponiveis
 
 | Coluna | Tipo | Descricao |
@@ -406,12 +416,12 @@ Mapeamento para colunas de apresentacao:
 
 ### Warnings de Compatibilidade entre Eras
 
-A partir de 202503 (marco/2025), o BCB mudou a estrutura dos dados IFDATA. A biblioteca detecta automaticamente cenarios problematicos e emite warnings especificos:
+A partir de 202503 (marco/2025), o BCB mudou a estrutura dos dados IFDATA. Quando o periodo solicitado cobre os dois lados dessa transicao, a biblioteca compara os codigos de conta antes e depois no proprio resultado e avisa conforme o que mediu. Relatorios cujas contas continuam as mesmas nao geram warning nenhum.
 
-**IncompatibleEraWarning**: Codigos de conta renumerados em relatorios contabeis (Resumo, Ativo, Passivo, DRE):
+**IncompatibleEraWarning**: Codigos de conta renumerados (Resumo, Ativo, Passivo, DRE, Segmentacao):
 
 ```python
-# Emite IncompatibleEraWarning: codigos de conta foram renumerados
+# Emite IncompatibleEraWarning: 30% dos codigos em comum entre as eras
 df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', relatorio='Resumo')
 ```
 
@@ -419,8 +429,7 @@ df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', relatorio='Re
 
 ```python
 # Emite ScopeMigrationWarning: periodos < 202503 nao tem dados no escopo prudencial
-df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', escopo='prudencial',
-                     relatorio='Carteira de credito ativa')
+df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', escopo='prudencial')
 ```
 
 **DroppedReportWarning**: Relatorio descontinuado (ex: "por nivel de risco da operacao" apos 202412):
@@ -430,9 +439,38 @@ df = bcb.ifdata.read('2024-12', '2025-03', instituicao='60872504', escopo='prude
 df = bcb.ifdata.read('2025-03', relatorio='Carteira de credito ativa - por nivel de risco da operacao')
 ```
 
-Relatorios com contas estaveis entre eras (credit reports, "Informacoes de Capital") **nao** emitem `IncompatibleEraWarning`.
+**PartialDataWarning** (`reason='era_coverage_gap'`): Parte do resultado cobre so um lado da transicao, sem causa conhecida -- inclui relatorios que o BCB **introduziu** em 202503 e cache incompleto:
+
+```python
+# Este relatorio so existe a partir de 202503: metade da serie pedida nao existe
+df = bcb.ifdata.read('2024-12', '2025-03',
+                     relatorio='Carteira de credito ativa - por carteiras de instrumentos financeiros')
+```
 
 Nenhum warning bloqueia a query -- apenas alertam sobre potenciais incompatibilidades nos resultados.
+
+### Diagnostico de era programatico
+
+Os warnings sao deduplicados pelo Python (a segunda chamada identica nao reavisa) e nao viajam com o DataFrame. Para consumo programatico, o mesmo diagnostico esta disponivel como estrutura:
+
+```python
+df = bcb.ifdata.read('2024-12', '2025-03', relatorio='Resumo')
+df.attrs['era']['grupos']['Resumo']
+# {'status': 'renumerado', 'n_pre': 9, 'n_post': 10,
+#  'n_comum': 3, 'pct_overlap': 30.0, 'motivo': None}
+```
+
+E consultavel antes de puxar os dados, com `check_era()` -- que le apenas as colunas de dimensao e serializa direto para JSON:
+
+```python
+diag = bcb.ifdata.check_era('2024-12', '2025-03')
+diag['cruza_boundary']       # True
+diag['periodos_ausentes']    # []
+[nome for nome, g in diag['grupos'].items() if g['status'] == 'estavel']
+# relatorios cuja serie atravessa a transicao sem quebra
+```
+
+Valores de `status`: `estavel` (contas praticamente iguais dos dois lados), `renumerado` (menos de 90% dos codigos em comum), `so_pre` e `so_post` (o grupo so tem dados de um lado). O campo `motivo` traz a causa quando conhecida: `descontinuado` ou `migracao_escopo`.
 
 ## Diferenca Entre COSIF e IFDATA
 

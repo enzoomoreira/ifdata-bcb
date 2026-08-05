@@ -3,23 +3,25 @@
 import warnings
 from pathlib import Path
 
+import pandas as pd
 import pytest
+
 from ifdata_bcb.core.eras import (
     COSIF_ERA_BOUNDARY,
     IFDATA_ERA_BOUNDARY,
     _is_credit_report,
-    _is_stable_report,
     _match_dropped_report,
     _normalize_report_name,
     build_cosif_select,
-    check_era_boundary,
-    check_ifdata_era,
     detect_cosif_csv_era,
+    diagnose_eras,
+    emit_era_warnings,
 )
 from ifdata_bcb.domain.exceptions import (
     DataProcessingError,
     DroppedReportWarning,
     IncompatibleEraWarning,
+    PartialDataWarning,
     ScopeMigrationWarning,
 )
 
@@ -36,6 +38,9 @@ METADATA_LINES = [
     "Fonte: Instituicoes financeiras",
 ]
 
+CREDITO_DROPPED = "Carteira de credito ativa - por nivel de risco da operacao"
+CREDITO_NOVO = "Carteira de credito ativa - por carteiras de instrumentos financeiros"
+
 
 def _write_csv(path: Path, header: str, rows: list[str] | None = None) -> Path:
     lines = METADATA_LINES + [header]
@@ -43,6 +48,40 @@ def _write_csv(path: Path, header: str, rows: list[str] | None = None) -> Path:
         lines.extend(rows)
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _make_df(
+    rows: list[tuple[int, str, str]], date_as_int: bool = False
+) -> pd.DataFrame:
+    """Constroi DataFrame de (periodo YYYYMM, grupo, codigo de conta)."""
+    df = pd.DataFrame(rows, columns=["_p", "RELATORIO", "COD_CONTA"])
+    if date_as_int:
+        df["DATA"] = df["_p"]
+    else:
+        df["DATA"] = pd.to_datetime(df["_p"].astype(str) + "01", format="%Y%m%d")
+    return df.drop(columns="_p")
+
+
+def _diagnose(rows, solicitados, **kwargs):
+    """diagnose_eras com os defaults do IFDATA."""
+    kwargs.setdefault("group_col", "RELATORIO")
+    return diagnose_eras(
+        _make_df(rows, date_as_int=kwargs.pop("date_as_int", False)),
+        boundary=IFDATA_ERA_BOUNDARY,
+        source="IFDATA",
+        periodos_solicitados=solicitados,
+        **kwargs,
+    )
+
+
+def _emit(diag) -> list[warnings.WarningMessage]:
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        emit_era_warnings(diag)
+    return list(w)
+
+
+CRUZA = [202412, 202503]
 
 
 # =========================================================================
@@ -176,96 +215,288 @@ class TestBuildCosifSelect:
 
 
 # =========================================================================
-# check_era_boundary
+# diagnose_eras -- cobertura de periodos e gatilho da analise
 # =========================================================================
 
 
-class TestCheckEraBoundary:
-    def test_crossing_boundary_emits_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202501], COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 1
-            assert issubclass(w[0].category, IncompatibleEraWarning)
+class TestDiagnoseErasCobertura:
+    def test_df_vazio_nao_cruza(self) -> None:
+        diag = diagnose_eras(
+            pd.DataFrame(),
+            boundary=IFDATA_ERA_BOUNDARY,
+            source="IFDATA",
+            periodos_solicitados=CRUZA,
+        )
+        assert diag["cruza_boundary"] is False
+        assert diag["grupos"] == {}
 
-    def test_all_before_boundary_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202401, 202412], COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 0
+    def test_solicitados_none_nao_cruza(self) -> None:
+        diag = _diagnose([(202412, "Ativo", "1"), (202503, "Ativo", "2")], None)
+        assert diag["cruza_boundary"] is False
 
-    def test_all_after_boundary_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202501, 202506], COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 0
+    def test_range_so_antes_do_boundary_nao_cruza(self) -> None:
+        diag = _diagnose(
+            [(202409, "Ativo", "1"), (202412, "Ativo", "1")], [202409, 202412]
+        )
+        assert diag["cruza_boundary"] is False
+        assert diag["grupos"] == {}
 
-    def test_single_date_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202501], COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 0
+    def test_range_so_depois_do_boundary_nao_cruza(self) -> None:
+        diag = _diagnose(
+            [(202503, "Ativo", "1"), (202506, "Ativo", "1")], [202503, 202506]
+        )
+        assert diag["cruza_boundary"] is False
 
-    def test_none_dates_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary(None, COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 0
+    def test_boundary_exato_no_inicio_nao_cruza(self) -> None:
+        """Range comecando no boundary esta inteiro na era nova."""
+        diag = _diagnose([(202503, "Ativo", "1")], [202503, 202506])
+        assert diag["cruza_boundary"] is False
 
-    def test_empty_list_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([], COSIF_ERA_BOUNDARY, "COSIF")
-            assert len(w) == 0
+    def test_range_cruzando_ativa_analise(self) -> None:
+        diag = _diagnose([(202412, "Ativo", "1"), (202503, "Ativo", "2")], CRUZA)
+        assert diag["cruza_boundary"] is True
 
-    def test_boundary_exact_on_max_triggers(self) -> None:
-        """max == boundary: min < boundary <= max deve ser True."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202501], COSIF_ERA_BOUNDARY, "X")
-            assert len(w) == 1
+    def test_periodos_presentes_e_ausentes(self) -> None:
+        diag = _diagnose([(202503, "Ativo", "1")], CRUZA)
+        assert diag["periodos_presentes"] == [202503]
+        assert diag["periodos_ausentes"] == [202412]
 
-    def test_boundary_exact_on_min_no_warning(self) -> None:
-        """min == boundary: min < boundary is False."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202501, 202506], COSIF_ERA_BOUNDARY, "X")
-            assert len(w) == 0
+    def test_data_como_int_yyyymm(self) -> None:
+        """Aceita coluna de data ja em int, nao so datetime."""
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202503, "Ativo", "2")], CRUZA, date_as_int=True
+        )
+        assert diag["cruza_boundary"] is True
+        assert diag["grupos"]["Ativo"]["status"] == "renumerado"
 
-    def test_ifdata_boundary_works(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202503], IFDATA_ERA_BOUNDARY, "IFDATA")
-            assert len(w) == 1
+    def test_sem_coluna_de_conta_so_cobertura(self) -> None:
+        """columns= pode remover COD_CONTA: degrada para cobertura de periodo."""
+        df = _make_df([(202412, "Ativo", "1"), (202503, "Ativo", "2")]).drop(
+            columns="COD_CONTA"
+        )
+        diag = diagnose_eras(
+            df,
+            boundary=IFDATA_ERA_BOUNDARY,
+            source="IFDATA",
+            periodos_solicitados=CRUZA,
+            group_col="RELATORIO",
+        )
+        assert diag["cruza_boundary"] is True
+        assert diag["grupos"] == {}
 
-    def test_unsorted_dates_still_detects(self) -> None:
-        """Datas fora de ordem devem funcionar (usa min/max)."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202506, 202401, 202501], COSIF_ERA_BOUNDARY, "X")
-            assert len(w) == 1
+    def test_sem_group_col_analisa_global(self) -> None:
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202503, "Passivo", "2")], CRUZA, group_col=None
+        )
+        assert list(diag["grupos"]) == ["IFDATA"]
+        assert diag["grupos"]["IFDATA"]["status"] == "renumerado"
 
-    def test_warning_message_includes_source_name(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202501], COSIF_ERA_BOUNDARY, "MeuFonte")
-            assert "MeuFonte" in str(w[0].message)
+    def test_group_col_ausente_do_df_analisa_global(self) -> None:
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202503, "Ativo", "2")],
+            CRUZA,
+            group_col="NAO_EXISTE",
+        )
+        assert list(diag["grupos"]) == ["IFDATA"]
 
-    def test_warning_message_includes_boundary(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202501], COSIF_ERA_BOUNDARY, "X")
-            assert "202501" in str(w[0].message)
 
-    def test_era_boundary_message_is_source_aware(self) -> None:
-        """Warning message deve usar o source_name fornecido, nao hardcoded."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_era_boundary([202412, 202503], IFDATA_ERA_BOUNDARY, "IFDATA")
-            msg = str(w[0].message)
-            assert "IFDATA" in msg
-            # Nao deve mencionar COSIF quando o source e IFDATA
-            assert "COSIF" not in msg
+# =========================================================================
+# diagnose_eras -- classificacao por overlap de contas
+# =========================================================================
+
+
+class TestDiagnoseErasClassificacao:
+    def test_contas_identicas_sao_estaveis(self) -> None:
+        diag = _diagnose(
+            [(202412, "Credito", "1"), (202412, "Credito", "2")]
+            + [(202503, "Credito", "1"), (202503, "Credito", "2")],
+            CRUZA,
+        )
+        grupo = diag["grupos"]["Credito"]
+        assert grupo["status"] == "estavel"
+        assert grupo["pct_overlap"] == 100.0
+        assert grupo["n_comum"] == 2
+
+    def test_contas_disjuntas_sao_renumeradas(self) -> None:
+        diag = _diagnose([(202412, "Ativo", "1"), (202503, "Ativo", "9")], CRUZA)
+        grupo = diag["grupos"]["Ativo"]
+        assert grupo["status"] == "renumerado"
+        assert grupo["pct_overlap"] == 0.0
+
+    def test_threshold_no_limite_e_estavel(self) -> None:
+        """9 de 10 contas em comum = 90% = exatamente o threshold."""
+        pre = [(202412, "R", str(i)) for i in range(10)]
+        post = [(202503, "R", str(i)) for i in range(1, 11)]
+        grupo = _diagnose(pre + post, CRUZA)["grupos"]["R"]
+        assert grupo["pct_overlap"] == 90.0
+        assert grupo["status"] == "estavel"
+
+    def test_abaixo_do_threshold_e_renumerado(self) -> None:
+        """8 de 10 contas em comum = 80% < 90%."""
+        pre = [(202412, "R", str(i)) for i in range(10)]
+        post = [(202503, "R", str(i)) for i in range(2, 12)]
+        grupo = _diagnose(pre + post, CRUZA)["grupos"]["R"]
+        assert grupo["pct_overlap"] == 80.0
+        assert grupo["status"] == "renumerado"
+
+    def test_pct_usa_o_maior_lado_como_denominador(self) -> None:
+        """Lado novo com mais contas nao pode inflar o overlap."""
+        pre = [(202412, "R", "1")]
+        post = [(202503, "R", str(i)) for i in range(1, 5)]
+        grupo = _diagnose(pre + post, CRUZA)["grupos"]["R"]
+        assert grupo["n_comum"] == 1
+        assert grupo["pct_overlap"] == 25.0
+
+    def test_grupo_so_antes_do_boundary(self) -> None:
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202412, "Sumiu", "5"), (202503, "Ativo", "1")],
+            CRUZA,
+        )
+        assert diag["grupos"]["Sumiu"]["status"] == "so_pre"
+        assert diag["grupos"]["Sumiu"]["n_post"] == 0
+
+    def test_grupo_so_depois_do_boundary(self) -> None:
+        """O gap que a deteccao por tabela nao pegava: relatorio introduzido."""
+        diag = _diagnose([(202503, CREDITO_NOVO, "1")], CRUZA)
+        assert diag["grupos"][CREDITO_NOVO]["status"] == "so_post"
+        assert diag["grupos"][CREDITO_NOVO]["n_pre"] == 0
+
+    def test_grupos_independentes_na_mesma_query(self) -> None:
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202503, "Ativo", "9")]
+            + [(202412, "Credito", "7"), (202503, "Credito", "7")],
+            CRUZA,
+        )
+        assert diag["grupos"]["Ativo"]["status"] == "renumerado"
+        assert diag["grupos"]["Credito"]["status"] == "estavel"
+
+
+# =========================================================================
+# diagnose_eras -- motivo (as tabelas explicam, nao detectam)
+# =========================================================================
+
+
+class TestDiagnoseErasMotivo:
+    def test_relatorio_descontinuado_ganha_motivo(self) -> None:
+        diag = _diagnose([(202412, CREDITO_DROPPED, "1")], CRUZA)
+        assert diag["grupos"][CREDITO_DROPPED]["motivo"] == "descontinuado"
+
+    def test_credito_com_escopo_filtrado_ganha_motivo(self) -> None:
+        diag = _diagnose(
+            [(202412, "Carteira de credito ativa - por indexador", "1")],
+            CRUZA,
+            escopo="financeiro",
+        )
+        grupo = diag["grupos"]["Carteira de credito ativa - por indexador"]
+        assert grupo["motivo"] == "migracao_escopo"
+
+    def test_credito_sem_escopo_filtrado_nao_ganha_motivo(self) -> None:
+        """Sem filtro de escopo os dois lados vem juntos -- nao ha migracao."""
+        diag = _diagnose(
+            [(202412, "Carteira de credito ativa - por indexador", "1")], CRUZA
+        )
+        grupo = diag["grupos"]["Carteira de credito ativa - por indexador"]
+        assert grupo["motivo"] is None
+
+    def test_relatorio_desconhecido_fica_sem_motivo(self) -> None:
+        """Mudanca futura do BCB e detectada mesmo sem entrada na tabela."""
+        diag = _diagnose([(202503, "Relatorio Que Ainda Nao Existe", "1")], CRUZA)
+        grupo = diag["grupos"]["Relatorio Que Ainda Nao Existe"]
+        assert grupo["status"] == "so_post"
+        assert grupo["motivo"] is None
+
+
+# =========================================================================
+# emit_era_warnings
+# =========================================================================
+
+
+class TestEmitEraWarnings:
+    def test_nao_cruzando_nao_emite(self) -> None:
+        diag = _diagnose([(202503, "Ativo", "1")], [202503, 202506])
+        assert _emit(diag) == []
+
+    def test_estavel_nao_emite(self) -> None:
+        diag = _diagnose([(202412, "Credito", "1"), (202503, "Credito", "1")], CRUZA)
+        assert _emit(diag) == []
+
+    def test_renumerado_emite_incompatible_era(self) -> None:
+        diag = _diagnose([(202412, "Ativo", "1"), (202503, "Ativo", "9")], CRUZA)
+        w = _emit(diag)
+        assert len(w) == 1
+        assert issubclass(w[0].category, IncompatibleEraWarning)
+
+    def test_mensagem_cita_descontinuidade_e_overlap(self) -> None:
+        pre = [(202412, "R", str(i)) for i in range(10)]
+        post = [(202503, "R", str(i)) for i in range(2, 12)]
+        msg = str(_emit(_diagnose(pre + post, CRUZA))[0].message)
+        assert "80.0%" in msg
+        assert "duas series" in msg
+
+    def test_varios_renumerados_agregam_em_um_warning(self) -> None:
+        diag = _diagnose(
+            [(202412, "Ativo", "1"), (202503, "Ativo", "9")]
+            + [(202412, "Passivo", "2"), (202503, "Passivo", "8")],
+            CRUZA,
+        )
+        w = _emit(diag)
+        assert len(w) == 1
+        assert "Ativo" in str(w[0].message)
+        assert "Passivo" in str(w[0].message)
+
+    def test_dropped_emite_dropped_report_warning(self) -> None:
+        diag = _diagnose([(202412, CREDITO_DROPPED, "1")], CRUZA)
+        w = _emit(diag)
+        assert len(w) == 1
+        assert issubclass(w[0].category, DroppedReportWarning)
+        assert w[0].message.last_period == 202412
+
+    def test_migracao_de_escopo_emite_scope_migration(self) -> None:
+        diag = _diagnose(
+            [(202412, "Carteira de credito ativa - por indexador", "1")],
+            CRUZA,
+            escopo="financeiro",
+        )
+        w = _emit(diag)
+        assert len(w) == 1
+        assert issubclass(w[0].category, ScopeMigrationWarning)
+        assert "prudencial" in str(w[0].message)
+
+    def test_lacuna_sem_explicacao_emite_partial_data(self) -> None:
+        diag = _diagnose([(202503, "Relatorio Novo", "1")], CRUZA)
+        w = _emit(diag)
+        assert len(w) == 1
+        assert issubclass(w[0].category, PartialDataWarning)
+        assert w[0].message.reason == "era_coverage_gap"
+
+    def test_lacunas_sem_explicacao_agregam_em_um_warning(self) -> None:
+        diag = _diagnose(
+            [(202503, "Novo A", "1"), (202503, "Novo B", "2"), (202412, "Velho", "3")],
+            CRUZA,
+        )
+        partial = [x for x in _emit(diag) if issubclass(x.category, PartialDataWarning)]
+        assert len(partial) == 1
+        assert partial[0].message.detail["so_post"] == ["Novo A", "Novo B"]
+        assert partial[0].message.detail["so_pre"] == ["Velho"]
+
+    def test_dropped_e_migracao_saem_juntos(self) -> None:
+        diag = _diagnose([(202412, CREDITO_DROPPED, "1")], CRUZA, escopo="financeiro")
+        cats = {x.category for x in _emit(diag)}
+        assert DroppedReportWarning in cats
+        assert IncompatibleEraWarning not in cats
+
+    def test_source_aparece_na_mensagem(self) -> None:
+        df = _make_df([(202412, "4010", "1"), (202501, "4010", "9")])
+        diag = diagnose_eras(
+            df.rename(columns={"RELATORIO": "DOCUMENTO"}),
+            boundary=COSIF_ERA_BOUNDARY,
+            source="COSIF",
+            periodos_solicitados=[202412, 202501],
+            group_col="DOCUMENTO",
+        )
+        msg = str(_emit(diag)[0].message)
+        assert "COSIF" in msg
+        assert "IFDATA" not in msg
 
 
 # =========================================================================
@@ -329,31 +560,6 @@ class TestIsCreditReport:
 
 
 # =========================================================================
-# _is_stable_report
-# =========================================================================
-
-
-class TestIsStableReport:
-    def test_credit_report_is_stable(self) -> None:
-        assert _is_stable_report("Carteira de credito ativa") is True
-
-    def test_informacoes_capital_is_stable(self) -> None:
-        assert _is_stable_report("Informacoes de Capital") is True
-
-    def test_informacoes_capital_with_accents(self) -> None:
-        assert _is_stable_report("Informacoes de Capital") is True
-
-    def test_resumo_is_not_stable(self) -> None:
-        assert _is_stable_report("Resumo") is False
-
-    def test_ativo_is_not_stable(self) -> None:
-        assert _is_stable_report("Ativo") is False
-
-    def test_none_is_not_stable(self) -> None:
-        assert _is_stable_report(None) is False
-
-
-# =========================================================================
 # _match_dropped_report
 # =========================================================================
 
@@ -379,212 +585,3 @@ class TestMatchDroppedReport:
 
     def test_none_returns_none(self) -> None:
         assert _match_dropped_report(None) is None
-
-
-# =========================================================================
-# check_ifdata_era
-# =========================================================================
-
-
-class TestCheckIfdataEra:
-    """Testes para check_ifdata_era -- verificacoes de era IFDATA Valores."""
-
-    # --- Sem warning ---
-
-    def test_none_dates_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(None)
-            assert len(w) == 0
-
-    def test_empty_dates_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([])
-            assert len(w) == 0
-
-    def test_all_before_boundary_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202406, 202412], relatorio="Resumo")
-            assert len(w) == 0
-
-    def test_all_after_boundary_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202503, 202506], relatorio="Resumo")
-            assert len(w) == 0
-
-    def test_single_date_no_era_warning(self) -> None:
-        """Single date nao cruza boundary -- sem IncompatibleEra."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412], relatorio="Resumo")
-            assert len(w) == 0
-
-    # --- IncompatibleEraWarning ---
-
-    def test_accounting_report_crossing_boundary_emits_incompatible(self) -> None:
-        """Resumo/Ativo/Passivo/DRE cruzando boundary -> IncompatibleEraWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Resumo")
-            assert len(w) == 1
-            assert issubclass(w[0].category, IncompatibleEraWarning)
-
-    def test_none_relatorio_crossing_boundary_emits_incompatible(self) -> None:
-        """relatorio=None nao e estavel -> emite IncompatibleEraWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio=None)
-            assert len(w) == 1
-            assert issubclass(w[0].category, IncompatibleEraWarning)
-
-    def test_incompatible_warning_has_correct_attributes(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Ativo")
-            msg = w[0].message
-            assert msg.boundary == IFDATA_ERA_BOUNDARY
-            assert msg.source == "IFDATA"
-
-    # --- Stable reports: NO IncompatibleEraWarning ---
-
-    def test_credit_report_crossing_boundary_no_incompatible(self) -> None:
-        """Credit report e estavel -- nao emite IncompatibleEraWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Carteira de credito ativa")
-            incompatible = [
-                x for x in w if issubclass(x.category, IncompatibleEraWarning)
-            ]
-            assert len(incompatible) == 0
-
-    def test_capital_info_crossing_boundary_no_incompatible(self) -> None:
-        """Informacoes de Capital e estavel."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Informacoes de Capital")
-            incompatible = [
-                x for x in w if issubclass(x.category, IncompatibleEraWarning)
-            ]
-            assert len(incompatible) == 0
-
-    # --- ScopeMigrationWarning ---
-
-    def test_credit_financeiro_crossing_boundary_emits_scope_migration(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412, 202503],
-                relatorio="Carteira de credito ativa",
-                escopo="financeiro",
-            )
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            assert len(migration) == 1
-
-    def test_credit_prudencial_crossing_boundary_emits_scope_migration(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412, 202503],
-                relatorio="Carteira de credito ativa",
-                escopo="prudencial",
-            )
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            assert len(migration) == 1
-
-    def test_scope_migration_attributes_financeiro(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412, 202503],
-                relatorio="Carteira de credito ativa",
-                escopo="financeiro",
-            )
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            msg = migration[0].message
-            assert msg.escopo_pre == "financeiro"
-            assert msg.escopo_post == "prudencial"
-            assert msg.boundary == IFDATA_ERA_BOUNDARY
-
-    def test_credit_no_escopo_crossing_boundary_no_scope_migration(self) -> None:
-        """escopo=None nao dispara ScopeMigrationWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412, 202503],
-                relatorio="Carteira de credito ativa",
-                escopo=None,
-            )
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            assert len(migration) == 0
-
-    def test_non_credit_report_no_scope_migration(self) -> None:
-        """Resumo com escopo=financeiro nao dispara ScopeMigrationWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Resumo", escopo="financeiro")
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            assert len(migration) == 0
-
-    # --- DroppedReportWarning ---
-
-    def test_dropped_report_after_last_period_emits_warning(self) -> None:
-        """Periodo apos last_period -> DroppedReportWarning, mesmo sem cruzar boundary."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202503],
-                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
-            )
-            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
-            assert len(dropped) == 1
-            assert dropped[0].message.last_period == 202412
-
-    def test_dropped_report_within_last_period_no_warning(self) -> None:
-        """Periodo <= last_period -> sem DroppedReportWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412],
-                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
-            )
-            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
-            assert len(dropped) == 0
-
-    def test_non_dropped_report_no_dropped_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202503], relatorio="Resumo")
-            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
-            assert len(dropped) == 0
-
-    # --- Combinacao de warnings ---
-
-    def test_dropped_credit_financeiro_crossing_emits_two_warnings(self) -> None:
-        """Dropped credit + escopo financeiro crossing boundary:
-        DroppedReportWarning + ScopeMigrationWarning. Nao IncompatibleEraWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era(
-                [202412, 202503],
-                relatorio="Carteira de credito ativa - por nivel de risco da operacao",
-                escopo="financeiro",
-            )
-            dropped = [x for x in w if issubclass(x.category, DroppedReportWarning)]
-            migration = [x for x in w if issubclass(x.category, ScopeMigrationWarning)]
-            incompatible = [
-                x for x in w if issubclass(x.category, IncompatibleEraWarning)
-            ]
-            assert len(dropped) == 1
-            assert len(migration) == 1
-            assert len(incompatible) == 0
-
-    def test_accounting_report_no_escopo_crossing_emits_only_incompatible(self) -> None:
-        """Resumo sem escopo cruzando boundary: apenas IncompatibleEraWarning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            check_ifdata_era([202412, 202503], relatorio="Resumo", escopo=None)
-            assert len(w) == 1
-            assert issubclass(w[0].category, IncompatibleEraWarning)

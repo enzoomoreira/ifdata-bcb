@@ -840,9 +840,11 @@ class EntityLookup:  # em core/entity/lookup.py
 
 O modulo `eras` centraliza toda logica de deteccao e tratamento das diferentes eras de formato do BCB:
 
-1. **Deteccao**: Identifica a era de um CSV COSIF pelo header
+1. **Deteccao de formato**: Identifica a era de um CSV COSIF pelo header
 2. **SQL Building**: Gera queries que normalizam qualquer era para um schema uniforme
-3. **Warnings**: Alerta quando uma query abrange periodos com codigos de conta incompativeis
+3. **Diagnostico de continuidade**: Mede, no dado retornado, se a serie sobrevive a transicao de era -- e emite os warnings correspondentes
+
+O diagnostico e **derivado do dado**, nao de tabelas de metadados: `diagnose_eras()` compara os conjuntos de codigos de conta dos dois lados do boundary. As tabelas do modulo servem apenas para explicar *por que* uma lacuna existe quando a causa e conhecida.
 
 ### Constantes
 
@@ -882,38 +884,72 @@ Output uniforme: `DATA_BASE, CNPJ, NOME_INSTITUICAO, DOCUMENTO, CONTA, NOME_CONT
 - **Era 1**: Mapeia colunas antigas (`"DATA"` -> `DATA_BASE`, `"NOME INSTITUICAO"` -> `NOME_INSTITUICAO`), `CAST(CONTA AS BIGINT)` para strip leading zeros, `UPPER("NOME CONTA")`
 - **Era 2/3**: Query padrao com `UPPER(NOME_CONTA)` para normalizar Title Case da Era 3
 
-### check_era_boundary()
+### diagnose_eras()
 
 ```python
-def check_era_boundary(
-    dates: list[int] | None,
+def diagnose_eras(
+    df: pd.DataFrame,
+    *,
     boundary: int,
-    source_name: str,
-) -> None:
-    """Emite IncompatibleEraWarning se dates cruzam o boundary.
-    Usado pelo COSIF. Para IFDATA, usar check_ifdata_era()."""
+    source: str,
+    periodos_solicitados: list[int] | None,
+    group_col: str | None = None,   # "RELATORIO" (IFDATA) | "DOCUMENTO" (COSIF)
+    date_col: str = "DATA",
+    account_col: str = "COD_CONTA",
+    escopo: str | None = None,
+) -> EraDiagnostic
 ```
 
-Condicao: `min(dates) < boundary <= max(dates)`. Nao bloqueia a query -- apenas emite `warnings.warn()`.
+Chamado por `BaseExplorer._check_eras()` apos `_finalize_read()` e antes de `_filter_columns()`. So analisa quando o range **solicitado** cobre os dois lados do boundary -- uma query inteira dentro de uma era nao gera diagnostico nem warning.
 
-### check_ifdata_era()
+Para cada grupo, compara os conjuntos de codigos de conta pre e pos boundary e classifica em `status`:
+
+| status | condicao | warning |
+|--------|----------|---------|
+| `estavel` | overlap >= `_STABLE_OVERLAP_THRESHOLD` (0.9) | nenhum |
+| `renumerado` | overlap abaixo do threshold | `IncompatibleEraWarning` |
+| `so_pre` | grupo sem dados apos o boundary | conforme `motivo` |
+| `so_post` | grupo sem dados antes do boundary | conforme `motivo` |
+
+Reducao via `drop_duplicates()` antes de agrupar: no bulk IFDATA de 202412+202503, 1.592.353 linhas viram 755 antes do agrupamento. Overhead medido de um `read()` cruzando o boundary: 7% (IFDATA) a 12% (COSIF).
+
+Degrada quando o chamador restringiu `columns`: sem `group_col` a analise e global; sem `account_col` fica so a cobertura de periodos. Para evitar isso no caso que mais importa, `BaseExplorer._era_required_columns()` forca as colunas de dimensao na query -- **apenas** quando o range cruza o boundary.
+
+### EraDiagnostic
+
+`TypedDict` serializavel (`json.dumps` direto), exposto em `df.attrs["era"]` e como retorno de `explorer.check_era()`:
 
 ```python
-def check_ifdata_era(
-    dates: list[int] | None,
-    relatorio: str | None = None,
-    escopo: str | None = None,
-) -> None:
-    """Verificacoes de era especificas para IFDATA Valores."""
+{
+    "source": "IFDATA",
+    "boundary": 202503,
+    "cruza_boundary": True,
+    "periodos_solicitados": [202412, 202503],
+    "periodos_presentes": [202412, 202503],
+    "periodos_ausentes": [],
+    "grupos": {
+        "Resumo": {
+            "status": "renumerado", "n_pre": 9, "n_post": 10,
+            "n_comum": 3, "pct_overlap": 30.0, "motivo": None,
+        },
+    },
+}
 ```
 
-Emite ate 3 tipos de warning conforme o cenario:
+### emit_era_warnings()
 
-1. **`DroppedReportWarning`**: Relatorio descontinuado apos 202412 (ex: "Carteira de credito ativa - por nivel de risco da operacao").
-2. **`ScopeMigrationWarning`**: Relatorios de credito com escopo filtrado -- migraram de `financeiro` para `prudencial` a partir de 202503. Emitido quando `escopo` e `"financeiro"` ou `"prudencial"` e a query cruza o boundary.
-3. **`IncompatibleEraWarning`**: Contas renumeradas entre eras. **Nao emitido** para relatorios com contas estaveis (credit reports, "Informacoes de Capital").
+```python
+def emit_era_warnings(diag: EraDiagnostic, *, stacklevel: int = 3) -> None
+```
 
-A deteccao de tipo de relatorio usa normalizacao Unicode (remove acentos, lowercase) para matching robusto.
+Traduz o diagnostico em warnings, **agregando por causa** -- um bulk cruzando o boundary tem dezenas de grupos e um warning por grupo seria ruido:
+
+1. **`IncompatibleEraWarning`**: um unico warning listando os grupos renumerados com o overlap medido de cada um.
+2. **`DroppedReportWarning`**: por relatorio descontinuado (`motivo == "descontinuado"`).
+3. **`ScopeMigrationWarning`**: um warning para os relatorios de credito que migraram de `financeiro` para `prudencial` (`motivo == "migracao_escopo"`).
+4. **`PartialDataWarning`** com `reason="era_coverage_gap"`: um warning agregando as lacunas sem causa conhecida -- inclui relatorios introduzidos pelo BCB e cache incompleto.
+
+O `motivo` vem das tabelas `_DROPPED_REPORTS_NORMALIZED` e do prefixo de credito, com normalizacao Unicode (remove acentos, lowercase). Uma lacuna sem entrada na tabela ainda e detectada e avisada -- so perde a explicacao.
 
 ---
 

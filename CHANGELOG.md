@@ -1,5 +1,64 @@
 # Changelog
 
+## [Nao lancado]
+
+### Alterado
+
+**Deteccao de era passa a medir o dado retornado.** A logica anterior decidia a
+priori, pelo range solicitado e por duas tabelas hardcoded de relatorios
+("estaveis" e "descontinuados"). `diagnose_eras()` agora compara os conjuntos de
+codigos de conta dos dois lados do boundary no proprio resultado, por relatorio
+(IFDATA) ou documento (COSIF). As tabelas param de decidir se ha warning e
+passam apenas a explicar a causa quando ela e conhecida.
+
+Casos que a versao anterior errava, verificados contra os parquets de 202412 e
+202503:
+
+- **Relatorio introduzido pelo BCB nao era sinalizado.** `Carteira de credito
+  ativa - por carteiras de instrumentos financeiros` so existe a partir de
+  202503; como o nome casava o prefixo de credito, era classificado como estavel
+  e a query cruzando o boundary retornava metade da serie sem warning nenhum.
+- **Bulk com escopo filtrado nao avisava sobre a migracao.** Sem `relatorio=`,
+  o `ScopeMigrationWarning` nunca era emitido -- `read(escopo='financeiro')`
+  cruzando o boundary perdia todo o credito pos-202503 em silencio.
+- **Falso positivo quando o resultado nao cruzava o boundary.** O warning saia
+  pelo range pedido, mesmo que o cache ou os filtros restringissem o resultado a
+  uma unica era.
+
+A classificacao dos 15 relatorios permanece identica a anterior nos casos em que
+a anterior acertava. O limiar de estabilidade e 90% de codigos em comum, medido
+por grupo e disponivel no diagnostico.
+
+**Mensagem do `IncompatibleEraWarning` reescrita.** Nao ha colisao de codigos
+entre as eras do COSIF (8 digitos contra 10), entao o risco nao e mistura e sim
+descontinuidade: a serie de cada conta termina no boundary e recomeca com outro
+codigo. A mensagem agora diz isso e inclui o overlap medido.
+
+**Novo `PartialDataWarning` com `reason="era_coverage_gap"`** para lacunas sem
+causa conhecida -- relatorios introduzidos pelo BCB e cache incompleto. Warnings
+de mesma causa saem agregados: um resultado bulk cruzando o boundary emite um
+warning por causa, nao um por relatorio.
+
+### Adicionado
+
+**`df.attrs["era"]` no retorno de `read()`** com o diagnostico estruturado
+(`EraDiagnostic`, um `TypedDict` serializavel para JSON). Os warnings do Python
+sao deduplicados e nao viajam com o DataFrame; o diagnostico resolve os dois
+problemas para consumo programatico.
+
+**`explorer.check_era(start, end, *, escopo=None)`** nos explorers COSIF e
+IFDATA: retorna o mesmo `EraDiagnostic` lendo apenas as colunas de dimensao,
+sem trazer valores. Util para decidir como montar a query -- ou para recuperar
+o diagnostico quando `attrs` se perde no caminho.
+
+`EraDiagnostic` e `GrupoEra` exportados no top-level.
+
+### Removido
+
+`check_era_boundary()` e `check_ifdata_era()`, substituidas por
+`diagnose_eras()` + `emit_era_warnings()`. `_STABLE_REPORTS_NORMALIZED` e
+`_is_stable_report()` deixam de existir -- o overlap medido os substitui.
+
 ## [0.4.2] - 2026-08-02
 
 Correcoes criticas de seguranca e integridade de dados, identificadas em auditoria.

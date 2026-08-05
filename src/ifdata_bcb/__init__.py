@@ -81,6 +81,11 @@ def __getattr__(name: str) -> Any:
 
         return getattr(log_module, name)
 
+    if name in ("EraDiagnostic", "GrupoEra"):
+        import ifdata_bcb.core.eras as eras_module
+
+        return getattr(eras_module, name)
+
     raise AttributeError(f"module 'ifdata_bcb' has no attribute '{name}'")
 
 
@@ -96,6 +101,9 @@ __all__ = [
     # Exceptions (BacenAnalysisError = base)
     "BacenAnalysisError",
     "DataUnavailableError",
+    # Diagnostico de era retornado por check_era() e em df.attrs['era']
+    "EraDiagnostic",
+    "GrupoEra",
     # Logging (desativado por padrao)
     "enable_logging",
     "disable_logging",

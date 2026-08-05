@@ -8,6 +8,7 @@ import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity import EntityLookup
+from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
@@ -63,6 +64,10 @@ class COSIFExplorer(BaseExplorer):
     ]
 
     _VALID_ESCOPOS = ["individual", "prudencial"]
+
+    _ERA_BOUNDARY = COSIF_ERA_BOUNDARY
+    _ERA_GROUP_COLUMN = "DOCUMENTO"
+    _ERA_SOURCE_NAME = "COSIF"
 
     _ESCOPOS: dict[str, dict[str, str]] = {
         "individual": {
@@ -148,7 +153,12 @@ class COSIFExplorer(BaseExplorer):
         return self._read_glob(
             pattern=self._get_pattern_for_escopo(escopo),
             subdir=self._get_escopo_config(escopo)["subdir"],
-            columns=self._storage_columns_for_query(columns),
+            columns=self._storage_columns_for_query(
+                columns,
+                required=self._era_required_columns(
+                    self._resolve_date_range(start, end)
+                ),
+            ),
             where=jc(conditions),
         )
 
@@ -264,11 +274,6 @@ class COSIFExplorer(BaseExplorer):
         columns = self._validate_columns(columns)
         validate_cadastro_columns(cadastro)
 
-        from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY, check_era_boundary
-
-        check_era_boundary(
-            self._resolve_date_range(start, end), COSIF_ERA_BOUNDARY, "COSIF"
-        )
         escopos: list[EscopoCOSIF] = (
             [self._validate_escopo(escopo)]  # type: ignore[misc]
             if escopo
@@ -304,11 +309,14 @@ class COSIFExplorer(BaseExplorer):
         df = self._finalize_read(df)
         self._check_null_value_instituicoes(df)
         df = self._apply_canonical_names(df)
+        diag = self._check_eras(df, self._resolve_date_range(start, end), escopo=escopo)
 
         if cadastro is not None:
             df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
 
         df = self._filter_columns(df, columns)
+        if diag is not None:
+            df.attrs["era"] = diag
         return df
 
     def list(

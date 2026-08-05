@@ -12,6 +12,7 @@ from ifdata_bcb.core.constants import (
     get_subdir,
 )
 from ifdata_bcb.core.entity import EntityLookup
+from ifdata_bcb.core.eras import IFDATA_ERA_BOUNDARY, check_dropped_report
 from ifdata_bcb.domain.exceptions import ScopeUnavailableWarning
 from ifdata_bcb.domain.types import AccountInput, InstitutionInput
 from ifdata_bcb.infra.log import emit_user_warning
@@ -32,7 +33,6 @@ from ifdata_bcb.providers.enrichment import (
 from ifdata_bcb.providers.ifdata.valores.collector import IFDATAValoresCollector
 from ifdata_bcb.providers.ifdata.valores.temporal import TemporalGroup, TemporalResolver
 from ifdata_bcb.utils.text import format_entity_labels, stem_ptbr
-
 
 EscopoIFDATA = Literal["individual", "prudencial", "financeiro"]
 
@@ -76,6 +76,11 @@ class IFDATAExplorer(BaseExplorer):
     ]
 
     _VALID_ESCOPOS = ["individual", "prudencial", "financeiro"]
+
+    _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY
+    _ERA_GROUP_COLUMN = "RELATORIO"
+    _ERA_SOURCE_NAME = "IFDATA"
+    _TRIMESTRAL = True
 
     _LIST_COLUMNS: dict[str, str] = {
         "DATA": "AnoMes",
@@ -203,7 +208,9 @@ class IFDATAExplorer(BaseExplorer):
     ) -> list[pd.DataFrame]:
         """Coleta frames por escopo. Resolve temporal se instituicao fornecida."""
         extra_conditions = self._build_common_conditions(conta, relatorio, grupo)
-        storage_columns = self._storage_columns_for_query(columns, required=["CodInst"])
+        storage_columns = self._storage_columns_for_query(
+            columns, required=["CodInst"] + self._era_required_columns(periodos)
+        )
         frames: list[pd.DataFrame] = []
 
         cnpjs: list[str] | None = None
@@ -425,13 +432,6 @@ class IFDATAExplorer(BaseExplorer):
         columns = self._validate_columns(columns)
         validate_cadastro_columns(cadastro)
 
-        from ifdata_bcb.core.eras import check_ifdata_era
-
-        check_ifdata_era(
-            self._resolve_date_range(start, end, trimestral=True),
-            relatorio=relatorio,
-            escopo=escopo,
-        )
         escopos = (
             [self._validate_escopo(escopo)]
             if escopo
@@ -446,6 +446,7 @@ class IFDATAExplorer(BaseExplorer):
         )
 
         if not frames:
+            check_dropped_report(relatorio, periodos, stacklevel=3)
             self._diagnose_empty_result(
                 source_name="IFDATA",
                 has_files=self._ensure_data_exists(),
@@ -461,6 +462,7 @@ class IFDATAExplorer(BaseExplorer):
         df = self._apply_canonical_names(df)
         df = self._finalize_read(df)
         self._check_null_value_instituicoes(df)
+        diag = self._check_eras(df, periodos, escopo=escopo)
 
         if cadastro is not None:
             from ifdata_bcb.domain.exceptions import PartialDataWarning
@@ -479,7 +481,10 @@ class IFDATAExplorer(BaseExplorer):
                     stacklevel=2,
                 )
 
-        return self._filter_columns(df, columns)
+        df = self._filter_columns(df, columns)
+        if diag is not None:
+            df.attrs["era"] = diag
+        return df
 
     def list(
         self,
