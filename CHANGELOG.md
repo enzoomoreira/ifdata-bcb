@@ -1,6 +1,39 @@
 # Changelog
 
-## [Nao lancado]
+## [0.5.0] - 2026-08-04
+
+A v0.4.2 nunca chegou ao PyPI. O conteudo dela esta aqui: o ultimo release
+publicado e a v0.4.1, e quem atualiza a partir dela recebe tudo o que segue.
+
+### Seguranca
+
+**Queries DuckDB passam a ser parametrizadas.** Os valores de filtro nao entram
+mais no texto da query: cada um vira um parametro nomeado (`$p0`, `$p1`, ...) e
+viaja separado, ate o bind do DuckDB. Nao ha mais escape de aspas em lugar
+nenhum -- e essa a garantia, porque sem escape nao ha ordem de escape para
+errar. Elimina a classe inteira do bug de injecao, e nao apenas o vetor NFKD
+corrigido logo abaixo.
+
+As funcoes de `infra/sql.py` devolvem `SqlCondition`, subclasse de `str` que
+carrega o fragmento com placeholders e, em `.params`, os valores. Interpolar o
+fragmento por f-string descarta os params, entao quem monta SQL a mao precisa
+passar `params=merge_params(...)` -- esquecer nao devolve resultado errado em
+silencio, o DuckDB recusa a query com placeholder sem valor.
+
+Um placeholder por valor, e nao `IN (SELECT unnest($lista))`: medido contra 12
+parquets de 200 mil linhas, a forma com subquery perde o filter pushdown
+(15 ms contra 11 ms) e degrada com listas grandes, enquanto um placeholder por
+valor mantem o pushdown e o tempo dos literais mesmo com 5 mil valores.
+
+Quem escreve explorers proprios seguindo `docs/advanced/extending.md` continua
+com `where=join_conditions(conditions)` funcionando sem mudanca. Codigo que
+interpolava fragmentos em SQL proprio precisa passar os params.
+
+**Injecao SQL via normalizacao Unicode** (`infra/sql.py`): o escape de aspas era
+aplicado antes da normalizacao NFKD. Como NFKD decompoe compatibilidade e nao
+apenas acentos, `U+FF07` (FULLWIDTH APOSTROPHE) virava uma aspa simples ASCII
+depois do escape, fechando o literal SQL. Alcancavel por `read(conta=...)`,
+`list_contas()` e `search()`.
 
 ### Alterado
 
@@ -53,24 +86,20 @@ o diagnostico quando `attrs` se perde no caminho.
 
 `EraDiagnostic` e `GrupoEra` exportados no top-level.
 
-### Removido
+`ClassVar` nos class attributes de configuracao dos explorers e collectors, e
+`strict=True` em todos os `zip()` -- todos iteram colunas do mesmo DataFrame,
+entao o comprimento e igual por construcao e o `strict` passa a verificar esse
+invariante em vez de truncar em silencio.
 
-`check_era_boundary()` e `check_ifdata_era()`, substituidas por
-`diagnose_eras()` + `emit_era_warnings()`. `_STABLE_REPORTS_NORMALIZED` e
-`_is_stable_report()` deixam de existir -- o overlap medido os substitui.
+### Build
 
-## [0.4.2] - 2026-08-02
-
-Correcoes criticas de seguranca e integridade de dados, identificadas em auditoria.
-
-### Seguranca
-
-**Injecao SQL via normalizacao Unicode** (`infra/sql.py`): o escape de aspas era
-aplicado antes da normalizacao NFKD. Como NFKD decompoe compatibilidade e nao
-apenas acentos, `U+FF07` (FULLWIDTH APOSTROPHE) virava uma aspa simples ASCII
-depois do escape, fechando o literal SQL. Alcancavel por `read(conta=...)`,
-`list_contas()` e `search()`. O escape passa a ser a ultima transformacao
-aplicada ao valor.
+**Ruff pinado e rule set declarado no `pyproject.toml`.** O CI rodava
+`uvx ruff check .` sem versao, e o projeto nao tinha secao `[tool.ruff]`:
+herdava o rule set default de qualquer ruff que o uvx resolvesse naquele dia.
+O default do ruff 0.16 e muito mais amplo que o de quando o CI foi escrito, e o
+job passou a falhar sozinho, sem nenhuma mudanca de codigo. O ruff entra no
+dependency group dev com pin exato e o CI usa `uv run --frozen ruff`, entao dev
+e CI compartilham o mesmo binario e subir versao vira um PR deliberado.
 
 ### BREAKING CHANGES
 
@@ -89,7 +118,7 @@ from ifdata_bcb.infra.log import configure_logging, set_log_level
 
 set_log_level("DEBUG")
 
-# Agora (v0.4.2) -- opt-in explicito
+# Agora (v0.5.0) -- opt-in explicito
 import ifdata_bcb as bcb
 
 bcb.enable_logging(level="DEBUG", to_file=True)
@@ -116,8 +145,15 @@ arquivo, o dado incompleto nunca era reparado sem `force=True`. Coletas que ante
 
 ### Removido
 
-- Dependencia `ipywidgets`, declarada mas sem nenhum import no codigo.
-  `ui/display.py` usa Rich com `force_jupyter=False` deliberadamente.
+`check_era_boundary()` e `check_ifdata_era()`, substituidas por
+`diagnose_eras()` + `emit_era_warnings()`. `_STABLE_REPORTS_NORMALIZED` e
+`_is_stable_report()` deixam de existir -- o overlap medido os substitui.
+
+`escape_sql_string()`, sem uso apos a parametrizacao. `build_in_clause()` perde
+o parametro `escape`, que deixou de ter sentido.
+
+Dependencia `ipywidgets`, declarada mas sem nenhum import no codigo.
+`ui/display.py` usa Rich com `force_jupyter=False` deliberadamente.
 
 ## [0.4.0] - 2026-03-26
 
