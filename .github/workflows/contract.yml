@@ -1,0 +1,19 @@
+name: Contract
+
+# O maior risco sistemico da lib e o BCB mudar schema ou endpoint em silencio.
+# O cron semanal roda os testes de contrato contra a API real e avisa antes dos
+# usuarios (o GitHub notifica o dono do repo quando um run agendado falha).
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run --frozen pytest tests/contract -m contract -v
