@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.0.0] - Nao lancado
+
+Primeiro major. Todas as quebras de contrato planejadas saem juntas, sem
+camada de transicao: a API antiga deixa de existir e este guia e a referencia
+de migracao. Quem fixou `ifdata-bcb<1` nao e afetado.
+
+### Guia de migracao
+
+| Antes (0.6.0) | Agora (1.0.0) |
+|---|---|
+| `df["DATA"]` | `df.index` (DatetimeIndex `date`) |
+| `df["VALOR"]`, `df["CNPJ_8"]`, ... | `df["valor"]`, `df["cnpj_8"]`, ... (lowercase) |
+| `explorer.list([...])` | `explorer.list_values([...])` |
+| `list_contas('x', 'individual')` | `list_contas('x', escopo='individual')` |
+| `list_periodos(source)` / `describe(source)` | `list_periodos(escopo)` / `describe(escopo)` |
+| `describe()["by_source"]` | `describe()["by_escopo"]` |
+| `cadastro=["SEGMENTO"]` | `cadastro=["segmento"]` |
+
+### Alterado
+
+**Colunas canonicas em lowercase.** Todo DataFrame devolvido pela API publica
+(`read()`, `list_values()`, `list_contas()`, `search()`, `mapeamento()`) usa
+nomes minusculos: `data`, `cnpj_8`, `instituicao`, `escopo`, `cod_conta`,
+`conta`, `valor`, `fontes`, `score`, etc. Os inputs acompanham: `columns=` e
+`cadastro=` aceitam os nomes novos (alem dos nomes de storage originais do
+BCB, que nao mudam nos parquets).
+
+**`read()` devolve `DatetimeIndex`.** A data sai das colunas e vira o index
+datetime nomeado `date`, inclusive no DataFrame vazio -- o formato nao depende
+de haver resultado. `df.loc["2024"]`, `resample()` e `plot()` funcionam
+direto. `describe()` ganha `read_index` e `read_columns` deixa de listar a
+data.
+
+**`list()` virou `list_values()`.** O nome sombreava o builtin e nao dizia o
+que listava; o novo descreve o `SELECT DISTINCT` real e se alinha a
+`list_contas()`/`list_periodos()`. Assinatura e retorno identicos (com as
+colunas agora em lowercase).
+
+**`list_contas()` e keyword-only apos `termo`.** As ordens posicionais
+divergiam entre explorers (`relatorio` na 3a posicao do IFDATA), entao
+`list_contas('x', 'individual', '2024-01')` mudava de significado conforme o
+explorer. Agora so `termo` e posicional, como `read()` e `search()`.
+
+**`source` unificado em `escopo` na introspeccao.** `list_periodos()`,
+`has_data()` e `describe()` falavam a lingua do storage (`source`, com
+`'default'` fora do COSIF); agora falam a do dominio. No IFDATA a resposta vem
+dos dados: um periodo so aparece para o escopo que tem linhas nele.
+`describe()` troca `source`/`subdir`/`prefix`/`sources`/`by_source` por
+`escopo`/`by_escopo` e para de vazar detalhes de armazenamento.
+
+### Adicionado
+
+**`fetch()` stateless nos tres explorers.** Baixa do BCB e devolve o
+DataFrame no formato de `read()` sem tocar o cache local -- os arquivos vivem
+num diretorio temporario descartado ao final. Aceita os mesmos filtros de
+`read()`, exceto `cadastro=` (o enriquecimento exige o cadastro persistido).
+Util para espiar um periodo sem se comprometer com uma coleta.
+
 ## [0.6.0] - 2026-08-14
 
 Release de DX. Nada aqui muda o dado que a biblioteca devolve; muda o que ela
