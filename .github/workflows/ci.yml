@@ -25,9 +25,12 @@ jobs:
       - run: uv run --frozen pyright
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        # windows-latest porque o cache path e OS-dependente (platformdirs) e a
+        # escrita atomica usa os.replace, que tem semantica propria no Windows.
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
