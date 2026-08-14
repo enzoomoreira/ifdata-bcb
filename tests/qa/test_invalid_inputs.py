@@ -6,12 +6,14 @@ import pytest
 
 from ifdata_bcb.core.entity import EntitySearch
 from ifdata_bcb.domain.exceptions import (
+    InvalidColumnError,
     InvalidDateFormatError,
     InvalidDateRangeError,
     InvalidIdentifierError,
     InvalidScopeError,
 )
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
+from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 
 class TestMissingParams:
@@ -90,14 +92,34 @@ class TestInvalidScope:
             qa_cosif.read(instituicao="60872504", start="2023-03", escopo="inexistente")
 
     def test_cadastro_coluna_fake(self, qa_cosif: COSIFExplorer) -> None:
-        with pytest.raises(InvalidScopeError):
+        with pytest.raises(InvalidColumnError):
             qa_cosif.read(
                 instituicao="60872504", start="2023-03", cadastro=["COLUNA_FAKE"]
             )
 
     def test_columns_unknown_raises(self, qa_cosif: COSIFExplorer) -> None:
-        with pytest.raises(InvalidScopeError):
+        with pytest.raises(InvalidColumnError):
             qa_cosif.read("2023-03", instituicao="60872504", columns=["INVENTADA"])
+
+
+class TestSourceInvalido:
+    """source invalido dava KeyError cru, fora da hierarquia da lib."""
+
+    def test_source_inexistente_no_cosif(self, qa_cosif: COSIFExplorer) -> None:
+        with pytest.raises(InvalidScopeError, match="individual"):
+            qa_cosif.list_periodos("inexistente")
+
+    def test_describe_com_source_inexistente(self, qa_cosif: COSIFExplorer) -> None:
+        with pytest.raises(InvalidScopeError):
+            qa_cosif.describe("inexistente")
+
+    def test_escopo_passado_como_source_ganha_dica(
+        self, qa_ifdata: IFDATAExplorer
+    ) -> None:
+        """No IFDATA a unica fonte e 'default'; 'individual' e o palpite natural."""
+        with pytest.raises(InvalidScopeError) as exc_info:
+            qa_ifdata.list_periodos("individual")
+        assert "escopo='individual'" in str(exc_info.value)
 
 
 class TestPassthroughColumns:

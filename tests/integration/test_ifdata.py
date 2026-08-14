@@ -204,10 +204,10 @@ class TestIFDATAColumns:
     def test_columns_unknown_raises_early(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        """Coluna desconhecida levanta InvalidScopeError antes da query."""
-        from ifdata_bcb.domain.exceptions import InvalidScopeError
+        """Coluna desconhecida levanta InvalidColumnError antes da query."""
+        from ifdata_bcb.domain.exceptions import InvalidColumnError
 
-        with pytest.raises(InvalidScopeError, match="COLUNA_INEXISTENTE"):
+        with pytest.raises(InvalidColumnError, match="COLUNA_INEXISTENTE"):
             explorers[1].read(
                 instituicao=BANCO_A_CNPJ,
                 start="2023-03",

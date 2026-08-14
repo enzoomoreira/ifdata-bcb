@@ -165,6 +165,12 @@ class TestCOSIFDocumentoValidation:
                 "2023-03", instituicao=BANCO_A_CNPJ, documento="balancete"
             )
         assert exc_info.value.scope == "documento"
+        # Regressao: valid_values recebia str e a mensagem saia caractere a
+        # caractere ("Validos: 'v', 'a', 'l', 'o', 'r', ...").
+        msg = str(exc_info.value)
+        assert "'v', 'a', 'l'" not in msg
+        assert "Validos" not in msg
+        assert "list(['DOCUMENTO'])" in msg
 
     def test_documento_numeric_string_accepted(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -182,6 +188,8 @@ class TestCOSIFDocumentoValidation:
                 "2023-03", instituicao=BANCO_A_CNPJ, documento=["4010", "abc"]
             )
         assert exc_info.value.scope == "documento"
+        # Aponta o elemento culpado, nao a lista inteira
+        assert exc_info.value.value == "abc"
 
     def test_documento_filter_works_with_non_numeric_values_in_column(
         self, workspace_tmp_dir: Path

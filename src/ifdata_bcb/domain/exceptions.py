@@ -3,12 +3,34 @@ class BacenAnalysisError(Exception):
 
 
 class InvalidScopeError(BacenAnalysisError):
-    def __init__(self, scope: str, value: str, valid_values: list[str]):
+    """Valor invalido para um parametro de dominio fechado (escopo, fonte, documento).
+
+    A mensagem nomeia o parametro em vez de dizer sempre "Escopo": a classe e
+    usada para escopo, fonte e documento, e o texto fixo produzia frases
+    erradas nos dois ultimos.
+
+    `valid_values` vazio omite a clausula "Validos:" -- serve para parametros
+    cujo dominio nao e enumeravel (documento), onde `hint` explica o formato.
+    """
+
+    def __init__(
+        self,
+        scope: str,
+        value: str,
+        valid_values: list[str],
+        hint: str = "",
+    ):
         self.scope = scope
         self.value = value
-        self.valid_values = valid_values
-        valid_str = ", ".join(repr(v) for v in valid_values)
-        super().__init__(f"Escopo '{value}' invalido. Validos: {valid_str}.")
+        self.valid_values = list(valid_values)
+        self.hint = hint
+        msg = f"Valor invalido para '{scope}': '{value}'."
+        if self.valid_values:
+            valid_str = ", ".join(repr(v) for v in self.valid_values)
+            msg += f" Validos: {valid_str}."
+        if hint:
+            msg += f" {hint}"
+        super().__init__(msg)
 
 
 class DataUnavailableError(BacenAnalysisError):

@@ -305,13 +305,15 @@ class BaseExplorer(ABC):
             | self._DERIVED_COLUMNS
             | self._PASSTHROUGH_COLUMNS
         )
-        unknown = set(columns) - all_known
+        unknown = sorted(set(columns) - all_known)
         if unknown:
-            raise InvalidScopeError(
-                "columns",
-                str(sorted(unknown)),
-                sorted(all_known),
-            )
+            # list() ja usava InvalidColumnError para o mesmo erro; read()
+            # usava InvalidScopeError e produzia "Escopo '['FOO']' invalido".
+            extras = ""
+            if len(unknown) > 1:
+                outras = ", ".join(repr(c) for c in unknown[1:])
+                extras = f"Tambem invalidas: {outras}."
+            raise InvalidColumnError(unknown[0], sorted(all_known), extras)
         return columns
 
     def _filter_columns(
@@ -551,17 +553,40 @@ class BaseExplorer(ABC):
                     continue
         return periods
 
+    def _resolve_source(self, source: str) -> dict[str, str]:
+        """Resolve nome de fonte para sua config. Levanta erro em vez de KeyError.
+
+        `source` e a fonte de armazenamento, que no COSIF coincide com os
+        escopos e nos demais explorers e sempre "default". O palpite natural
+        (ifdata.list_periodos('individual')) precisa de uma dica, nao de um
+        KeyError cru.
+        """
+        sources = self._get_sources()
+        if source in sources:
+            return sources[source]
+
+        hint = ""
+        if source.lower() in self._VALID_ESCOPOS:
+            hint = (
+                f"'{source}' e um escopo, nao uma fonte de armazenamento deste "
+                f"explorer. Use escopo='{source.lower()}' em read()/list()."
+            )
+        raise InvalidScopeError("source", source, sorted(sources), hint=hint)
+
     def list_periodos(self, source: str | None = None) -> list[int]:
         """
         Lista periodos disponiveis.
 
         Args:
             source: Nome da fonte (para multi-source). Se None, retorna uniao de todas.
+
+        Raises:
+            InvalidScopeError: Se source nao for uma fonte conhecida.
         """
         sources = self._get_sources()
 
         if source:
-            cfg = sources[source]
+            cfg = self._resolve_source(source)
             return sorted(self._list_periodos_for_source(cfg["subdir"], cfg["prefix"]))
 
         all_periods: set[int] = set()
@@ -581,11 +606,14 @@ class BaseExplorer(ABC):
 
         Args:
             source: Nome da fonte (para multi-source). Se None, descreve todas.
+
+        Raises:
+            InvalidScopeError: Se source nao for uma fonte conhecida.
         """
         sources = self._get_sources()
 
         if source:
-            cfg = sources[source]
+            cfg = self._resolve_source(source)
             periods = self.list_periodos(source)
             return {
                 "source": source,

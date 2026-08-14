@@ -6,7 +6,7 @@ import pandas as pd
 
 from ifdata_bcb.core.constants import get_pattern, get_subdir
 from ifdata_bcb.core.entity import EntityLookup
-from ifdata_bcb.domain.exceptions import InvalidScopeError, PartialDataWarning
+from ifdata_bcb.domain.exceptions import InvalidColumnError, PartialDataWarning
 from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import build_in_clause, merge_params
@@ -35,13 +35,13 @@ def validate_cadastro_columns(columns: list[str] | None) -> None:
     """Valida nomes de colunas cadastrais."""
     if columns is None:
         return
-    invalid = set(columns) - VALID_CADASTRO_COLUMNS
+    invalid = sorted(set(columns) - VALID_CADASTRO_COLUMNS)
     if invalid:
-        raise InvalidScopeError(
-            "cadastro",
-            str(sorted(invalid)),
-            sorted(VALID_CADASTRO_COLUMNS),
-        )
+        extras = "Colunas para o parametro cadastro= de read()."
+        if len(invalid) > 1:
+            outras = ", ".join(repr(c) for c in invalid[1:])
+            extras = f"Tambem invalidas: {outras}. {extras}"
+        raise InvalidColumnError(invalid[0], sorted(VALID_CADASTRO_COLUMNS), extras)
 
 
 def _subtract_months(year: int, month: int, months: int) -> tuple[int, int]:

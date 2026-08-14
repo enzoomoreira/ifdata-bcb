@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from ifdata_bcb.domain.exceptions import (
+    InvalidColumnError,
     InvalidDateFormatError,
     InvalidDateRangeError,
     InvalidIdentifierError,
@@ -279,8 +280,17 @@ class TestValidateColumnsEdgeCases:
     def test_unknown_column_raises_with_suggestions(
         self, derived_explorer: DerivedExplorer
     ) -> None:
-        with pytest.raises(InvalidScopeError, match="COLUNA_FAKE"):
+        with pytest.raises(InvalidColumnError, match="COLUNA_FAKE"):
             derived_explorer._validate_columns(["DATA", "COLUNA_FAKE"])
+
+    def test_multiple_unknown_columns_are_all_reported(
+        self, derived_explorer: DerivedExplorer
+    ) -> None:
+        with pytest.raises(InvalidColumnError) as exc_info:
+            derived_explorer._validate_columns(["FOO", "BAR", "DATA"])
+        msg = str(exc_info.value)
+        assert "BAR" in msg
+        assert "FOO" in msg
 
 
 class TestFilterColumnsEdgeCases:

@@ -386,12 +386,22 @@ class COSIFExplorer(BaseExplorer):
     def _build_documento_condition(self, documento: str | list[str]) -> str:
         """Valida e converte documento para condicao SQL."""
         docs = [documento] if isinstance(documento, str) else documento
-        try:
-            docs_int = [int(d) for d in docs]
-        except (ValueError, TypeError):
-            raise InvalidScopeError(
-                "documento", str(documento), "valores numericos (ex: 4010, 4016)"
-            ) from None
+        docs_int: list[int] = []
+        for d in docs:
+            try:
+                docs_int.append(int(d))
+            except (ValueError, TypeError):
+                # O dominio de DOCUMENTO nao e enumeravel a priori, entao nao ha
+                # lista de validos -- o caminho util e apontar para list().
+                raise InvalidScopeError(
+                    "documento",
+                    str(d),
+                    [],
+                    hint=(
+                        "Esperado codigo numerico (ex: 4010, 4016). "
+                        "Use cosif.list(['DOCUMENTO']) para ver os disponiveis."
+                    ),
+                ) from None
         # DOCUMENTO e VARCHAR no parquet. Comparar com INT faz o DuckDB tentar
         # converter a coluna inteira, e um unico valor nao-numerico derruba a
         # query -- descartando tambem as linhas que casariam.

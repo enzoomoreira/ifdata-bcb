@@ -46,6 +46,30 @@ class TestInvalidScopeError:
         assert err.value == "xyz"
         assert err.valid_values == ["a", "b"]
 
+    def test_message_names_the_parameter(self) -> None:
+        """Nao pode dizer 'Escopo' para documento/fonte/source."""
+        err = InvalidScopeError("documento", "abc", [])
+        assert "'documento'" in str(err)
+        assert "Escopo" not in str(err)
+
+    def test_valid_values_vazio_omite_a_clausula(self) -> None:
+        err = InvalidScopeError("documento", "abc", [])
+        assert "Validos" not in str(err)
+        assert err.valid_values == []
+
+    def test_hint_e_anexado(self) -> None:
+        err = InvalidScopeError("documento", "abc", [], hint="Use list().")
+        assert str(err).endswith("Use list().")
+        assert err.hint == "Use list()."
+
+    def test_valid_values_str_nao_e_quebrado_em_caracteres(self) -> None:
+        """Regressao: passar str onde se espera list gerava 'v', 'a', 'l', ...
+
+        O bug real estava no call site, mas o sintoma so aparecia aqui.
+        """
+        err = InvalidScopeError("documento", "abc", ["4010", "4016"])
+        assert "'4010', '4016'" in str(err)
+
 
 class TestDataUnavailableError:
     def test_message_with_reason(self) -> None:

@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb.domain.exceptions import InvalidColumnError
 from ifdata_bcb.providers.enrichment import (
     VALID_CADASTRO_COLUMNS,
     enrich_with_cadastro,
@@ -23,11 +23,11 @@ class TestValidateCadastroColumns:
         validate_cadastro_columns(["SEGMENTO", "UF"])
 
     def test_invalid_column_raises(self) -> None:
-        with pytest.raises(InvalidScopeError, match="INEXISTENTE"):
+        with pytest.raises(InvalidColumnError, match="INEXISTENTE"):
             validate_cadastro_columns(["INEXISTENTE"])
 
     def test_mix_valid_invalid_reports_invalid(self) -> None:
-        with pytest.raises(InvalidScopeError, match="INEXISTENTE"):
+        with pytest.raises(InvalidColumnError, match="INEXISTENTE"):
             validate_cadastro_columns(["SEGMENTO", "INEXISTENTE"])
 
     def test_empty_list_passes(self) -> None:
