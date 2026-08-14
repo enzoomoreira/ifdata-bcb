@@ -11,7 +11,7 @@ from ifdata_bcb.core.constants import (
 )
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.domain.types import DateScalar
-from ifdata_bcb.domain.validation import NormalizedDates
+from ifdata_bcb.domain.validation import normalize_dates
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
@@ -56,7 +56,7 @@ def _resolve_quarter_dates(
         return None
     from ifdata_bcb.utils.date import align_to_quarter_end
 
-    start_norm = NormalizedDates(values=start).values[0]
+    start_norm = normalize_dates(start)[0]
     start_q = align_to_quarter_end(start_norm)
     if end is None:
         return [start_q]

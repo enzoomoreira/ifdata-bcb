@@ -346,64 +346,47 @@ class EmptyFilterWarning(UserWarning):
 
 ## validation.py
 
-Modelos Pydantic para normalizacao e validacao de inputs. Usados internamente pelo `BaseExplorer`.
+Funcoes de normalizacao e validacao de inputs. Usadas internamente pelo
+`BaseExplorer`. Eram modelos Pydantic ate a 0.6.x; viraram funcoes porque o
+`__init__` gerado pelo Pydantic e tipado com a anotacao pos-validacao, o que
+tornava todo call site com `mode="before"` um erro de type check.
 
-### NormalizedDates
+### normalize_dates
 
 Normaliza `DateInput` para `list[int]` no formato YYYYMM:
 
 ```python
-class NormalizedDates(BaseModel):
-    values: list[int]
-
-    @field_validator("values", mode="before")
-    def normalize(cls, v: DateInput) -> list[int]: ...
-
-
-# Uso
-NormalizedDates(values="2024-12").values  # [202412]
-NormalizedDates(values=[202401, "2024-02"]).values  # [202401, 202402]
+normalize_dates("2024-12")  # [202412]
+normalize_dates([202401, "2024-02"])  # [202401, 202402]
 ```
 
-### ValidatedCnpj8
+### validate_cnpj8
 
-Valida CNPJ de exatamente 8 digitos:
+Valida e normaliza CNPJ para a base de 8 digitos. Aceita base-8 e CNPJ completo
+de 14 digitos, com ou sem formatacao; no caso de 14, confere os digitos
+verificadores antes de truncar:
 
 ```python
-class ValidatedCnpj8(BaseModel):
-    value: str
-
-
-# Uso
-ValidatedCnpj8(value="60872504").value  # "60872504"
-ValidatedCnpj8(value="abc")  # Raises InvalidIdentifierError
+validate_cnpj8("60872504")  # "60872504"
+validate_cnpj8("60.872.504/0001-23")  # "60872504"
+validate_cnpj8("abc")  # Raises InvalidIdentifierError
 ```
 
-### InstitutionList
+### normalize_institutions
 
 Normaliza `InstitutionInput` para lista de CNPJs validados:
 
 ```python
-class InstitutionList(BaseModel):
-    values: list[str]
-
-
-# Uso
-InstitutionList(values="60872504").values  # ["60872504"]
-InstitutionList(values=["60872504", "60746948"]).values  # ["60872504", "60746948"]
+normalize_institutions("60872504")  # ["60872504"]
+normalize_institutions(["60872504", "60746948"])  # ["60872504", "60746948"]
 ```
 
-### AccountList
+### normalize_accounts
 
 Normaliza `AccountInput` para lista de strings:
 
 ```python
-class AccountList(BaseModel):
-    values: list[str]
-
-
-# Uso
-AccountList(values="TOTAL DO ATIVO").values  # ["TOTAL DO ATIVO"]
+normalize_accounts("TOTAL DO ATIVO")  # ["TOTAL DO ATIVO"]
 ```
 
 ---
@@ -533,7 +516,7 @@ O `domain/__init__.py` e um namespace leve (sem re-exports). Importe diretamente
 # Imports diretos (nao passam pelo __init__.py do domain)
 from ifdata_bcb.domain.exceptions import BacenAnalysisError, InvalidScopeError
 from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
-from ifdata_bcb.domain.validation import ValidatedCnpj8, NormalizedDates
+from ifdata_bcb.domain.validation import validate_cnpj8, normalize_dates
 ```
 
 Re-export no `__init__.py` raiz. O conjunto publico inteiro -- as nove

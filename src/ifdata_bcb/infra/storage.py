@@ -3,6 +3,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import duckdb
 import pandas as pd
@@ -13,6 +14,8 @@ from ifdata_bcb.infra.paths import ensure_dir
 from ifdata_bcb.utils.period import extract_periods_from_files
 
 _TMP_SUFFIX = ".tmp"
+
+ParquetCompression = Literal["snappy", "gzip", "brotli", "lz4", "zstd"]
 
 
 def _resolve_base_path(base_path: Path | None) -> Path:
@@ -147,7 +150,7 @@ class DataManager:
         df: pd.DataFrame,
         filename: str,
         subdir: str,
-        compression: str = "snappy",
+        compression: ParquetCompression = "snappy",
     ) -> Path:
         """Salva DataFrame para Parquet via PyArrow."""
         output_dir = ensure_dir(self.cache_path / subdir)
@@ -166,7 +169,7 @@ class DataManager:
         query: str,
         filename: str,
         subdir: str,
-        compression: str = "snappy",
+        compression: ParquetCompression = "snappy",
     ) -> Path:
         """Salva resultado de query DuckDB direto para Parquet (sem Pandas)."""
         output_dir = ensure_dir(self.cache_path / subdir)
@@ -175,8 +178,9 @@ class DataManager:
         with _atomic_write(filepath) as tmp_path:
             self._conn.sql(query).to_parquet(str(tmp_path), compression=compression)
 
-        count = self._conn.sql(f"SELECT COUNT(*) FROM '{filepath}'").fetchone()[0]
-        self._logger.info(f"Saved: {subdir}/{filename}.parquet ({count:,} rows)")
+        row = self._conn.sql(f"SELECT COUNT(*) FROM '{filepath}'").fetchone()
+        assert row is not None  # COUNT(*) sempre devolve exatamente uma linha
+        self._logger.info(f"Saved: {subdir}/{filename}.parquet ({row[0]:,} rows)")
         return filepath
 
     def cleanup_partial_writes(self, subdir: str) -> int:

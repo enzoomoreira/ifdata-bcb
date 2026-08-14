@@ -139,14 +139,14 @@ class COSIFCollector(BaseCollector):
 
         return None
 
-    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
+    def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSV COSIF para DataFrame. Suporta todas as eras de formato."""
         try:
             from ifdata_bcb.core.eras import build_cosif_select, detect_cosif_csv_era
 
             encoding = self._config["encoding"]
-            era = detect_cosif_csv_era(csv_path, encoding)
-            query = build_cosif_select(era, csv_path, encoding)
+            era = detect_cosif_csv_era(data_path, encoding)
+            query = build_cosif_select(era, data_path, encoding)
 
             cursor = self._get_cursor()
             df = cursor.sql(query).df()
@@ -154,12 +154,12 @@ class COSIFCollector(BaseCollector):
             if df.empty:
                 return None
 
-            source = f"cosif:{self.escopo} {csv_path.stem}"
+            source = f"cosif:{self.escopo} {data_path.stem}"
             warn_if_rows_dropped(
                 source,
                 len(df),
                 count_parseable_rows(
-                    cursor, csv_path, delim=";", skip=3, encoding=encoding
+                    cursor, data_path, delim=";", skip=3, encoding=encoding
                 ),
             )
             warn_if_values_nulled(source, "SALDO", df["_saldo_raw"], df["SALDO"])
@@ -183,5 +183,5 @@ class COSIFCollector(BaseCollector):
             return df[[c for c in cols if c in df.columns]]
 
         except Exception as e:
-            self.logger.error(f"Erro processando {csv_path}: {e}")
+            self.logger.error(f"Erro processando {data_path}: {e}")
             raise DataProcessingError(f"cosif:{self.escopo}", str(e)) from e

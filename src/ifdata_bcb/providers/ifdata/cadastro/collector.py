@@ -45,7 +45,7 @@ class IFDATACadastroCollector(BaseCollector):
 
         return None
 
-    def _process_to_parquet(self, csv_path: Path, period: int) -> pd.DataFrame | None:
+    def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSV de cadastro."""
         try:
             query = f"""
@@ -67,7 +67,7 @@ class IFDATACadastroCollector(BaseCollector):
                     Sr,
                     DataInicioAtividade
                 FROM read_csv(
-                    '{csv_path}',
+                    '{data_path}',
                     delim=',',
                     header=true,
                     ignore_errors=true,
@@ -116,5 +116,5 @@ class IFDATACadastroCollector(BaseCollector):
             return df[[c for c in cols if c in df.columns]]
 
         except Exception as e:
-            self.logger.error(f"Erro processando {csv_path}: {e}")
+            self.logger.error(f"Erro processando {data_path}: {e}")
             raise DataProcessingError("ifdata_cadastro", str(e)) from e

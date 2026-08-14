@@ -67,10 +67,10 @@ class IFDATAValoresCollector(BaseCollector):
 
         return work_dir
 
-    def _process_to_parquet(self, csv_dir: Path, period: int) -> pd.DataFrame | None:
+    def _process_to_parquet(self, data_path: Path, period: int) -> pd.DataFrame | None:
         """Processa CSVs do diretorio em um unico DataFrame."""
         try:
-            csv_files = list(csv_dir.glob("*.csv"))
+            csv_files = list(data_path.glob("*.csv"))
             if not csv_files:
                 return None
 
@@ -125,5 +125,5 @@ class IFDATAValoresCollector(BaseCollector):
             return df[[c for c in cols if c in df.columns]]
 
         except Exception as e:
-            self.logger.error(f"Erro processando {csv_dir}: {e}")
+            self.logger.error(f"Erro processando {data_path}: {e}")
             raise DataProcessingError("ifdata_valores", str(e)) from e

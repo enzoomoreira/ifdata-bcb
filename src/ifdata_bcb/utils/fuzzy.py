@@ -27,7 +27,10 @@ class FuzzyMatcher:
             list(choices),
             scorer=fuzz.token_set_ratio,
             score_cutoff=score_cutoff,
-            limit=None,
+            # thefuzz nao e tipado e o checker infere `limit: int` do default 5;
+            # None (sem limite) e suportado: delega ao rapidfuzz, que o documenta,
+            # e o proprio thefuzz passa limit=None em process.dedupe.
+            limit=None,  # pyright: ignore[reportArgumentType]
         )
         matches.sort(key=lambda x: (-x[1], x[0]))
         return matches

@@ -27,10 +27,10 @@ from ifdata_bcb.domain.types import (
     SourceInfo,
 )
 from ifdata_bcb.domain.validation import (
-    AccountList,
-    InstitutionList,
-    NormalizedDates,
-    ValidatedCnpj8,
+    normalize_accounts,
+    normalize_dates,
+    normalize_institutions,
+    validate_cnpj8,
 )
 from ifdata_bcb.infra.log import emit_user_warning, get_logger
 from ifdata_bcb.infra.query import QueryEngine
@@ -189,19 +189,19 @@ class BaseExplorer(ABC):
 
     def _normalize_datas(self, datas: DateInput) -> list[int]:
         """Aceita int, str, ou lista. Formatos: 202412, '202412', '2024-12'."""
-        return NormalizedDates(values=datas).values
+        return normalize_dates(datas)
 
     def _normalize_contas(self, contas: AccountInput | None) -> list[str] | None:
         if contas is None:
             return None
-        return AccountList(values=contas).values
+        return normalize_accounts(contas)
 
     def _normalize_instituicoes(
         self, instituicoes: InstitutionInput | None
     ) -> list[str] | None:
         if instituicoes is None:
             return None
-        return InstitutionList(values=instituicoes).values
+        return normalize_institutions(instituicoes)
 
     def _resolve_date_range(
         self,
@@ -243,7 +243,7 @@ class BaseExplorer(ABC):
         Excecoes:
             InvalidIdentifierError: Se nao for CNPJ de 8 digitos.
         """
-        return ValidatedCnpj8(value=identificador).value
+        return validate_cnpj8(identificador)
 
     def _validate_required_params(
         self,

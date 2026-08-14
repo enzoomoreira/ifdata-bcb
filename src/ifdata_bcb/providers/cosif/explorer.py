@@ -13,6 +13,7 @@ from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, DateScalar, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
+    SqlCondition,
     build_account_condition,
     build_int_condition,
     build_like_condition,
@@ -174,8 +175,10 @@ class COSIFExplorer(BaseExplorer):
         `end=None` coleta apenas o periodo de `start`, como em read().
         """
         if escopo is not None:
-            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
-            COSIFCollector(escopo).collect(start, end, force=force, verbose=verbose)
+            escopo_validado = self._validate_escopo(escopo)
+            COSIFCollector(escopo_validado).collect(
+                start, end, force=force, verbose=verbose
+            )
         else:
             self._collect_all_escopos(start, end, force=force, verbose=verbose)
 
@@ -386,7 +389,7 @@ class COSIFExplorer(BaseExplorer):
             return f"({union_parts[0]})"
         return f"({' UNION ALL '.join(union_parts)})"
 
-    def _build_documento_condition(self, documento: str | list[str]) -> str:
+    def _build_documento_condition(self, documento: str | list[str]) -> SqlCondition:
         """Valida e converte documento para condicao SQL."""
         docs = [documento] if isinstance(documento, str) else documento
         docs_int: list[int] = []
@@ -433,7 +436,10 @@ class COSIFExplorer(BaseExplorer):
         # Documento filter
         documento = filters.get("documento")
         if documento is not None:
-            conditions.append(self._build_documento_condition(documento))
+            # O valor chega tipado na fronteira publica (list() declara
+            # documento: str | list[str] | None); **filters o apaga para object.
+            documento_typed = cast("str | list[str]", documento)
+            conditions.append(self._build_documento_condition(documento_typed))
 
         return conditions
 
@@ -460,8 +466,10 @@ class COSIFExplorer(BaseExplorer):
         datas = self._resolve_date_range(start, end, trimestral=False)
 
         if escopo is not None:
-            escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
-            return self._list_contas_single(escopo, termo, datas, limit)
+            # _validate_escopo garante pertencer a _VALID_ESCOPOS, mas devolve
+            # str -- a base nao conhece o Literal de cada subclasse.
+            validado = cast("EscopoCOSIF", self._validate_escopo(escopo))
+            return self._list_contas_single(validado, termo, datas, limit)
 
         dfs = []
         for esc in cast(list[EscopoCOSIF], list(self._ESCOPOS.keys())):

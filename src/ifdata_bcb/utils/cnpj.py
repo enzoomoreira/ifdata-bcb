@@ -34,7 +34,7 @@ def standardize_cnpj_base8(cnpj: str) -> str | None:
 
     O zfill existe porque a fonte do BCB entrega CNPJ sem zero a esquerda. Nao
     use em input de usuario: la um valor curto e erro de digitacao, nao zero
-    perdido (ver ValidatedCnpj8).
+    perdido (ver validate_cnpj8).
     """
     if cnpj is None:
         return None

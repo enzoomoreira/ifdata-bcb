@@ -37,7 +37,7 @@ src/ifdata_bcb/
 |   |-- __init__.py
 |   |-- exceptions.py        # Hierarquia de excecoes
 |   |-- types.py             # DateInput, AccountInput, etc
-|   +-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
+|   +-- validation.py        # Normalizacao de input (normalize_dates, validate_cnpj8, etc)
 |-- providers/                # Implementacoes por fonte
 |   |-- __init__.py
 |   |-- base_explorer.py     # Classe base abstrata para explorers
@@ -292,7 +292,7 @@ COSIFExplorer.read()
     +-- _validate_required_params(start)
     |
     +-- _normalize_instituicoes('60872504')  (se instituicao != None)
-    |   +-- InstitutionList (Pydantic) --> Valida regex [0-9]{8}
+    |   +-- normalize_institutions() --> valida CNPJ (base-8 ou 14 com DV)
     |
     +-- _resolve_date_range('2024-01', '2024-12')
     |   +-- generate_month_range() --> [202401, 202402, ..., 202412]

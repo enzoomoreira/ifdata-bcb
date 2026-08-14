@@ -280,28 +280,28 @@ def _normalize_instituicoes(
 ) -> list[str] | None:
     """
     Normaliza instituicoes para lista de CNPJs validados.
-    Delega validacao para InstitutionList (Pydantic).
+    Delega validacao para normalize_institutions().
     """
 ```
 
 ### Metodos de Validacao
 
-Normalizacao e validacao de inputs sao delegadas para modelos Pydantic em `domain/validation.py`:
-- `NormalizedDates`: Normaliza DateInput -> list[int]
-- `ValidatedCnpj8`: Valida CNPJ de 8 digitos
-- `InstitutionList`: Normaliza e valida lista de CNPJs
-- `AccountList`: Normaliza lista de contas
+Normalizacao e validacao de inputs sao delegadas para as funcoes de `domain/validation.py`:
+- `normalize_dates()`: Normaliza DateInput -> list[int]
+- `validate_cnpj8()`: Valida CNPJ (base-8 ou 14 digitos com DV) -> base de 8
+- `normalize_institutions()`: Normaliza e valida lista de CNPJs
+- `normalize_accounts()`: Normaliza lista de contas
 
 #### _resolve_entidade()
 
 ```python
 def _resolve_entidade(self, identificador: str) -> str:
     """
-    Valida CNPJ de exatamente 8 digitos.
-    Delega para ValidatedCnpj8 (Pydantic).
+    Valida CNPJ e normaliza para a base de 8 digitos.
+    Delega para validate_cnpj8().
 
     Raises:
-        InvalidIdentifierError: Se nao for [0-9]{8}
+        InvalidIdentifierError: Se nao for CNPJ valido
     """
 ```
 

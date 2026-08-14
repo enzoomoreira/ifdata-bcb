@@ -87,7 +87,8 @@ class _ProgressBar(Iterator[T]):
     def __next__(self) -> T:
         try:
             item = next(self._iter)
-            self._progress.advance(self._task_id)
+            if self._progress is not None:
+                self._progress.advance(self._task_id)
             return item
         except StopIteration:
             self.close()

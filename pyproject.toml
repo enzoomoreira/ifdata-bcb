@@ -50,6 +50,8 @@ packages = ["src/ifdata_bcb"]
 dev = [
     "ipykernel==6.29.5",
     "openpyxl>=3.1.5",
+    "pandas-stubs>=3.0.5.260730",
+    "pyright==1.1.406",
     "pytest>=9.0.2",
     # Pin exato: o rule set default do ruff muda entre minors, e um `uvx ruff`
     # sem versao quebra o CI sozinho. Subir a versao e um PR deliberado.
@@ -90,6 +92,11 @@ known-first-party = ["ifdata_bcb"]
 [tool.ruff.lint.per-file-ignores]
 # Explorers fake espelham os class attributes dos reais; ClassVar so ruido aqui.
 "tests/**" = ["RUF012"]
+
+[tool.pyright]
+# Escopo: so a biblioteca. Testes usam fakes com assinaturas parciais e nao
+# fazem parte do contrato tipado (py.typed cobre src/).
+include = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -15,7 +15,7 @@ isso sozinho quando recebe um `SqlCondition` em `where`; queries montadas a mao
 e enviadas por `QueryEngine.sql()` devem passar `params=merge_params(...)`.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from itertools import count
 
 from ifdata_bcb.utils.text import normalize_accents
@@ -165,7 +165,7 @@ def build_like_condition(
     return SqlCondition(f"{col_expr} LIKE {holders[0]} ESCAPE '$'", params)
 
 
-def join_conditions(conditions: list[str | None]) -> SqlCondition | None:
+def join_conditions(conditions: Sequence[str | None]) -> SqlCondition | None:
     """Junta condicoes com AND, ignorando None e strings vazias.
 
     Os params dos fragmentos descartados saem junto: so viaja o valor cujo

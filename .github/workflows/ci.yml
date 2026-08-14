@@ -16,6 +16,14 @@ jobs:
       - run: uv run --frozen ruff check .
       - run: uv run --frozen ruff format --check .
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run --frozen pyright
+
   test:
     runs-on: ubuntu-latest
     strategy:

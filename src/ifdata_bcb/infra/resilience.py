@@ -37,6 +37,10 @@ def _get_logger() -> Any:
     return _logger
 
 
+def _fn_name(retry_state: RetryCallState) -> str:
+    return retry_state.fn.__name__ if retry_state.fn is not None else "<desconhecida>"
+
+
 def _before_sleep_log(retry_state: RetryCallState) -> None:
     # Loga em DEBUG para nao poluir terminal
     if retry_state.outcome is None:
@@ -44,7 +48,7 @@ def _before_sleep_log(retry_state: RetryCallState) -> None:
 
     exception = retry_state.outcome.exception()
     _get_logger().debug(
-        f"Tentativa {retry_state.attempt_number} falhou para {retry_state.fn.__name__}. "
+        f"Tentativa {retry_state.attempt_number} falhou para {_fn_name(retry_state)}. "
         f"Retry em {retry_state.upcoming_sleep:.1f}s. Erro: {exception}"
     )
 
@@ -55,9 +59,13 @@ def _log_final_failure(retry_state: RetryCallState) -> None:
     Este callback e quem propaga o erro: com retry_error_callback definido, o
     tenacity ignora reraise=True e usa o retorno daqui.
     """
+    # O callback so roda quando a ultima tentativa falhou, entao ha outcome com
+    # excecao -- o Optional vem da assinatura generica de RetryCallState.
+    assert retry_state.outcome is not None
     exception = retry_state.outcome.exception()
+    assert exception is not None
     _get_logger().debug(
-        f"Funcao {retry_state.fn.__name__} falhou apos "
+        f"Funcao {_fn_name(retry_state)} falhou apos "
         f"{retry_state.attempt_number} tentativas. Erro: {exception}"
     )
     raise exception
