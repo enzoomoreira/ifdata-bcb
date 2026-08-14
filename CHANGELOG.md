@@ -1,6 +1,6 @@
 # Changelog
 
-## [Nao lancado]
+## [0.6.0] - 2026-08-14
 
 Release de DX. Nada aqui muda o dado que a biblioteca devolve; muda o que ela
 aceita, o que ela diz quando algo da errado e o que ela consegue contar sobre
