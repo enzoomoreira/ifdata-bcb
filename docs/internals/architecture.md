@@ -309,12 +309,15 @@ COSIFExplorer.read()
     |       +-- Predicate pushdown no Parquet
     |
     +-- _finalize_read(df)
-        +-- _apply_column_mapping() --> NOME_CONTA -> CONTA, etc
-        +-- Sort por DATA
-        +-- Reordenar colunas (_COLUMN_ORDER)
+    |   +-- _apply_column_mapping() --> NOME_CONTA -> conta, etc (lowercase)
+    |   +-- Sort por data
+    |   +-- Reordenar colunas (_COLUMN_ORDER)
+    |
+    +-- _to_datetime_index(df)
+        +-- Move a coluna data para um DatetimeIndex 'date' (ultimo passo)
     |
     v
-Retorna: pd.DataFrame
+Retorna: pd.DataFrame (index 'date', colunas lowercase)
 ```
 
 ## Fluxo de Busca
@@ -357,7 +360,7 @@ EntitySearch.search('Itau')
     +-- _get_latest_situacao(cnpjs) (via EntityLookup)
     |   +-- Window function para situacao mais recente
     |
-    +-- Filtra: se ha matches com FONTES, descarta sem dados
+    +-- Filtra: se ha matches com fontes, descarta sem dados
     |
     +-- Ordena (ativas, score, nome) e aplica limit
     |
@@ -365,7 +368,7 @@ EntitySearch.search('Itau')
 CadastroSearch aplica filtros fonte/escopo sobre resultados
     |
     v
-Retorna: DataFrame[CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE]
+Retorna: DataFrame[cnpj_8, instituicao, situacao, fontes, score]
 ```
 
 ## Diagrama de Dependencias

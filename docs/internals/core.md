@@ -111,8 +111,9 @@ O `BaseExplorer` e a classe base abstrata para todos os explorers:
 1. **Normalizacao**: Padroniza formatos de entrada (datas, CNPJs, contas)
 2. **Validacao**: Verifica parametros obrigatorios e formatos
 3. **SQL Building**: Constroi clausulas WHERE dinamicamente (funcoes em `infra.sql`)
-4. **Mapeamento**: Traduz nomes de colunas (storage -> apresentacao)
-5. **Finalizacao**: Transforma dados de saida (DATA int -> datetime)
+4. **Mapeamento**: Traduz nomes de colunas (storage -> apresentacao lowercase)
+5. **Finalizacao**: Rename/sort/reorder e, no ultimo passo de read(), move a
+   coluna `data` para um `DatetimeIndex` chamado `date` (`_to_datetime_index`)
 
 ### Propriedades de Classe
 
@@ -120,20 +121,21 @@ Subclasses definem estas propriedades:
 
 ```python
 class COSIFExplorer(BaseExplorer):
-    # Mapeamento: nome_storage -> nome_apresentacao
+    # Mapeamento: nome_storage -> nome_apresentacao (lowercase)
+    # Toda coluna do parquet que aparece no output esta aqui, inclusive as
+    # que so mudam de caixa (CNPJ_8 -> cnpj_8, DOCUMENTO -> documento).
     _COLUMN_MAP = {
-        "DATA_BASE": "DATA",
-        "NOME_INSTITUICAO": "INSTITUICAO",
-        "NOME_CONTA": "CONTA",
-        "CONTA": "COD_CONTA",
-        "SALDO": "VALOR",
+        "DATA_BASE": "data",
+        "CNPJ_8": "cnpj_8",
+        "NOME_INSTITUICAO": "instituicao",
+        "NOME_CONTA": "conta",
+        "CONTA": "cod_conta",
+        "DOCUMENTO": "documento",
+        "SALDO": "valor",
     }
 
     # Colunas adicionadas pos-query por Python (nao existem no Parquet)
-    _DERIVED_COLUMNS: set[str] = {"ESCOPO"}
-
-    # Colunas nativas do parquet aceitas em columns= sem precisar estar em _COLUMN_MAP
-    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+    _DERIVED_COLUMNS: set[str] = {"escopo"}
 
     # Coluna YYYYMM int para conversao automatica em datetime no DuckDB
     _DATE_COLUMN = "DATA_BASE"
@@ -143,17 +145,30 @@ class COSIFExplorer(BaseExplorer):
 
     # Ordem das colunas no resultado
     _COLUMN_ORDER = [
-        "DATA",
-        "CNPJ_8",
-        "INSTITUICAO",
-        "ESCOPO",
-        "COD_CONTA",
-        "CONTA",
+        "data",
+        "cnpj_8",
+        "instituicao",
+        "escopo",
+        "cod_conta",
+        "conta",
         ...,
     ]
 
     # Escopos validos para _validate_escopo()
     _VALID_ESCOPOS = ["individual", "prudencial"]
+
+    # list_values(): chave lowercase -> expressao SQL de storage
+    _LIST_COLUMNS = {
+        "data": "DATA_BASE",
+        "escopo": "ESCOPO",
+        "documento": "DOCUMENTO",
+    }
+
+    # list_values(): colunas recusadas, com mensagem apontando a alternativa
+    _BLOCKED_COLUMNS = {
+        "conta": "Use list_contas(termo='...') para buscar contas.",
+        ...: ...,
+    }
 ```
 
 ### Construtor
@@ -216,6 +231,22 @@ _ESCOPOS = {
 def _get_sources(self):
     return self._ESCOPOS
 ```
+
+Explorers com escopos implementam tambem o hook `_periodos_por_escopo()`,
+que responde `list_periodos(escopo=...)`, `has_data(escopo=...)` e
+`describe(escopo=...)`:
+
+```python
+def _periodos_por_escopo(self) -> dict[str, list[int]]:
+    """Mapa escopo -> periodos disponiveis. Override onde ha escopos."""
+```
+
+- **COSIF**: escopos coincidem com as fontes de armazenamento; resolve por
+  `_list_periodos_for_source()` de cada uma.
+- **IFDATA**: escopo e coluna dos dados (`TipoInstituicao`), nao fonte;
+  resolve via query `DISTINCT AnoMes, escopo` sobre o parquet.
+- Explorer sem escopos (`_VALID_ESCOPOS` vazio): `escopo=` e rejeitado com
+  `InvalidScopeError` (via `_require_escopo()`).
 
 ### _read_glob() (wrapper)
 
@@ -343,7 +374,7 @@ def _validate_columns(self, columns: list[str] | None) -> list[str] | None:
     Emite EmptyFilterWarning se columns=[].
 
     Raises:
-        InvalidScopeError: Se coluna desconhecida
+        InvalidColumnError: Se coluna desconhecida
     """
 ```
 
@@ -373,10 +404,10 @@ def _storage_columns_for_query(
 ```python
 def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aplica nomes canonicos do cadastro a coluna INSTITUICAO.
-    Se INSTITUICAO ja existe no DataFrame, retorna sem alteracao
+    Aplica nomes canonicos do cadastro a coluna instituicao.
+    Se instituicao ja existe no DataFrame, retorna sem alteracao
     (nomes do parquet sao mantidos). Caso contrario, resolve
-    nomes a partir do CNPJ_8 via EntityLookup.
+    nomes a partir de cnpj_8 via EntityLookup.
     """
 ```
 
@@ -490,7 +521,7 @@ def _build_date_condition(
 ) -> str | None:
     """
     Constroi clausula WHERE para range de datas.
-    Usa _storage_col("DATA") para obter nome correto.
+    Usa _storage_col("data") para obter nome correto.
     """
 ```
 
@@ -531,8 +562,8 @@ def _storage_col(self, presentation_col: str) -> str:
     Traduz nome de apresentacao para storage.
 
     Exemplo (COSIF):
-    - "DATA" -> "DATA_BASE"
-    - "INSTITUICAO" -> "NOME_INSTITUICAO"
+    - "data" -> "DATA_BASE"
+    - "instituicao" -> "NOME_INSTITUICAO"
 
     Se nao mapeado, retorna original.
     """
@@ -556,8 +587,8 @@ def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
 def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
     """
     Pipeline final (simplificado -- dedup, datetime e drop movidos para DuckDB):
-    1. Aplica mapeamento de colunas (_COLUMN_MAP)
-    2. Ordena por DATA ascending
+    1. Aplica mapeamento de colunas (_COLUMN_MAP, lowercase)
+    2. Ordena por data ascending
     3. Reordena colunas (_COLUMN_ORDER, se definido)
     4. Reset index
 
@@ -567,18 +598,35 @@ def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame:
     """
 ```
 
+#### _to_datetime_index()
+
+```python
+def _to_datetime_index(self, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Move a coluna data para um DatetimeIndex chamado 'date'.
+
+    Ultimo passo de read(): enrichment e a analise de era rodam antes,
+    com a data ainda como coluna. Vale tambem para o DataFrame vazio,
+    para o formato nao depender de haver resultado.
+    """
+```
+
 ### Metodos de Introspeccao
 
 #### list_periodos()
 
 ```python
-def list_periodos(self, source: str | None = None) -> list[int]:
+def list_periodos(self, escopo: str | None = None) -> list[int]:
     """
     Lista periodos disponiveis (ordenados).
 
     Args:
-        source: Nome da fonte especifica (para multi-source)
-                Se None, retorna uniao de todas as fontes
+        escopo: Filtra pelos periodos com dados desse escopo (via
+                _periodos_por_escopo()). Se None, retorna uniao de
+                todas as fontes.
+
+    Raises:
+        InvalidScopeError: Se escopo invalido, ou se o explorer nao tem escopos.
 
     Retorna: [202401, 202402, ..., 202412]
     """
@@ -587,41 +635,82 @@ def list_periodos(self, source: str | None = None) -> list[int]:
 #### has_data()
 
 ```python
-def has_data(self, source: str | None = None) -> bool:
+def has_data(self, escopo: str | None = None) -> bool:
     """Verifica se ha dados disponiveis."""
 ```
 
 #### describe()
 
 ```python
-def describe(self, source: str | None = None) -> dict:
+def describe(self, escopo: str | None = None) -> ExplorerInfo:
     """
-    Retorna metadados do explorer.
+    Retorna o que o explorer aceita e o que ha coletado.
 
-    Single-source:
+    Alem dos periodos em disco, descreve a superficie de chamada:
+    escopos validos, colunas listaveis por list_values(), colunas
+    devolvidas por read(), filtros aceitos e colunas validas em
+    cadastro=. Os filtros sao lidos da assinatura de read() via
+    _read_signature_info() -- nao ha lista paralela para envelhecer.
+
+    Sem escopo=:
     {
-        "source": "default",
-        "subdir": "cosif/individual",
-        "prefix": "cosif_ind",
-        "periods": [202401, ...],
+        "escopos": ["individual", "prudencial"],
+        "columns": ["data", "documento", "escopo"],
+        "read_columns": ["cnpj_8", "instituicao", ...],  # sem data
+        "read_index": "date",  # data vira o DatetimeIndex do read()
+        "filtros": ["conta", "documento", "escopo", "instituicao"],
+        "cadastro_columns": ["atividade", ...],
+        "periods": [202401, ...],  # Uniao
         "period_count": 12,
         "has_data": True,
         "first_period": 202401,
         "last_period": 202412,
+        "by_escopo": {  # apenas em explorers com escopos
+            "individual": {"period_count": 12, "has_data": True},
+            "prudencial": {"period_count": 12, "has_data": True},
+        },
     }
 
-    Multi-source:
-    {
-        "sources": ["individual", "prudencial"],
-        "periods": [202401, ...],  # Uniao
-        "period_count": 12,
-        "by_source": {
-            "individual": {...},
-            "prudencial": {...},
-        }
-    }
+    Com escopo=: a chave "escopo" substitui "by_escopo" e os periodos
+    ficam restritos ao escopo pedido.
     """
 ```
+
+O retorno e o `TypedDict` `ExplorerInfo` (com `EscopoInfo` para as entradas
+de `by_escopo`), definido em `domain/types.py`.
+
+### Infraestrutura de list_values()
+
+A base fornece a implementacao generica de `list_values()`, chamada pelas
+subclasses via `_base_list()`:
+
+```python
+def _base_list(
+    self,
+    columns: list[str],
+    *,
+    start: DateScalar | None = None,
+    end: DateScalar | None = None,
+    limit: int = 100,
+    **filters: object,
+) -> pd.DataFrame:
+    """SELECT DISTINCT das expressoes de _LIST_COLUMNS, com ORDER BY e LIMIT.
+    Emite TruncatedResultWarning quando o resultado bate no limit."""
+
+
+def _validate_list_columns(self, columns: list[str]) -> None:
+    """Valida colunas contra _LIST_COLUMNS/_BLOCKED_COLUMNS.
+    Raises InvalidColumnError para coluna desconhecida."""
+```
+
+- `_LIST_COLUMNS`: dict com chaves lowercase -> expressao SQL de storage
+  (ex: `{"data": "DATA_BASE", "escopo": "ESCOPO"}`)
+- `_BLOCKED_COLUMNS`: dict com chaves lowercase -> mensagem apontando a
+  alternativa (`list_contas()`, `cadastro.search()`); coluna bloqueada gera
+  warning e DataFrame vazio, nao erro
+- Input case-insensitive: as colunas pedidas sao comparadas via `col.lower()`
+- Hooks para subclasses: `_get_list_source()` (FROM SQL; COSIF monta UNION ALL
+  dos escopos com coluna ESCOPO literal) e `_build_list_conditions()` (WHERE)
 
 ---
 
@@ -660,29 +749,39 @@ class EntitySearch:
     def __init__(
         self,
         lookup: EntityLookup,
-        fuzzy_threshold_suggest: int = 78,
+        fuzzy_threshold_suggest: int | None = None,
     ):
         self._lookup = lookup
         self._fuzzy = FuzzyMatcher(threshold_suggest=fuzzy_threshold_suggest)
 ```
 
+Com `fuzzy_threshold_suggest=None`, o `FuzzyMatcher` usa o valor de
+`get_settings().fuzzy_threshold` (padrao 78).
+
 ### EntitySearch.search()
 
 ```python
-def search(self, termo: str, limit: int = 10) -> pd.DataFrame:
+def search(
+    self,
+    termo: str,
+    limit: int = 10,
+    date_range: tuple[int, int] | None = None,
+) -> pd.DataFrame:
     """
     Busca instituicoes por nome com fuzzy matching.
 
     Args:
         termo: Nome ou parte dele
         limit: Maximo de resultados
+        date_range: Tupla (min_yyyymm, max_yyyymm) para restringir a
+            verificacao de disponibilidade de dados
 
     Retorna DataFrame com colunas:
-    - CNPJ_8: CNPJ de 8 digitos
-    - INSTITUICAO: Nome oficial
-    - SITUACAO: "A" (ativa) ou "I" (inativa)
-    - FONTES: "cosif,ifdata" (onde ha dados)
-    - SCORE: Score fuzzy (0-100)
+    - cnpj_8: CNPJ de 8 digitos
+    - instituicao: Nome oficial
+    - situacao: "A" (ativa) ou "I" (inativa)
+    - fontes: "cosif,ifdata" (onde ha dados)
+    - score: Score fuzzy (0-100)
 
     Ordenacao:
     1. Ativas primeiro (A < I)
@@ -699,7 +798,7 @@ Fluxo interno:
 4. Fuzzy match com token_set_ratio sobre todos os aliases
 5. Verifica fontes de dados para CNPJs encontrados (via `EntityLookup`)
 6. Busca situacao mais recente (via `EntityLookup`)
-7. Se houver matches com fontes disponiveis, filtra resultados sem `FONTES`
+7. Se houver matches com fontes disponiveis, filtra resultados sem `fontes`
 8. Ordena (ativas primeiro, score desc, nome asc) e aplica limit
 
 ### EntityLookup.get_entity_identifiers() [CACHED]
@@ -787,7 +886,7 @@ O `search()` usa duas queries separadas:
    com dedup por CNPJ (nome mais recente)
 2. **Aliases pesquisaveis**: todos os nomes do cadastro (incluindo prudenciais/financeiros),
    resolvidos para o CNPJ real via `resolved_entity_cnpj_expr()`
-3. **Pos-processamento**: quando existem matches com `FONTES`, resultados sem dados sao descartados
+3. **Pos-processamento**: quando existem matches com `fontes`, resultados sem dados sao descartados
 
 A funcao `strip_accents()` e UDF registrada no DuckDB para comparacao insensivel a acentos.
 
@@ -833,8 +932,9 @@ class COSIFExplorer(BaseExplorer):
             where=where,
         )
 
-        # Finalizacao (herdada)
-        return self._finalize_read(df)
+        # Finalizacao (herdada): rename/sort/reorder e, por ultimo,
+        # a coluna data vira o DatetimeIndex 'date'
+        return self._to_datetime_index(self._finalize_read(df))
 ```
 
 ### EntityLookup usa Constants
@@ -912,9 +1012,9 @@ def diagnose_eras(
     boundary: int,
     source: str,
     periodos_solicitados: list[int] | None,
-    group_col: str | None = None,   # "RELATORIO" (IFDATA) | "DOCUMENTO" (COSIF)
-    date_col: str = "DATA",
-    account_col: str = "COD_CONTA",
+    group_col: str | None = None,   # "relatorio" (IFDATA) | "documento" (COSIF)
+    date_col: str = "data",
+    account_col: str = "cod_conta",
     escopo: str | None = None,
 ) -> EraDiagnostic
 ```

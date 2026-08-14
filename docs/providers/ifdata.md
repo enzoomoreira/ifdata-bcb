@@ -23,7 +23,7 @@ Os dados IFDATA sao disponibilizados pelo Banco Central do Brasil via API OData:
 
 O IFDATA suporta tres escopos que determinam a visao dos dados:
 
-| Escopo | TIPO_INST | Descricao |
+| Escopo | tipo_inst | Descricao |
 |--------|-----------|-----------|
 | `individual` | 3 | Dados da instituicao especifica |
 | `prudencial` | 1 | Dados do conglomerado prudencial |
@@ -35,7 +35,7 @@ df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
 
 # Buscar em todos os escopos (escopo=None)
 df = bcb.ifdata.read("2024-12", instituicao="60872504")
-# Resultado inclui coluna ESCOPO
+# Resultado inclui coluna escopo
 ```
 
 ## API Reference
@@ -73,6 +73,32 @@ bcb.ifdata.collect("2024-12", force=True)
 range alinha o inicio para o fim do trimestre, que fica maior que o `end`, e a
 chamada coleta zero periodos sem erro nenhum. Passe apenas `start`.
 
+### fetch()
+
+Baixa dados do BCB e devolve o DataFrame no formato de `read()`, **sem tocar o cache local**. Os arquivos baixados vivem num diretorio temporario descartado ao final; nada persiste.
+
+```python
+bcb.ifdata.fetch(
+    start: DateScalar,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: DateScalar | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
+    instituicao: str | list[str] | None = None,
+    escopo: str | None = None,
+    conta: str | list[str] | None = None,
+    relatorio: str | None = None,
+    grupo: str | None = None,
+    columns: list[str] | None = None,
+    verbose: bool = True
+) -> pd.DataFrame
+```
+
+Mesmos filtros de `read()`, exceto `cadastro=` -- o enriquecimento exige o cadastro no cache local. Resolucao de conglomerados e nomes canonicos usam o cadastro do cache local, quando coletado.
+
+```python
+# Consulta pontual sem popular o cache
+df = bcb.ifdata.fetch("2024-12", instituicao="60872504", escopo="prudencial")
+```
+
 ### read()
 
 Le dados IFDATA Valores com filtros.
@@ -97,6 +123,8 @@ bcb.ifdata.read(
 **API de Datas**:
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
+
+**Retorno**: DataFrame indexado por um `DatetimeIndex` nomeado `date` -- a data do periodo sai das colunas e vira o indice. As demais colunas usam nomes lowercase (`cnpj_8`, `conta`, `valor`, ...).
 
 **Bulk read**: Quando `instituicao=None` (padrao), retorna dados de todas as instituicoes do periodo, sem necessidade de resolver entidade. Util para rankings e analises agregadas.
 
@@ -138,6 +166,7 @@ Lista contas disponiveis nos dados.
 ```python
 bcb.ifdata.list_contas(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
+    *,                             # --- keyword-only a partir daqui ---
     escopo: str | None = None,     # 'individual', 'prudencial', 'financeiro'
     relatorio: str | None = None,  # Filtro por relatorio (case/accent-insensitive)
     start: DateScalar | None = None,      # Periodo inicial (filtra contas que existem no periodo)
@@ -148,7 +177,7 @@ bcb.ifdata.list_contas(
 
 **Raises**: `ValueError` se `limit <= 0`.
 
-**Retorna**: DataFrame com colunas `COD_CONTA`, `CONTA`, `RELATORIO` e `GRUPO`, ordenado por RELATORIO, GRUPO, CONTA.
+**Retorna**: DataFrame flat com colunas `cod_conta`, `conta`, `relatorio` e `grupo`, ordenado por relatorio, grupo, conta.
 
 **Exemplos**:
 
@@ -166,13 +195,13 @@ contas = bcb.ifdata.list_contas(escopo="individual", limit=50)
 contas = bcb.ifdata.list_contas(relatorio="Resumo")
 ```
 
-### list()
+### list_values()
 
-Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
+Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB). Retorna DataFrame flat.
 
 ```python
-bcb.ifdata.list(
-    columns: list[str],            # Colunas a listar: DATA, ESCOPO, RELATORIO, GRUPO
+bcb.ifdata.list_values(
+    columns: list[str],            # Colunas a listar: data, escopo, relatorio, grupo
     *,
     start: DateScalar | None = None,      # Periodo inicial
     end: DateScalar | None = None,        # Periodo final
@@ -184,9 +213,9 @@ bcb.ifdata.list(
 ```
 
 **Colunas bloqueadas** (emitem warning e retornam DataFrame vazio):
-- `CONTA`, `COD_CONTA`: use `list_contas()` para buscar contas
-- `COD_INST`: use `cadastro.search(fonte='ifdata')` para listar instituicoes
-- `VALOR`: metrica continua, nao listavel
+- `conta`, `cod_conta`: use `list_contas()` para buscar contas
+- `cod_inst`: use `cadastro.search(fonte='ifdata')` para listar instituicoes
+- `valor`: metrica continua, nao listavel
 
 **Raises**: `InvalidColumnError` se coluna invalida. `TruncatedResultWarning` quando `len(resultado) == limit`.
 
@@ -194,21 +223,21 @@ bcb.ifdata.list(
 
 ```python
 # Listar relatorios disponiveis
-bcb.ifdata.list(["RELATORIO"])
+bcb.ifdata.list_values(["relatorio"])
 
 # Listar combinacoes relatorio + escopo
-bcb.ifdata.list(["RELATORIO", "ESCOPO"])
+bcb.ifdata.list_values(["relatorio", "escopo"])
 
 # Listar grupos de um relatorio especifico
-bcb.ifdata.list(["GRUPO"], relatorio="Ativo")
+bcb.ifdata.list_values(["grupo"], relatorio="Ativo")
 
 # Listar periodos como datetime64
-bcb.ifdata.list(["DATA"])
+bcb.ifdata.list_values(["data"])
 ```
 
 ### mapeamento()
 
-Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo.
+Tabela de mapeamento cod_inst <-> cnpj_8 por escopo. Retorna DataFrame flat.
 
 ```python
 bcb.ifdata.mapeamento(
@@ -218,35 +247,43 @@ bcb.ifdata.mapeamento(
 ```
 
 **Retorna**: DataFrame com colunas:
-- `COD_INST`: Codigo de reporte no IFDATA
-- `TIPO_INST`: Codigo do tipo de instituicao (1, 2, 3)
-- `ESCOPO`: "individual", "prudencial" ou "financeiro"
-- `REPORT_KEY_TYPE`: "cnpj" ou nome do escopo
-- `CNPJ_8`: CNPJ da entidade associada
-- `INSTITUICAO`: Nome canonico
+- `cod_inst`: Codigo de reporte no IFDATA
+- `tipo_inst`: Codigo do tipo de instituicao (1, 2, 3)
+- `escopo`: "individual", "prudencial" ou "financeiro"
+- `report_key_type`: "cnpj" ou nome do escopo
+- `cnpj_8`: CNPJ da entidade associada
+- `instituicao`: Nome canonico
 
 **Exemplos**:
 
 ```python
 # Ver mapeamento completo
 reporters = bcb.ifdata.mapeamento(start="2024-12")
-print(reporters[reporters["CNPJ_8"] == "60872504"])
+print(reporters[reporters["cnpj_8"] == "60872504"])
 
-# Descobrir COD_INST de um banco por escopo
+# Descobrir cod_inst de um banco por escopo
 df = bcb.ifdata.mapeamento(start="2024-12")
-df[df["CNPJ_8"] == "60746948"]  # Bradesco: individual=60746948, prudencial=C0080075
+df[df["cnpj_8"] == "60746948"]  # Bradesco: individual=60746948, prudencial=C0080075
 
 # Listar membros de um conglomerado
-df[df["COD_INST"] == "C0080075"]
+df[df["cod_inst"] == "C0080075"]
 ```
 
 ### list_periodos()
 
-Lista periodos disponiveis (herdado de BaseExplorer).
+Lista periodos disponiveis (herdado de BaseExplorer). Aceita `escopo` para restringir a um escopo.
 
 ```python
-periodos = bcb.ifdata.list_periodos()  # Retorna [202403, 202406, ...]
+periodos = bcb.ifdata.list_periodos()                     # Retorna [202403, 202406, ...]
+periodos = bcb.ifdata.list_periodos(escopo="financeiro")  # Apenas periodos com linhas desse escopo
 ```
+
+No IFDATA o escopo e coluna dos dados (`TipoInstituicao`), nao diretorio. A
+resposta por escopo vem dos proprios dados: um periodo so aparece para um
+escopo se ha linhas dele no parquet -- `financeiro`, por exemplo, nao existe
+em todos os periodos.
+
+**Raises**: `InvalidScopeError` se o escopo nao for valido para o explorer.
 
 ### describe()
 
@@ -257,12 +294,12 @@ Ver [cosif.md](cosif.md#describe) para o formato completo.
 info = bcb.ifdata.describe()
 info["escopos"]  # ['individual', 'prudencial', 'financeiro']
 info["filtros"]  # ['conta', 'escopo', 'grupo', 'instituicao', 'relatorio']
+info["read_index"]  # 'date' -- read() devolve a data como DatetimeIndex
+info["by_escopo"]["financeiro"]  # {'period_count': ..., 'has_data': ...}
 ```
 
-O IFDATA tem uma unica fonte de armazenamento (`'default'`); os escopos sao
-resolvidos por `TipoInstituicao` dentro dela, e nao por diretorio. Por isso
-`list_periodos('individual')` levanta `InvalidScopeError` -- `individual` e
-escopo, nao fonte.
+Como em `list_periodos()`, o resumo `by_escopo` (e `describe(escopo)`) e
+resolvido pelos dados: um periodo so conta para o escopo que tem linhas dele.
 
 ### check_era()
 
@@ -276,29 +313,30 @@ diag = bcb.ifdata.check_era("2024-12", "2025-03", escopo="prudencial")
 
 ## Colunas Disponiveis
 
+`read()` devolve o periodo de referencia como indice do DataFrame: um `DatetimeIndex` nomeado `date`. As colunas sao:
+
 | Coluna | Tipo | Descricao |
 |--------|------|-----------|
-| `DATA` | datetime | Periodo de referencia (trimestral) |
-| `CNPJ_8` | str | CNPJ de 8 digitos (resolvido automaticamente para conglomerados em bulk reads) |
-| `INSTITUICAO` | str | Nome da instituicao (canônico do cadastro) |
-| `ESCOPO` | str | Escopo dos dados (individual, prudencial, financeiro) |
-| `COD_INST` | str | Codigo da instituicao no BCB |
-| `COD_CONTA` | str | Codigo numerico da conta |
-| `CONTA` | str | Nome/descricao da conta |
-| `VALOR` | float | Valor em reais |
-| `RELATORIO` | str | Nome do relatorio de origem |
-| `GRUPO` | str | Grupo da conta |
+| `cnpj_8` | str | CNPJ de 8 digitos (resolvido automaticamente para conglomerados em bulk reads) |
+| `instituicao` | str | Nome da instituicao (canônico do cadastro) |
+| `escopo` | str | Escopo dos dados (individual, prudencial, financeiro) |
+| `cod_inst` | str | Codigo da instituicao no BCB |
+| `cod_conta` | str | Codigo numerico da conta |
+| `conta` | str | Nome/descricao da conta |
+| `valor` | float | Valor em reais |
+| `relatorio` | str | Nome do relatorio de origem |
+| `grupo` | str | Grupo da conta |
 
-### Sobre COD_INST vs CNPJ_8
+### Sobre cod_inst vs cnpj_8
 
-- `COD_INST`: Codigo interno do BCB para a instituicao/conglomerado
-- `CNPJ_8`: CNPJ de 8 digitos que voce passou na consulta
+- `cod_inst`: Codigo interno do BCB para a instituicao/conglomerado
+- `cnpj_8`: CNPJ de 8 digitos que voce passou na consulta
 
-Para escopo `individual`, `COD_INST` e igual ao `CNPJ_8`.
-Para escopos `prudencial` e `financeiro`, `COD_INST` pode ser o codigo do conglomerado
+Para escopo `individual`, `cod_inst` e igual ao `cnpj_8`.
+Para escopos `prudencial` e `financeiro`, `cod_inst` pode ser o codigo do conglomerado
 ou o proprio CNPJ, dependendo de como a entidade reporta ao BCB.
 
-### Sobre RELATORIO
+### Sobre relatorio
 
 Indica a origem dos dados:
 - **Resumo**: Indicadores principais
@@ -306,7 +344,7 @@ Indica a origem dos dados:
 - **Passivo**: Composicao do passivo
 - **DRE**: Demonstracao do Resultado
 
-### Sobre GRUPO
+### Sobre grupo
 
 Agrupamento logico das contas para navegacao hierarquica.
 
@@ -321,12 +359,12 @@ df = bcb.ifdata.read(
     "2024-12",
     instituicao=["60872504", "60746948"],
     escopo="prudencial",
-    cadastro=["TCB", "TC", "SEGMENTO"],
+    cadastro=["tcb", "tc", "segmento"],
 )
-# Resultado inclui colunas TCB, TC e SEGMENTO
+# Resultado inclui colunas tcb, tc e segmento
 ```
 
-Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `CNPJ_LIDER_8`, `SITUACAO`, `ATIVIDADE`, `TCB`, `TD`, `TC`, `UF`, `MUNICIPIO`, `SR`, `DATA_INICIO_ATIVIDADE`, `NOME_CONGL_PRUD`.
+Colunas cadastrais disponiveis: `atividade`, `cnpj_lider_8`, `cod_congl_fin`, `cod_congl_prud`, `data_inicio_atividade`, `municipio`, `nome_congl_prud`, `segmento`, `situacao`, `sr`, `tc`, `tcb`, `td`, `uf`.
 
 ## Exemplos Avancados
 
@@ -335,11 +373,11 @@ Colunas cadastrais disponiveis: `SEGMENTO`, `COD_CONGL_PRUD`, `COD_CONGL_FIN`, `
 ```python
 # Apenas escopo prudencial (conglomerados)
 df_prud = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
-print(f"Escopo: {df_prud['ESCOPO'].iloc[0]}")
+print(f"Escopo: {df_prud['escopo'].iloc[0]}")
 
 # Todos os escopos disponiveis
 df_todos = bcb.ifdata.read("2024-12", instituicao="60872504")
-print(f"Escopos: {df_todos['ESCOPO'].unique()}")
+print(f"Escopos: {df_todos['escopo'].unique()}")
 ```
 
 ### Analisar Grupos de Contas
@@ -347,7 +385,7 @@ print(f"Escopos: {df_todos['ESCOPO'].unique()}")
 ```python
 # Listar grupos disponiveis
 df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
-grupos = df["GRUPO"].unique()
+grupos = df["grupo"].unique()
 print(f"Grupos: {grupos}")
 ```
 
@@ -362,9 +400,8 @@ df = bcb.ifdata.read(
     conta=["Lucro Liquido"],
 )
 
-# Ordenar e plotar
-df_sorted = df.sort_values("DATA")
-print(df_sorted[["DATA", "VALOR"]])
+# O indice ja e um DatetimeIndex ordenado por data
+print(df["valor"])
 ```
 
 ### Ranking por Ativo Total (SQL)
@@ -374,7 +411,7 @@ from ifdata_bcb.infra import QueryEngine
 
 qe = QueryEngine()
 
-# Usando SQL para ranking
+# Usando SQL para ranking (nomes de STORAGE, nao de apresentacao)
 df = qe.sql("""
     SELECT
         CodInst as COD_INST,
@@ -408,15 +445,17 @@ AnoMes,CodInst,TipoInstituicao,Conta,NomeColuna,Saldo,NomeRelatorio,Grupo
 
 Mapeamento para colunas de apresentacao:
 
-| Coluna Original | Coluna Mapeada |
-|-----------------|----------------|
-| AnoMes | DATA |
-| CodInst | COD_INST |
-| Conta | COD_CONTA |
-| NomeColuna | CONTA |
-| Saldo | VALOR |
-| NomeRelatorio | RELATORIO |
-| Grupo | GRUPO |
+| Coluna Original | Coluna de Apresentacao |
+|-----------------|------------------------|
+| AnoMes | data (em `read()` vira o indice `date`) |
+| CodInst | cod_inst |
+| Conta | cod_conta |
+| NomeColuna | conta |
+| Saldo | valor |
+| NomeRelatorio | relatorio |
+| Grupo | grupo |
+
+Os nomes de storage nao mudaram: SQL direto via `QueryEngine` continua usando `AnoMes`, `CodInst`, `Saldo`, etc.
 
 ### Warnings de Compatibilidade entre Eras
 

@@ -201,10 +201,11 @@ Classe para busca fuzzy usando `thefuzz`:
 
 ```python
 class FuzzyMatcher:
-    def __init__(self, threshold_suggest: int = 78):
+    def __init__(self, threshold_suggest: int | None = None):
         """
         Args:
-            threshold_suggest: Score >= para incluir em sugestoes
+            threshold_suggest: Score >= para incluir em sugestoes.
+                Se None, usa get_settings().fuzzy_threshold (padrao 78).
         """
 ```
 
@@ -216,11 +217,11 @@ Busca fuzzy retornando todos os matches acima do cutoff:
 def search(
     self,
     query: str,
-    choices: dict[str, str],  # {identificador: label}
+    choices: Iterable[str],  # nomes/labels a comparar
     score_cutoff: int = 0,
 ) -> list[tuple[str, int]]:
     """
-    Retorna: [(identificador, score), ...]
+    Retorna: [(escolha, score), ...]
 
     Algoritmo:
     - Scorer: fuzz.token_set_ratio (tolerante a ordem de palavras)
@@ -234,14 +235,14 @@ def search(
 ```python
 matcher = FuzzyMatcher(threshold_suggest=78)
 
-choices = {
-    "33000167": "BANCO DO BRASIL S.A.",
-    "60872504": "ITAU UNIBANCO S.A.",
-    "60746948": "BANCO BRADESCO S.A.",
-}
+choices = [
+    "BANCO DO BRASIL S.A.",
+    "ITAU UNIBANCO S.A.",
+    "BANCO BRADESCO S.A.",
+]
 
 results = matcher.search("BANCO BRASIL", choices, score_cutoff=50)
-# [("33000167", 95), ...]
+# [("BANCO DO BRASIL S.A.", 95), ...]
 ```
 
 ---
@@ -328,21 +329,21 @@ def get_latest_period(files: list[str], prefix: str) -> tuple[int, int] | None:
 
 ## Uso nos Modulos
 
-### EntityLookup usa text.py e fuzzy.py
+### EntitySearch usa text.py e fuzzy.py
 
 ```python
 from ifdata_bcb.utils import normalize_accents, FuzzyMatcher
 
 
-class EntityLookup:
-    def search(self, termo: str, limit: int = 10):
+class EntitySearch:  # em core/entity/search.py
+    def search(self, termo: str, limit: int = 10, date_range=None):
         # Normaliza termo para comparacao
-        termo_norm = normalize_accents(termo.upper())
+        termo_norm = normalize_accents(termo.strip().upper())
 
         # Busca fuzzy (sem limit, aplicado apos ordenar por situacao)
         matches = self._fuzzy.search(
             query=termo_norm,
-            choices=nome_to_cnpj,
+            choices=nome_to_cnpj.keys(),
             score_cutoff=self._fuzzy.threshold_suggest,
         )
 ```

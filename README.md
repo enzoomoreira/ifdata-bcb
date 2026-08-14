@@ -34,12 +34,13 @@ bcb.ifdata.collect("2024-01", "2024-12")
 # 2. Buscar instituicao por nome (fuzzy matching)
 bcb.cadastro.search("Itau")
 bcb.cadastro.search("Bradesco")
-#    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
+#    cnpj_8                 instituicao  situacao        fontes  score
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.        A  cosif,ifdata    100
 
 # 3. Ler dados usando CNPJ de 8 digitos
 # start e OBRIGATORIO (posicional); instituicao e keyword-only e opcional
 # start sozinho = data unica; start + end = range
+# read() devolve a data como DatetimeIndex 'date': df.loc["2024"] e resample() funcionam direto
 
 # COSIF (escopo=None busca em todos os escopos)
 df = bcb.cosif.read(
@@ -60,17 +61,20 @@ df = bcb.ifdata.read(
     "2024-12",
     instituicao="60872504",
     escopo="prudencial",
-    cadastro=["TCB", "SEGMENTO"],
+    cadastro=["tcb", "segmento"],
 )
 
 # Cadastro
 df = bcb.cadastro.read("2024-12", segmento="Banco Multiplo")
 
+# Espiar dados direto do BCB sem tocar o cache local
+df = bcb.cosif.fetch("2024-12", instituicao="60872504", escopo="prudencial")
+
 # 4. Listar valores distintos e contas
-bcb.ifdata.list(["RELATORIO"])
-bcb.cosif.list(["DATA", "ESCOPO"])
-bcb.cadastro.list(["SEGMENTO"], uf="SP")
-bcb.cosif.list_contas(escopo="prudencial")
+bcb.ifdata.list_values(["relatorio"])
+bcb.cosif.list_values(["data", "escopo"])
+bcb.cadastro.list_values(["segmento"], uf="SP")
+bcb.cosif.list_contas("ativo", escopo="prudencial")
 
 # 5. SQL direto com DuckDB (para analises avancadas)
 from ifdata_bcb.infra import QueryEngine
@@ -156,11 +160,12 @@ Todos os explorers possuem:
 | Metodo | Descricao |
 |--------|-----------|
 | `collect(start, end=None, ...)` | Coleta dados do BCB. `end=None` coleta so o periodo de `start` |
-| `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only) |
-| `list(columns, *, ...)` | Lista valores distintos para colunas (SELECT DISTINCT) |
-| `list_periodos()` | Periodos disponiveis |
-| `describe()` | Escopos, filtros e colunas aceitas, mais os periodos coletados |
-| `has_data()` | Verifica se tem dados |
+| `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only). Devolve DatetimeIndex `date` |
+| `fetch(start, end, *, instituicao, ...)` | Baixa do BCB e devolve DataFrame no formato de `read()` sem tocar o cache local |
+| `list_values(columns, *, ...)` | Lista valores distintos para colunas (SELECT DISTINCT) |
+| `list_periodos(escopo=None)` | Periodos disponiveis (opcionalmente por escopo) |
+| `describe(escopo=None)` | Escopos, filtros e colunas aceitas, mais os periodos coletados |
+| `has_data(escopo=None)` | Verifica se tem dados |
 
 Metodos especificos:
 

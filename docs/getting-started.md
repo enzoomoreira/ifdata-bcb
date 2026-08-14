@@ -78,6 +78,14 @@ bcb.ifdata.collect(START, END)
 
 A coleta baixa os dados do site do BCB e armazena localmente em formato Parquet. Esse processo so precisa ser feito uma vez por periodo (a menos que use `force=True`).
 
+Para espiar dados sem persistir nada no cache local, use `fetch()`: ele baixa do BCB para um diretorio temporario, devolve o DataFrame no mesmo formato de `read()` e descarta os arquivos ao final. Aceita os mesmos filtros de `read()`, exceto `cadastro=`:
+
+```python
+# Download temporario, cache local intacto
+df = bcb.cosif.fetch("2024-12", instituicao="60872504", escopo="prudencial")
+df = bcb.ifdata.fetch("2024-12", conta="Lucro Liquido", verbose=False)
+```
+
 ### 3. Buscar instituicao
 
 A biblioteca usa o padrao "search + select" para identificar instituicoes:
@@ -85,8 +93,8 @@ A biblioteca usa o padrao "search + select" para identificar instituicoes:
 ```python
 # Buscar instituicao por nome (fuzzy matching)
 bcb.cadastro.search("Itau")
-#    CNPJ_8                       INSTITUICAO  SITUACAO       FONTES  SCORE
-# 0  60872504  ITAU UNIBANCO HOLDING S.A.           A  cosif,ifdata    100
+#    cnpj_8                 instituicao  situacao        fontes  score
+# 0  60872504  ITAU UNIBANCO HOLDING S.A.        A  cosif,ifdata    100
 
 bcb.cadastro.search("Bradesco")
 bcb.cadastro.search("Santander")
@@ -102,13 +110,13 @@ O resultado retorna:
 
 | Coluna | Descricao |
 |--------|-----------|
-| `CNPJ_8` | CNPJ de 8 digitos (usar este valor nas consultas) |
-| `INSTITUICAO` | Nome completo da instituicao |
-| `SITUACAO` | Status: A (Ativa) ou I (Inativa) |
-| `FONTES` | Fontes onde ha dados disponiveis para consulta (`cosif`, `ifdata`) |
-| `SCORE` | Score de similaridade (0-100, presente apenas com `termo`) |
+| `cnpj_8` | CNPJ de 8 digitos (usar este valor nas consultas) |
+| `instituicao` | Nome completo da instituicao |
+| `situacao` | Status: A (Ativa) ou I (Inativa) |
+| `fontes` | Fontes onde ha dados disponiveis para consulta (`cosif`, `ifdata`) |
+| `score` | Score de similaridade (0-100, presente apenas com `termo`) |
 
-Quando houver matches com e sem dados disponiveis, o `search()` prioriza os que possuem `FONTES`.
+Quando houver matches com e sem dados disponiveis, o `search()` prioriza os que possuem `fontes`.
 
 ### 4. Consultar dados
 
@@ -190,7 +198,7 @@ df = bcb.cosif.read("2024-12", instituicao="60872504", escopo="prudencial")
 df = bcb.cosif.read("2024-12", instituicao="60872504", escopo="individual")
 
 # Buscar em AMBOS os escopos (escopo=None, padrao)
-# Retorna coluna ESCOPO indicando a origem
+# Retorna coluna escopo indicando a origem
 df = bcb.cosif.read("2024-12", instituicao="60872504")
 ```
 
@@ -242,7 +250,7 @@ Comportamento:
 - **start sozinho**: Data unica
 - **start + end**: Range de datas (a biblioteca gera automaticamente os periodos)
 
-A coluna `DATA` retornada e sempre do tipo `datetime64` (resolucao microsegundos, nativa do DuckDB).
+`read()` devolve a data como `DatetimeIndex` nomeado `date` (nao existe coluna `data` no resultado) -- `df.loc["2024"]` e `df.resample()` funcionam direto. Metodos flat como `list_values()`, `list_contas()`, `search()` e `mapeamento()` devolvem a coluna `data` (tipo `datetime64`) quando solicitada.
 
 ## Exemplos Praticos
 
@@ -259,7 +267,7 @@ bcb.cadastro.search("Bradesco")
 df = bcb.cosif.read(
     "2024-12", instituicao="60746948", conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
 )
-print(f"Ativo Total: R$ {df['VALOR'].iloc[0]:,.2f}")
+print(f"Ativo Total: R$ {df['valor'].iloc[0]:,.2f}")
 ```
 
 ### Comparar Bancos
@@ -283,7 +291,7 @@ for nome, cnpj in bancos.items():
         "2024-12", instituicao=cnpj, conta="TOTAL GERAL DO ATIVO", escopo="prudencial"
     )
     if not df.empty:
-        resultados.append({"Banco": nome, "Ativo": df["VALOR"].iloc[0]})
+        resultados.append({"Banco": nome, "Ativo": df["valor"].iloc[0]})
 
 pd.DataFrame(resultados).sort_values("Ativo", ascending=False)
 ```
@@ -303,8 +311,8 @@ df = bcb.cosif.read(
     escopo="prudencial",
 )
 
-# Plotar
-df.plot(x="DATA", y="VALOR", kind="line")
+# Plotar (o DatetimeIndex 'date' vira o eixo x automaticamente)
+df["valor"].plot(kind="line")
 plt.title("Patrimonio Liquido - Itau Unibanco")
 plt.ylabel("R$")
 plt.show()
@@ -316,19 +324,22 @@ plt.show()
 import ifdata_bcb as bcb
 
 # Listar relatorios IFDATA disponiveis
-bcb.ifdata.list(["RELATORIO"])
+bcb.ifdata.list_values(["relatorio"])
 
 # Listar segmentos do cadastro
-bcb.cadastro.list(["SEGMENTO"])
+bcb.cadastro.list_values(["segmento"])
 
 # Listar UFs com filtro
-bcb.cadastro.list(["UF"], situacao="A")
+bcb.cadastro.list_values(["uf"], situacao="A")
 
-# Listar combinacoes de DATA + ESCOPO no COSIF
-bcb.cosif.list(["DATA", "ESCOPO"])
+# Listar combinacoes de data + escopo no COSIF
+bcb.cosif.list_values(["data", "escopo"])
 
 # Listar municipios de SP
-bcb.cadastro.list(["MUNICIPIO"], uf="SP")
+bcb.cadastro.list_values(["municipio"], uf="SP")
+
+# Buscar contas por termo (keyword-only apos termo)
+bcb.cosif.list_contas("ativo", escopo="prudencial")
 ```
 
 ### Enriquecimento Cadastral Inline
@@ -339,11 +350,11 @@ Em vez de consultar cadastro separadamente e fazer merge manual, use o parametro
 # Sem cadastro inline (3 passos)
 df = bcb.ifdata.read("2024-12", instituicao="60872504", escopo="prudencial")
 df_cad = bcb.cadastro.read("2024-12", instituicao="60872504")
-df = df.merge(df_cad[["CNPJ_8", "TCB", "SEGMENTO"]], on="CNPJ_8", how="left")
+df = df.merge(df_cad[["cnpj_8", "tcb", "segmento"]], on="cnpj_8", how="left")
 
 # Com cadastro inline (1 passo)
 df = bcb.ifdata.read(
-    "2024-12", instituicao="60872504", escopo="prudencial", cadastro=["TCB", "SEGMENTO"]
+    "2024-12", instituicao="60872504", escopo="prudencial", cadastro=["tcb", "segmento"]
 )
 ```
 
@@ -373,7 +384,7 @@ df = qe.sql("""
 """)
 ```
 
-**Nota:** As colunas no Parquet usam os nomes originais do BCB (DATA_BASE, NOME_INSTITUICAO, SALDO, etc). O mapeamento de nomes (DATA, INSTITUICAO, VALOR) e feito apenas pelos explorers.
+**Nota:** As colunas no Parquet usam os nomes originais do BCB (DATA_BASE, NOME_INSTITUICAO, SALDO, etc). O mapeamento para os nomes canonicos lowercase (data, instituicao, valor) e feito apenas pelos explorers.
 
 ## Armazenamento de Dados
 
@@ -421,8 +432,9 @@ export BACEN_DATA_DIR="/dados/bcb"
 ```python
 # Via explorers
 bcb.cosif.list_periodos()  # Todos os periodos (ambos escopos)
-bcb.cosif.list_periodos(source="individual")  # Apenas individual
+bcb.cosif.list_periodos("individual")  # Apenas individual
 bcb.cosif.has_data()  # True se tem dados
+bcb.ifdata.describe("prudencial")  # Capacidades + periodos do escopo
 
 # Via DataManager (mais baixo nivel)
 from ifdata_bcb.infra import DataManager
@@ -476,8 +488,8 @@ preciso conhecer o layout interno do pacote.
 |---------|---------------|
 | `InvalidIdentifierError` | CNPJ invalido (nem base de 8 nem completo de 14 com DV valido) |
 | `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (ex: `start`) |
-| `InvalidScopeError` | Valor invalido em `escopo`, `fonte`, `source` ou `documento` |
-| `InvalidColumnError` | Coluna invalida em `columns=`, `list()` ou `cadastro=` |
+| `InvalidScopeError` | Valor invalido em `escopo`, `fonte` ou `documento` |
+| `InvalidColumnError` | Coluna invalida em `columns=`, `list_values()` ou `cadastro=` |
 | `InvalidDateRangeError` | start > end |
 | `InvalidDateFormatError` | Formato de data invalido |
 | `PeriodUnavailableError` | Periodo nao disponivel na fonte (404) |

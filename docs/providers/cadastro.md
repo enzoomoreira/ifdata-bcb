@@ -51,6 +51,37 @@ bcb.cadastro.collect("2024-01", "2024-12")
 bcb.cadastro.collect("2024-12")
 ```
 
+### fetch()
+
+Baixa dados do BCB e devolve o DataFrame no formato de `read()`, **sem tocar o cache local**. Os arquivos baixados vivem num diretorio temporario descartado ao final; nada persiste.
+
+```python
+bcb.cadastro.fetch(
+    start: DateScalar,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: DateScalar | None = None,                 # Data final para range (posicional)
+    *,                                      # --- keyword-only a partir daqui ---
+    instituicao: str | list[str] | None = None,
+    segmento: str | None = None,
+    uf: str | None = None,
+    situacao: str | None = None,
+    atividade: str | None = None,
+    tcb: str | None = None,
+    td: str | None = None,
+    tc: str | int | None = None,
+    sr: str | None = None,
+    municipio: str | None = None,
+    columns: list[str] | None = None,
+    verbose: bool = True
+) -> pd.DataFrame
+```
+
+Mesmos filtros e formato de `read()`.
+
+```python
+# Consulta pontual sem popular o cache
+df = bcb.cadastro.fetch("2024-12", segmento="Banco Multiplo", uf="SP")
+```
+
 ### read()
 
 Le dados cadastrais com filtros.
@@ -79,6 +110,8 @@ bcb.cadastro.read(
 **API de Datas**:
 - `start` sozinho: filtra data unica (ex: `start='2024-12'`)
 - `start` + `end`: gera range trimestral automatico
+
+**Retorno**: DataFrame indexado por um `DatetimeIndex` nomeado `date` -- a data do periodo sai das colunas e vira o indice. As demais colunas usam nomes lowercase (`cnpj_8`, `segmento`, `uf`, ...).
 
 **Filtros de texto** (`segmento`, `uf`, `situacao`, `atividade`, `tcb`, `td`, `tc`, `sr`, `municipio`): case e accent-insensitive. `'Banco Multiplo'` funciona igual a `'Banco Multiplo'` com acento.
 
@@ -111,12 +144,12 @@ df = bcb.cadastro.read(
 )
 ```
 
-### list()
+### list_values()
 
-Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
+Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB). Retorna DataFrame flat.
 
 ```python
-bcb.cadastro.list(
+bcb.cadastro.list_values(
     columns: list[str],            # Colunas a listar (ver tabela abaixo)
     *,
     start: DateScalar | None = None,      # Periodo inicial
@@ -134,10 +167,10 @@ bcb.cadastro.list(
 ) -> pd.DataFrame
 ```
 
-**Colunas aceitas**: DATA, SEGMENTO, UF, SITUACAO, ATIVIDADE, TCB, TD, TC, SR, MUNICIPIO.
+**Colunas aceitas**: data, segmento, uf, situacao, atividade, tcb, td, tc, sr, municipio.
 
 **Colunas bloqueadas** (emitem warning e retornam DataFrame vazio):
-- `CNPJ_8`, `INSTITUICAO`: use `cadastro.search()` para buscar instituicoes
+- `cnpj_8`, `instituicao`: use `cadastro.search()` para buscar instituicoes
 
 **Raises**: `InvalidColumnError` se coluna invalida. `TruncatedResultWarning` quando `len(resultado) == limit`.
 
@@ -145,21 +178,21 @@ bcb.cadastro.list(
 
 ```python
 # Listar segmentos disponiveis
-bcb.cadastro.list(["SEGMENTO"])
+bcb.cadastro.list_values(["segmento"])
 
 # Listar UFs
-bcb.cadastro.list(["UF"])
+bcb.cadastro.list_values(["uf"])
 
 # Listar municipios de SP (sem filtro, trunca em 100)
-bcb.cadastro.list(["MUNICIPIO"], uf="SP")
+bcb.cadastro.list_values(["municipio"], uf="SP")
 
 # Combinacao de colunas
-bcb.cadastro.list(["SEGMENTO", "UF"], situacao="A")
+bcb.cadastro.list_values(["segmento", "uf"], situacao="A")
 ```
 
 ### search()
 
-Busca instituicoes por nome ou lista todas com dados disponiveis.
+Busca instituicoes por nome ou lista todas com dados disponiveis. Retorna DataFrame flat.
 
 ```python
 bcb.cadastro.search(
@@ -173,9 +206,9 @@ bcb.cadastro.search(
 ) -> pd.DataFrame
 ```
 
-**Com `termo`**: fuzzy matching, retorna matches ordenados por SCORE. Coluna SCORE presente.
+**Com `termo`**: fuzzy matching, retorna matches ordenados por `score`. Coluna `score` presente.
 
-**Sem `termo`**: lista todas as instituicoes com dados nos providers solicitados. Sem SCORE.
+**Sem `termo`**: lista todas as instituicoes com dados nos providers solicitados. Sem `score`.
 
 **Filtro `fonte=`**:
 - `None`: instituicoes com dados em qualquer provider
@@ -184,9 +217,9 @@ bcb.cadastro.search(
 
 **Filtro `escopo=`**: filtra por escopo disponivel na fonte (ex: `fonte="cosif", escopo="prudencial"`).
 
-**Filtro `start=`/`end=`**: restringe a verificacao de disponibilidade a um intervalo de periodos. Aceita formatos `'YYYY-MM'` ou `YYYYMM`. Quando `start` e fornecido sem `end`, filtra periodo unico. Apenas instituicoes com dados (COSIF e/ou IFDATA) no intervalo solicitado aparecem no resultado, e a coluna `FONTES` reflete a disponibilidade naquele periodo.
+**Filtro `start=`/`end=`**: restringe a verificacao de disponibilidade a um intervalo de periodos. Aceita formatos `'YYYY-MM'` ou `YYYYMM`. Quando `start` e fornecido sem `end`, filtra periodo unico. Apenas instituicoes com dados (COSIF e/ou IFDATA) no intervalo solicitado aparecem no resultado, e a coluna `fontes` reflete a disponibilidade naquele periodo.
 
-**Retorna**: DataFrame com colunas `CNPJ_8`, `INSTITUICAO`, `SITUACAO`, `FONTES`, e `SCORE` (quando `termo` fornecido).
+**Retorna**: DataFrame com colunas `cnpj_8`, `instituicao`, `situacao`, `fontes`, e `score` (quando `termo` fornecido).
 
 **Raises**: `InvalidScopeError` se fonte ou escopo invalidos.
 
@@ -214,24 +247,25 @@ bcb.cadastro.search(fonte="ifdata", start="2025-06")
 
 ## Colunas Disponiveis
 
+`read()` devolve o periodo de referencia como indice do DataFrame: um `DatetimeIndex` nomeado `date`. As colunas sao:
+
 | Coluna | Tipo | Descricao |
 |--------|------|-----------|
-| `DATA` | datetime | Periodo de referencia |
-| `CNPJ_8` | str | CNPJ de 8 digitos |
-| `INSTITUICAO` | str | Nome completo |
-| `SEGMENTO` | str | Segmento de atuacao |
-| `COD_CONGL_PRUD` | str | Codigo do conglomerado prudencial |
-| `COD_CONGL_FIN` | str | Codigo do conglomerado financeiro |
-| `CNPJ_LIDER_8` | str | CNPJ do lider do conglomerado |
-| `SITUACAO` | str | Situacao (A=Ativo) |
-| `ATIVIDADE` | str | Atividade principal |
-| `TCB` | str | Tipo de Consolidacao Bancaria |
-| `TD` | str | Tipo de Documento |
-| `TC` | str | Tipo de Controle |
-| `UF` | str | Unidade Federativa |
-| `MUNICIPIO` | str | Municipio da sede |
-| `SR` | str | Segmento Regulatorio |
-| `DATA_INICIO_ATIVIDADE` | str | Data de inicio das atividades (YYYYMM) |
+| `cnpj_8` | str | CNPJ de 8 digitos |
+| `instituicao` | str | Nome completo |
+| `segmento` | str | Segmento de atuacao |
+| `cod_congl_prud` | str | Codigo do conglomerado prudencial |
+| `cod_congl_fin` | str | Codigo do conglomerado financeiro |
+| `cnpj_lider_8` | str | CNPJ do lider do conglomerado |
+| `situacao` | str | Situacao (A=Ativo) |
+| `atividade` | str | Atividade principal |
+| `tcb` | str | Tipo de Consolidacao Bancaria |
+| `td` | str | Tipo de Documento |
+| `tc` | str | Tipo de Controle |
+| `uf` | str | Unidade Federativa |
+| `municipio` | str | Municipio da sede |
+| `sr` | str | Segmento Regulatorio |
+| `data_inicio_atividade` | str | Data de inicio das atividades (YYYYMM) |
 
 ## Segmentos e Classificacoes
 
@@ -273,7 +307,7 @@ bcb.cadastro.search(fonte="ifdata", start="2025-06")
 ```python
 # Bancos do Segmento S1 (maiores)
 df = bcb.cadastro.read("2024-12", instituicao="60872504")
-if df["SR"].iloc[0] == "S1":
+if df["sr"].iloc[0] == "S1":
     print("Banco sistemicamente importante")
 ```
 
@@ -281,10 +315,10 @@ if df["SR"].iloc[0] == "S1":
 
 ### Prudencial vs Financeiro
 
-| Tipo | Campo | Descricao |
-|------|-------|-----------|
-| Prudencial | `COD_CONGL_PRUD` | Consolidacao para fins de supervisao |
-| Financeiro | `COD_CONGL_FIN` | Consolidacao para fins contabeis |
+| Tipo | Coluna | Descricao |
+|------|--------|-----------|
+| Prudencial | `cod_congl_prud` | Consolidacao para fins de supervisao |
+| Financeiro | `cod_congl_fin` | Consolidacao para fins contabeis |
 
 ### Listar Membros do Conglomerado
 
@@ -293,15 +327,15 @@ if df["SR"].iloc[0] == "S1":
 df = bcb.ifdata.mapeamento(start="2024-12")
 
 # Descobrir cod_inst de um banco
-df[df["CNPJ_8"] == "60872504"]
+df[df["cnpj_8"] == "60872504"]
 
 # Listar todos os membros do conglomerado
-df[df["COD_INST"] == "C0080075"]
+df[df["cod_inst"] == "C0080075"]
 ```
 
 ## Exemplos Avancados
 
-Nos exemplos SQL abaixo, assuma `qe = QueryEngine()` ja inicializado.
+Nos exemplos SQL abaixo, assuma `qe = QueryEngine()` ja inicializado. SQL direto le o storage: os nomes de coluna (`Data`, `SegmentoTb`, `NomeInstituicao`, ...) nao mudaram.
 
 ### Estatisticas por Segmento (SQL)
 
@@ -388,23 +422,23 @@ Tcb,Td,Tc,Uf,Municipio,Sr,DataInicioAtividade
 
 Mapeamento para colunas de apresentacao:
 
-| Coluna Original | Coluna Mapeada |
-|-----------------|----------------|
-| Data | DATA |
-| NomeInstituicao | INSTITUICAO |
-| SegmentoTb | SEGMENTO |
-| CodConglomeradoPrudencial | COD_CONGL_PRUD |
-| CodConglomeradoFinanceiro | COD_CONGL_FIN |
-| Situacao | SITUACAO |
-| Atividade | ATIVIDADE |
-| Tcb | TCB |
-| Td | TD |
-| Tc | TC |
-| Uf | UF |
-| Municipio | MUNICIPIO |
-| Sr | SR |
-| CnpjInstituicaoLider | CNPJ_LIDER_8 (normalizado durante coleta) |
-| DataInicioAtividade | DATA_INICIO_ATIVIDADE |
+| Coluna Original | Coluna de Apresentacao |
+|-----------------|------------------------|
+| Data | data (em `read()` vira o indice `date`) |
+| NomeInstituicao | instituicao |
+| SegmentoTb | segmento |
+| CodConglomeradoPrudencial | cod_congl_prud |
+| CodConglomeradoFinanceiro | cod_congl_fin |
+| Situacao | situacao |
+| Atividade | atividade |
+| Tcb | tcb |
+| Td | td |
+| Tc | tc |
+| Uf | uf |
+| Municipio | municipio |
+| Sr | sr |
+| CnpjInstituicaoLider | cnpj_lider_8 (normalizado durante coleta) |
+| DataInicioAtividade | data_inicio_atividade |
 
 ## Tratamento de Erros
 
@@ -416,14 +450,14 @@ df = bcb.cadastro.read("2024-12", instituicao="60872504")  # OK!
 df = bcb.cadastro.search("XYZNONEXISTENT")
 assert df.empty
 
-# Coluna invalida em list()
+# Coluna invalida em list_values()
 from ifdata_bcb import InvalidColumnError
 
 try:
-    bcb.cadastro.list(["FOO"])
+    bcb.cadastro.list_values(["FOO"])
 except InvalidColumnError as e:
     print(f"Erro: {e}")
-    # Coluna 'FOO' invalida. Disponiveis: ATIVIDADE, DATA, MUNICIPIO, ...
+    # Coluna 'FOO' invalida. Disponiveis: atividade, data, municipio, ...
 
 # Fonte/escopo invalido em search()
 from ifdata_bcb import InvalidScopeError

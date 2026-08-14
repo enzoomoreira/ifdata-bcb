@@ -11,7 +11,13 @@ Cada provider e composto por dois componentes principais:
 | Componente | Responsabilidade | Classe Base |
 |------------|------------------|-------------|
 | **Collector** | Coleta de dados (download, processamento) | `BaseCollector` |
-| **Explorer** | Interface de consulta (read, list_*) | `BaseExplorer` |
+| **Explorer** | Interface de consulta (read, fetch, list_values, list_contas) | `BaseExplorer` |
+
+Os explorers embutidos (COSIF, IFDATA, Cadastro) oferecem tambem `fetch()`:
+coleta para um diretorio temporario (via `infra.paths.temp_dir`), injetando um
+`DataManager(base_path=tmp)` no collector, e delega ao `read()` de um explorer
+construido com `QueryEngine(base_path=tmp)` -- baixa do BCB e devolve o
+DataFrame sem tocar o cache local.
 
 ### Estrutura de Diretorio
 
@@ -186,14 +192,16 @@ class NovoExplorer(BaseExplorer):
         df = explorer.read('2024-12', instituicao='60872504')
     """
 
-    # Mapeamento de colunas storage -> apresentacao
+    # Mapeamento de colunas storage -> apresentacao (lowercase)
     _COLUMN_MAP = {
-        "DATA": "DATA",
-        "COLUNA_NORMALIZADA": "CONTA",
+        "DATA": "data",
+        "CNPJ_8": "cnpj_8",
+        "COLUNA_NORMALIZADA": "conta",
+        "VALOR": "valor",
     }
 
     # Ordem das colunas no output (tambem usado como fallback para DataFrame vazio)
-    _COLUMN_ORDER = ["DATA", "CNPJ_8", "INSTITUICAO", "VALOR"]
+    _COLUMN_ORDER = ["data", "cnpj_8", "conta", "valor"]
 
     def __init__(
         self,
@@ -233,9 +241,10 @@ class NovoExplorer(BaseExplorer):
 
     def read(
         self,
-        instituicao: InstitutionInput,
         start: str,
         end: str | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
         conta: AccountInput | None = None,
         columns: list[str] | None = None,
     ) -> pd.DataFrame:
@@ -243,14 +252,15 @@ class NovoExplorer(BaseExplorer):
         Le dados com filtros opcionais.
 
         Args:
-            instituicao: CNPJ de 8 digitos. OBRIGATORIO.
             start: Data inicial ou unica (YYYY-MM). OBRIGATORIO.
             end: Data final para range (YYYY-MM).
+            instituicao: CNPJ de 8 digitos. Se None, retorna todas (bulk).
             conta: Nome(s) da(s) conta(s).
             columns: Colunas especificas.
 
         Returns:
-            DataFrame com os dados filtrados.
+            DataFrame com DatetimeIndex 'date' e colunas de apresentacao
+            em lowercase.
         """
         self._validate_required_params(start)
 
@@ -264,7 +274,7 @@ class NovoExplorer(BaseExplorer):
             if contas:
                 conditions.append(
                     build_string_condition(
-                        self._storage_col("CONTA"),
+                        self._storage_col("conta"),
                         contas,
                         case_insensitive=True,
                         accent_insensitive=True,
@@ -279,12 +289,16 @@ class NovoExplorer(BaseExplorer):
         )
 
         if df.empty:
-            return pd.DataFrame(columns=self._COLUMN_ORDER)
+            return self._to_datetime_index(pd.DataFrame(columns=self._COLUMN_ORDER))
 
-        return self._finalize_read(df)
+        # _finalize_read renomeia/ordena; _to_datetime_index move a coluna
+        # data para um DatetimeIndex chamado 'date' (ultimo passo de read()).
+        return self._to_datetime_index(self._finalize_read(df))
 
-    def list_contas(self, termo: str | None = None, limit: int = 100) -> pd.DataFrame:
-        """Lista contas disponiveis."""
+    def list_contas(
+        self, termo: str | None = None, *, limit: int = 100
+    ) -> pd.DataFrame:
+        """Lista contas disponiveis. Filtros sao keyword-only apos termo."""
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
 
         cond = None
@@ -293,10 +307,10 @@ class NovoExplorer(BaseExplorer):
         where = f"WHERE {cond}" if cond else ""
 
         query = f"""
-            SELECT DISTINCT COLUNA_NORMALIZADA as CONTA
+            SELECT DISTINCT COLUNA_NORMALIZADA as "conta"
             FROM '{path}'
             {where}
-            ORDER BY CONTA
+            ORDER BY "conta"
             LIMIT {limit}
         """
         # Interpolar o fragmento por f-string descarta os valores: passe-os
@@ -448,18 +462,21 @@ def _get_file_prefix(self) -> str:
 #### Atributos de Classe
 
 ```python
-_COLUMN_MAP: dict[str, str] = {}  # Mapeamento storage -> apresentacao
+_COLUMN_MAP: dict[str, str] = {}  # Mapeamento storage -> apresentacao (lowercase)
 _DERIVED_COLUMNS: set[str] = set()  # Colunas adicionadas pos-query por Python
-_PASSTHROUGH_COLUMNS: set[str] = (
-    set()
-)  # Colunas nativas do parquet aceitas em columns= sem _COLUMN_MAP
 _DROP_COLUMNS: list[str] = []  # Colunas a remover antes do mapeamento
 _COLUMN_ORDER: list[str] = []  # Ordem desejada das colunas no output
 _VALID_ESCOPOS: list[str] = []  # Escopos validos para _validate_escopo
 _DATE_COLUMN: str | None = (
     None  # Coluna YYYYMM int para conversao automatica em datetime
 )
+_LIST_COLUMNS: dict[str, str] = {}  # list_values(): chave lowercase -> expressao SQL
+_BLOCKED_COLUMNS: dict[str, str] = {}  # list_values(): coluna recusada -> mensagem
 ```
+
+Todas as colunas do parquet que aparecem no output precisam estar em
+`_COLUMN_MAP` -- inclusive as que so mudam de caixa (ex: `CNPJ_8` -> `cnpj_8`).
+Em `list_values()` o input de colunas e case-insensitive (via `col.lower()`).
 
 #### Metodos Auxiliares Fornecidos
 
@@ -492,12 +509,18 @@ def _build_cnpj_condition(self, instituicoes, column="CNPJ_8") -> SqlCondition |
 # Mapeamento de colunas
 def _storage_col(self, presentation_col: str) -> str  # Traduz nome
 def _apply_column_mapping(self, df: pd.DataFrame) -> pd.DataFrame
-def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame  # Aplica mapeamento + converte DATA
+def _finalize_read(self, df: pd.DataFrame) -> pd.DataFrame  # Rename + sort + reorder
+def _to_datetime_index(self, df: pd.DataFrame) -> pd.DataFrame  # data -> DatetimeIndex 'date'
 
-# Descoberta
-def list_periodos(self, source: str | None = None) -> list[int]
-def has_data(self, source: str | None = None) -> bool
-def describe(self, source: str | None = None) -> dict
+# Descoberta (escopo unificado -- nao ha mais source=)
+def list_periodos(self, escopo: str | None = None) -> list[int]
+def has_data(self, escopo: str | None = None) -> bool
+def describe(self, escopo: str | None = None) -> ExplorerInfo
+def _periodos_por_escopo(self) -> dict[str, list[int]]  # Hook: override onde ha escopos
+
+# list_values() (infra generica)
+def _base_list(self, columns, *, start=None, end=None, limit=100, **filters) -> pd.DataFrame
+def _validate_list_columns(self, columns: list[str]) -> None
 
 # Validacao
 def _validate_required_params(self, start) -> None
@@ -516,7 +539,20 @@ class COSIFExplorer(BaseExplorer):
 
     def _get_sources(self) -> dict[str, dict[str, str]]:
         return self._ESCOPOS
+
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        # No COSIF os escopos coincidem com as fontes de armazenamento
+        return {
+            esc: self._list_periodos_for_source(cfg["subdir"], cfg["prefix"])
+            for esc, cfg in self._ESCOPOS.items()
+        }
 ```
+
+`_periodos_por_escopo()` e o hook que responde `list_periodos(escopo=...)`,
+`has_data(escopo=...)` e `describe(escopo=...)`. No IFDATA, onde escopo e
+coluna dos dados e nao fonte, o hook resolve via query `DISTINCT` sobre
+`TipoInstituicao`. Um explorer sem escopos (`_VALID_ESCOPOS` vazio) rejeita
+`escopo=` com `InvalidScopeError`.
 
 ## Customizando Comportamentos
 
@@ -562,14 +598,14 @@ collector = COSIFCollector("individual", data_manager=dm)
 
 ```
 BacenAnalysisError (base)
-  InvalidScopeError              # Valor invalido em escopo/fonte/source/documento
+  InvalidScopeError              # Valor invalido em escopo/fonte/documento
   InvalidIdentifierError         # CNPJ invalido (base de 8 ou completo de 14 com DV)
   MissingRequiredParameterError  # Param obrigatorio faltando
   InvalidDateRangeError          # start > end
   InvalidDateFormatError         # Formato de data invalido
   PeriodUnavailableError         # Periodo nao disponivel na fonte (404)
   DataProcessingError            # Falha no processamento de dados
-  InvalidColumnError             # Coluna invalida em read(), list() ou cadastro=
+  InvalidColumnError             # Coluna invalida em read(), list_values() ou cadastro=
 
 BacenWarning (base, herda de UserWarning)
   IncompatibleEraWarning         # Query cruza fronteira de era
@@ -643,7 +679,7 @@ InstitutionInput = str | list[str]
 - [ ] Criar `__init__.py` com exports
 - [ ] (Opcional) Adicionar ao `__all__` em `__init__.py` raiz
 - [ ] Testar coleta: `collector.collect(start, end)`
-- [ ] Testar leitura: `explorer.read(instituicao, start)`
+- [ ] Testar leitura: `explorer.read(start, instituicao=...)`
 - [ ] Testar listagem: `explorer.list_periodos()`, `explorer.has_data()`
 
 ## Padroes Utilizados

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BACEN_")
 
     data_dir: Path = Path(user_cache_dir(APP_NAME, appauthor=False))
+    max_workers: int = 4
+    request_timeout: float = 240.0
+    connect_timeout: float = 10.0
+    fuzzy_threshold: int = 78
 
     @property
     def cache_path(
@@ -35,12 +39,14 @@ class Settings(BaseSettings):
     ) -> Path: ...  # data_dir (sem mkdir -- nao cria diretorios como side-effect)
 
     @property
-    def logs_path(self) -> Path: ...  # data_dir.parent / "Logs" com mkdir
+    def logs_path(self) -> Path: ...  # data_dir / "logs"
 ```
 
 ```python
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Singleton. Retorna instancia unica de Settings."""
+    """Settings do processo. Cacheado: use get_settings.cache_clear()
+    apos alterar variaveis de ambiente em runtime."""
 ```
 
 **Paths por sistema** (padrao, sem env var):
@@ -64,15 +70,14 @@ export BACEN_DATA_DIR="/dados/bcb"
 **Estrutura de diretorios**:
 
 ```
-py-bacen/
-|-- Cache/                   (ou valor de BACEN_DATA_DIR)
-|   |-- cosif/
-|   |   |-- individual/
-|   |   +-- prudencial/
-|   +-- ifdata/
-|       |-- valores/
-|       +-- cadastro/
-+-- Logs/
+py-bacen/Cache/              (ou valor de BACEN_DATA_DIR)
+|-- cosif/
+|   |-- individual/
+|   +-- prudencial/
+|-- ifdata/
+|   |-- valores/
+|   +-- cadastro/
++-- logs/
     +-- ifdata_2024-01-15.log
 ```
 
@@ -151,7 +156,7 @@ def read_glob(
     where: str | None = None,              # SqlCondition: params vinculados automaticamente
     distinct: bool = False,                # Se True, adiciona DISTINCT ao SELECT
     date_column: str | None = None,        # Coluna YYYYMM int a converter para datetime via DuckDB
-    date_alias: str = "DATA",              # Nome da coluna datetime no output
+    date_alias: str = "data",              # Nome da coluna datetime no output
     exclude_columns: list[str] | None = None,  # Colunas a excluir via EXCLUDE (so quando columns=None)
     params: Mapping[str, object] | None = None,  # Params extras, para WHERE montado a mao
 ) -> pd.DataFrame:
@@ -164,7 +169,7 @@ qe = QueryEngine()
 df = qe.read_glob(
     "cosif_prud_2024*.parquet",
     "cosif/prudencial",
-    where=build_string_condition("CONTA", ["TOTAL GERAL DO ATIVO"]),
+    where=build_string_condition("NOME_CONTA", ["TOTAL GERAL DO ATIVO"]),
 )
 ```
 
@@ -225,7 +230,12 @@ df = qe.sql("""
 Executa SQL com DataFrames registrados como tabelas virtuais:
 
 ```python
-def sql_with_df(self, query: str, **tables: pd.DataFrame) -> pd.DataFrame:
+def sql_with_df(
+    self,
+    query: str,
+    _params: Mapping[str, object] | None = None,
+    **tables: pd.DataFrame,
+) -> pd.DataFrame:
     """
     Permite JOINs, ASOF JOINs etc entre DataFrames em memoria
     e/ou parquets via read_parquet() na mesma query.
@@ -245,11 +255,11 @@ df_cadastro = pd.DataFrame(...)
 
 result = qe.sql_with_df(
     """
-    SELECT f.*, c.SEGMENTO
+    SELECT f.*, c.segmento
     FROM _financial f
     ASOF LEFT JOIN _cadastro c
-        ON f.CNPJ_8 = c.CNPJ_8
-        AND f.DATA >= c.DATA
+        ON f.cnpj_8 = c.cnpj_8
+        AND f.data >= c.data
 """,
     _financial=df_financial,
     _cadastro=df_cadastro,
@@ -483,10 +493,10 @@ def disable_logging() -> None:
 # Console (stderr)
 WARNING  | Mensagem de aviso
 
-# Arquivo (Logs/ifdata_YYYY-MM-DD.log)
+# Arquivo (logs/ifdata_YYYY-MM-DD.log)
 [2024-01-15 10:30:45] INFO     [ifdata_bcb.providers.cosif.explorer] COSIF read: escopo=prudencial, instituicao=60872504 -> 301 rows
 [2024-01-15 10:30:46] INFO     [ifdata_bcb.infra.storage] Saved: cosif/prudencial/cosif_prud_202412.parquet (1,234 rows)
-[2024-01-15 10:30:47] DEBUG    [ifdata_bcb.providers.enrichment] enrichment NOME_CONGL_PRUD: 605/1380 resolvidos
+[2024-01-15 10:30:47] DEBUG    [ifdata_bcb.providers.enrichment] enrichment nome_congl_prud: 605/1380 resolvidos
 ```
 
 **Filosofia de niveis**:
@@ -496,7 +506,7 @@ WARNING  | Mensagem de aviso
 - **DEBUG**: detalhe interno de resolucao (ratios de mapeamento, retry/backoff, mirror de warnings)
 
 **Configuracao de arquivo**:
-- Rotacao: 10 MB por arquivo
+- Rotacao: diaria (meia-noite)
 - Retencao: 30 dias
 - Encoding: UTF-8
 
@@ -721,7 +731,7 @@ qe.has_glob("cosif_prud_*.parquet", "cosif/prudencial")
 df = qe.read_glob(
     pattern="cosif_prud_*.parquet",
     subdir="cosif/prudencial",
-    columns=["CNPJ_8", "VALOR"],
+    columns=["CNPJ_8", "SALDO"],
     where="DATA_BASE = 202412",
 )
 

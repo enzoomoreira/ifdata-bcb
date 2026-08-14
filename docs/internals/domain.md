@@ -8,8 +8,8 @@ A camada de dominio contem modelos de dados, tipos e excecoes da biblioteca.
 src/ifdata_bcb/domain/
 |-- __init__.py           # Exports publicos
 |-- exceptions.py        # Hierarquia de excecoes
-|-- types.py             # Type aliases
-+-- validation.py        # Pydantic models (NormalizedDates, ValidatedCnpj8, etc)
+|-- types.py             # Type aliases + TypedDicts (ExplorerInfo, EscopoInfo)
++-- validation.py        # Funcoes de normalizacao (normalize_dates, validate_cnpj8, etc)
 ```
 
 ---
@@ -22,7 +22,6 @@ src/ifdata_bcb/domain/
 Exception
     +-- BacenAnalysisError (base)
     |       +-- InvalidScopeError
-    |       +-- DataUnavailableError      (nao levantada; sai na v1.0.0)
     |       +-- InvalidIdentifierError
     |       +-- MissingRequiredParameterError
     |       +-- InvalidDateRangeError
@@ -40,10 +39,11 @@ Exception
                     +-- DroppedReportWarning
                     +-- EmptyFilterWarning
                     +-- TruncatedResultWarning
-            +-- TruncatedResultWarning
 ```
 
-> **Nota:** `EntityNotFoundError` e `AmbiguousIdentifierError` foram removidas da hierarquia por nao terem call sites restantes.
+> **Nota:** `EntityNotFoundError`, `AmbiguousIdentifierError` e
+> `DataUnavailableError` foram removidas da hierarquia por nao terem call
+> sites restantes (a ultima saiu na v1.0.0).
 
 ### BacenAnalysisError
 
@@ -66,8 +66,8 @@ class BacenAnalysisError(Exception):
 ### InvalidScopeError
 
 Valor invalido para um parametro de dominio fechado. Usada para `escopo`,
-`fonte`, `source` e `documento` -- por isso a mensagem nomeia o parametro em
-vez de dizer sempre "Escopo".
+`fonte` e `documento` -- por isso a mensagem nomeia o parametro em vez de
+dizer sempre "Escopo".
 
 ```python
 class InvalidScopeError(BacenAnalysisError):
@@ -105,15 +105,6 @@ raise InvalidScopeError(
 )
 # "Valor invalido para 'documento': 'abc'. Esperado codigo numerico (ex: 4010, 4016)."
 ```
-
-### DataUnavailableError
-
-Nao levantada por nenhum caminho da biblioteca. Escopo indisponivel para uma
-entidade e sinalizado com `ScopeUnavailableWarning` mais DataFrame vazio, e
-nao com excecao: o consumidor recebe os dados parciais junto do diagnostico em
-vez de perder o resultado inteiro.
-
-Saiu do contrato publico na v0.6.0 e a classe sera removida na v1.0.0.
 
 ### BacenWarning
 
@@ -227,7 +218,7 @@ raise DataProcessingError("cosif:prudencial", "Erro na leitura do CSV")
 Warning emitido quando uma query abrange periodos com codigos de conta incompativeis (pre/pos COSIF 1.5):
 
 ```python
-class IncompatibleEraWarning(UserWarning):
+class IncompatibleEraWarning(BacenWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
 
     def __init__(self, message: str, boundary: int, source: str):
@@ -240,7 +231,7 @@ class IncompatibleEraWarning(UserWarning):
 # Exemplo: cosif.read('2024-12', '2025-01') emite este warning
 ```
 
-Nao herda de `BacenAnalysisError` -- e um `UserWarning` capturavel via `warnings.catch_warnings()`:
+Nao herda de `BacenAnalysisError` -- e um `BacenWarning` (subclasse de `UserWarning`) capturavel via `warnings.catch_warnings()`:
 
 ```python
 import warnings
@@ -259,7 +250,7 @@ with warnings.catch_warnings(record=True) as w:
 Warning emitido quando o resultado pode estar incompleto -- por exemplo, quando alguns periodos ou entidades nao retornaram dados, ou quando uma query de leitura falha por incompatibilidade de schema:
 
 ```python
-class PartialDataWarning(UserWarning):
+class PartialDataWarning(BacenWarning):
     """Resultado incompleto - alguns periodos/entidades sem dados."""
 
     def __init__(self, message: str, reason: str = "", detail: dict | None = None):
@@ -272,7 +263,7 @@ class PartialDataWarning(UserWarning):
 Warning emitido quando um escopo nao esta disponivel para uma entidade em parte do range temporal solicitado:
 
 ```python
-class ScopeUnavailableWarning(UserWarning):
+class ScopeUnavailableWarning(BacenWarning):
     """Escopo indisponivel para entidade em parte do range temporal."""
 
     def __init__(
@@ -285,10 +276,10 @@ class ScopeUnavailableWarning(UserWarning):
 
 ### NullValuesWarning
 
-Warning emitido quando uma entidade esta presente nos dados mas com todos os valores financeiros (VALOR) NULL. Ocorre quando o BCB registra a entidade no periodo mas nao fornece valores:
+Warning emitido quando uma entidade esta presente nos dados mas com todos os valores financeiros (valor) NULL. Ocorre quando o BCB registra a entidade no periodo mas nao fornece valores:
 
 ```python
-class NullValuesWarning(UserWarning):
+class NullValuesWarning(BacenWarning):
     """Entidade presente nos dados mas com todos os valores financeiros NULL."""
 
     def __init__(self, message: str, entities: list[str]):
@@ -300,7 +291,7 @@ class NullValuesWarning(UserWarning):
 Warning emitido quando um relatorio migrou de escopo entre eras (ex: relatorios de credito migraram de `financeiro` para `prudencial` a partir de 202503):
 
 ```python
-class ScopeMigrationWarning(UserWarning):
+class ScopeMigrationWarning(BacenWarning):
     """Relatorio migrou de escopo entre eras."""
 
     def __init__(
@@ -322,7 +313,7 @@ class ScopeMigrationWarning(UserWarning):
 Warning emitido quando um relatorio foi descontinuado a partir de determinada era:
 
 ```python
-class DroppedReportWarning(UserWarning):
+class DroppedReportWarning(BacenWarning):
     """Relatorio descontinuado a partir de determinada era."""
 
     def __init__(self, message: str, relatorio: str, last_period: int):
@@ -335,7 +326,7 @@ class DroppedReportWarning(UserWarning):
 Warning emitido quando um filtro vazio e passado a um parametro (ex: `columns=[]`):
 
 ```python
-class EmptyFilterWarning(UserWarning):
+class EmptyFilterWarning(BacenWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
 
     def __init__(self, message: str, parameter: str):
@@ -440,6 +431,40 @@ InstitutionInput = str | list[str]
 Aceita:
 - `str`: '60872504'
 - `list[str]`: ['60872504', '00000000']
+
+### ExplorerInfo e EscopoInfo
+
+`TypedDict`s que tipam o retorno de `Explorer.describe()`:
+
+```python
+class EscopoInfo(TypedDict):
+    """Um escopo dentro de describe()['by_escopo']."""
+
+    period_count: int
+    has_data: bool
+
+
+class ExplorerInfo(TypedDict, total=False):
+    escopo: str                        # presente com describe(escopo=...)
+    by_escopo: dict[str, EscopoInfo]   # presente sem escopo=, se ha escopos
+
+    escopos: list[str]        # valores aceitos em escopo=
+    columns: list[str]        # colunas listaveis por list_values()
+    read_columns: list[str]   # colunas de read(), sem a data (que vira index)
+    read_index: str           # nome do DatetimeIndex de read() ("date")
+    filtros: list[str]        # parametros de filtro aceitos por read()
+    cadastro_columns: list[str]  # valores aceitos em cadastro=
+
+    periods: list[int]
+    period_count: int
+    has_data: bool
+    first_period: int | None
+    last_period: int | None
+```
+
+`total=False` porque o retorno tem duas formas: com `escopo=` vem a chave
+`escopo` e os periodos restritos a ele; sem, vem `by_escopo` com o resumo de
+todos (apenas em explorers com escopos).
 
 ---
 

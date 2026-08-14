@@ -232,32 +232,37 @@ class COSIFCollector(BaseCollector):
 
 - **Multi-source**: individual + prudencial
 - **Nomes canônicos**: Substitui nomes do COSIF por nomes do cadastro via `get_canonical_names_for_cnpjs()`
-- **Mapeamento de colunas**:
-  - `DATA_BASE` -> `DATA`
-  - `NOME_INSTITUICAO` -> `INSTITUICAO`
-  - `NOME_CONTA` -> `CONTA`
-  - `SALDO` -> `VALOR`
+- **Mapeamento de colunas** (apresentacao em lowercase):
+  - `DATA_BASE` -> `data`
+  - `CNPJ_8` -> `cnpj_8`
+  - `NOME_INSTITUICAO` -> `instituicao`
+  - `NOME_CONTA` -> `conta`
+  - `SALDO` -> `valor`
 
 ### Implementacao
 
 ```python
 class COSIFExplorer(BaseExplorer):
     _COLUMN_MAP = {
-        "DATA_BASE": "DATA",
-        "NOME_INSTITUICAO": "INSTITUICAO",
-        "NOME_CONTA": "CONTA",
-        "CONTA": "COD_CONTA",
-        "SALDO": "VALOR",
+        "DATA_BASE": "data",
+        "CNPJ_8": "cnpj_8",
+        "NOME_INSTITUICAO": "instituicao",
+        "NOME_CONTA": "conta",
+        "CONTA": "cod_conta",
+        "DOCUMENTO": "documento",
+        "SALDO": "valor",
     }
 
-    _DROP_COLUMNS: list[str] = []
-    _PASSTHROUGH_COLUMNS: set[str] = {"CNPJ_8", "DOCUMENTO"}
+    _DERIVED_COLUMNS: set[str] = {"escopo"}
     _DATE_COLUMN = "DATA_BASE"
 
     # Analise de era (ver core/eras.py)
     _ERA_BOUNDARY = COSIF_ERA_BOUNDARY  # 202501
-    _ERA_GROUP_COLUMN = "DOCUMENTO"
+    _ERA_GROUP_COLUMN = "documento"
     _ERA_SOURCE_NAME = "COSIF"
+
+    # list_values()
+    _LIST_COLUMNS = {"data": "DATA_BASE", "escopo": "ESCOPO", "documento": "DOCUMENTO"}
 
     _ESCOPOS = {
         "individual": {"subdir": "cosif/individual", "prefix": "cosif_ind"},
@@ -267,13 +272,16 @@ class COSIFExplorer(BaseExplorer):
     def _get_sources(self):
         return self._ESCOPOS
 
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        """Escopos coincidem com as fontes de armazenamento."""
+
     def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """Substitui aliases do COSIF por nomes canônicos do cadastro."""
 
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         escopo: Literal["individual", "prudencial"] | None = None,
@@ -286,12 +294,28 @@ class COSIFExplorer(BaseExplorer):
         Le dados COSIF.
         instituicao e keyword-only e opcional (bulk read quando None).
         Apos finalizacao, aplica nomes canônicos do cadastro.
+        Devolve DataFrame com DatetimeIndex 'date' e colunas lowercase.
         """
+
+    def fetch(self, start, end=None, *, instituicao=None, escopo=None, ...):
+        """
+        Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+        Coleta para diretorio temporario (infra.paths.temp_dir) com
+        DataManager(base_path=tmp) injetado no collector e delega ao
+        read() de um COSIFExplorer com QueryEngine(base_path=tmp).
+        Mesmos filtros de read(), exceto cadastro=.
+        """
+
+    def list_values(self, columns, *, start=None, end=None, escopo=None, documento=None, limit=100):
+        """Lista valores distintos (data, escopo, documento)."""
+
+    def list_contas(self, termo=None, *, escopo=None, start=None, end=None, limit=100):
+        """Lista contas. Filtros keyword-only apos termo."""
 
     def collect(
         self,
-        start: str,
-        end: str,
+        start: DateScalar,
+        end: DateScalar | None = None,
         escopo: Literal["individual", "prudencial"] | None = None,
         force: bool = False,
     ):
@@ -305,16 +329,17 @@ class COSIFExplorer(BaseExplorer):
 
 ### Colunas Disponiveis
 
+`data` sai das colunas: e o DatetimeIndex `date` do resultado de `read()`.
+
 | Coluna | Descricao |
 |--------|-----------|
-| DATA | Data do balancete (datetime) |
-| CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome da instituicao |
-| ESCOPO | "individual" ou "prudencial" |
-| COD_CONTA | Codigo da conta COSIF |
-| CONTA | Nome da conta |
-| DOCUMENTO | Tipo de documento |
-| VALOR | Saldo em reais |
+| cnpj_8 | CNPJ de 8 digitos |
+| instituicao | Nome da instituicao |
+| escopo | "individual" ou "prudencial" |
+| cod_conta | Codigo da conta COSIF |
+| conta | Nome da conta |
+| documento | Tipo de documento |
+| valor | Saldo em reais |
 
 ---
 
@@ -372,36 +397,42 @@ class IFDATACadastroCollector(BaseCollector):
 - **Resolucao de escopo**: Usa EntityLookup para resolver CNPJ -> codigo IFDATA
 - **Nomes canônicos**: Usa `get_canonical_names_for_cnpjs()` do cadastro
 - **Mapeamento de reporters**: Resolve chaves de reporte para entidades analiticas
-- **Mapeamento de colunas**:
-  - `AnoMes` -> `DATA`
-  - `CodInst` -> `COD_INST`
-  - `NomeColuna` -> `CONTA`
-  - `Saldo` -> `VALOR`
+- **Mapeamento de colunas** (apresentacao em lowercase):
+  - `AnoMes` -> `data`
+  - `CodInst` -> `cod_inst`
+  - `NomeColuna` -> `conta`
+  - `Saldo` -> `valor`
 
 ### Implementacao
 
 ```python
 class IFDATAExplorer(BaseExplorer):
     _COLUMN_MAP = {
-        "AnoMes": "DATA",
-        "CodInst": "COD_INST",
-        "NomeColuna": "CONTA",
-        "Conta": "COD_CONTA",
-        "Saldo": "VALOR",
-        "NomeRelatorio": "RELATORIO",
-        "Grupo": "GRUPO",
+        "AnoMes": "data",
+        "CodInst": "cod_inst",
+        "NomeColuna": "conta",
+        "Conta": "cod_conta",
+        "Saldo": "valor",
+        "NomeRelatorio": "relatorio",
+        "Grupo": "grupo",
     }
+
+    _DERIVED_COLUMNS: set[str] = {"cnpj_8", "instituicao", "escopo"}
 
     # Analise de era (ver core/eras.py)
     _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY  # 202503
-    _ERA_GROUP_COLUMN = "RELATORIO"
+    _ERA_GROUP_COLUMN = "relatorio"
     _ERA_SOURCE_NAME = "IFDATA"
     _TRIMESTRAL = True
 
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        """Escopo e coluna dos dados (TipoInstituicao), nao fonte:
+        resolve via query DISTINCT sobre o parquet."""
+
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         escopo: Literal["individual", "prudencial", "financeiro"] | None = None,
@@ -418,6 +449,22 @@ class IFDATAExplorer(BaseExplorer):
             relatorio: Filtrar por relatorio (Ativo, Passivo, DRE, Resumo)
             grupo: Filtrar por grupo de conta
         """
+
+    def fetch(self, start, end=None, *, instituicao=None, escopo=None, ...):
+        """
+        Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+        Coleta para diretorio temporario com DataManager(base_path=tmp)
+        e delega ao read() de um IFDATAExplorer com QueryEngine(base_path=tmp).
+        O TemporalResolver do explorer temporario e trocado por um apontado
+        para o cache real -- a resolucao de conglomerados consulta o
+        cadastro, que vive no cache local.
+        """
+
+    def list_values(self, columns, *, start=None, end=None, escopo=None, relatorio=None, grupo=None, limit=100):
+        """Lista valores distintos (data, escopo, relatorio, grupo)."""
+
+    def list_contas(self, termo=None, *, escopo=None, relatorio=None, start=None, end=None, limit=100):
+        """Lista contas. Filtros keyword-only apos termo."""
 ```
 
 ### Resolucao de Escopo
@@ -431,39 +478,40 @@ A resolucao de escopo e feita internamente pelo `TemporalResolver` (em `valores/
 ### Mapeamento de Reporters
 
 O `TemporalResolver` cruza dados do IFDATA com o cadastro para mapear
-chaves de reporte (COD_INST) para entidades analiticas (CNPJ_8):
+chaves de reporte (cod_inst) para entidades analiticas (cnpj_8):
 
-- **Individual**: COD_INST = CNPJ_8 direto
-- **Prudencial**: COD_INST pode ser CodConglomeradoPrudencial ou CNPJ direto
-- **Financeiro**: COD_INST pode ser CodConglomeradoFinanceiro ou CNPJ direto
+- **Individual**: cod_inst = cnpj_8 direto
+- **Prudencial**: cod_inst pode ser CodConglomeradoPrudencial ou CNPJ direto
+- **Financeiro**: cod_inst pode ser CodConglomeradoFinanceiro ou CNPJ direto
 
 ### mapeamento()
 
-Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo (apenas IFDATA):
+Tabela de mapeamento cod_inst <-> cnpj_8 por escopo (apenas IFDATA):
 
 | Coluna | Descricao |
 |--------|-----------|
-| COD_INST | Codigo de reporte no IFDATA |
-| TIPO_INST | 1, 2 ou 3 |
-| ESCOPO | individual, prudencial, financeiro |
-| REPORT_KEY_TYPE | "cnpj" ou nome do escopo |
-| CNPJ_8 | CNPJ da entidade associada |
-| INSTITUICAO | Nome canonico |
+| cod_inst | Codigo de reporte no IFDATA |
+| tipo_inst | 1, 2 ou 3 |
+| escopo | individual, prudencial, financeiro |
+| report_key_type | "cnpj" ou nome do escopo |
+| cnpj_8 | CNPJ da entidade associada |
+| instituicao | Nome canonico |
 
 ### Colunas Disponiveis (read)
 
+`data` sai das colunas: e o DatetimeIndex `date` do resultado de `read()`.
+
 | Coluna | Descricao |
 |--------|-----------|
-| DATA | Data do trimestre (datetime) |
-| CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome da instituicao (canônico do cadastro) |
-| ESCOPO | "individual", "prudencial", "financeiro" |
-| COD_INST | Codigo no IFDATA |
-| COD_CONTA | Codigo numerico da conta |
-| CONTA | Nome da conta |
-| VALOR | Saldo em reais |
-| RELATORIO | Ativo, Passivo, DRE, Resumo |
-| GRUPO | Grupo da conta |
+| cnpj_8 | CNPJ de 8 digitos |
+| instituicao | Nome da instituicao (canônico do cadastro) |
+| escopo | "individual", "prudencial", "financeiro" |
+| cod_inst | Codigo no IFDATA |
+| cod_conta | Codigo numerico da conta |
+| conta | Nome da conta |
+| valor | Saldo em reais |
+| relatorio | Ativo, Passivo, DRE, Resumo |
+| grupo | Grupo da conta |
 
 ---
 
@@ -483,20 +531,22 @@ class CadastroExplorer(BaseExplorer):
     _DROP_COLUMNS = ["CodInst"]
 
     _COLUMN_MAP = {
-        "Data": "DATA",
-        "NomeInstituicao": "INSTITUICAO",
-        "SegmentoTb": "SEGMENTO",
-        "CodConglomeradoPrudencial": "COD_CONGL_PRUD",
-        "CodConglomeradoFinanceiro": "COD_CONGL_FIN",
-        "Situacao": "SITUACAO",
-        "Atividade": "ATIVIDADE",
+        "Data": "data",
+        "CNPJ_8": "cnpj_8",
+        "NomeInstituicao": "instituicao",
+        "SegmentoTb": "segmento",
+        "CodConglomeradoPrudencial": "cod_congl_prud",
+        "CodConglomeradoFinanceiro": "cod_congl_fin",
+        "CNPJ_LIDER_8": "cnpj_lider_8",
+        "Situacao": "situacao",
+        "Atividade": "atividade",
         # ...
     }
 
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         segmento: str | None = None,
@@ -516,10 +566,15 @@ class CadastroExplorer(BaseExplorer):
             instituicao: CNPJ de 8 digitos (opcional para listar todas)
             segmento: Filtrar por segmento
             uf: Filtrar por UF
-            atividade, tcb, td, tc, sr, municipio: Novos filtros (case/accent insensitive)
+            atividade, tcb, td, tc, sr, municipio: Filtros (case/accent insensitive)
         """
 
-    def list(self, columns: list[str], *, ...) -> pd.DataFrame:
+    def fetch(self, start, end=None, *, instituicao=None, ...):
+        """Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+        Coleta para diretorio temporario e delega ao read() de um
+        CadastroExplorer com QueryEngine(base_path=tmp)."""
+
+    def list_values(self, columns: list[str], *, ...) -> pd.DataFrame:
         """Lista valores distintos para colunas solicitadas."""
 
     def search(self, termo: str | None = None, *, fonte=None, escopo=None, ...) -> pd.DataFrame:
@@ -532,19 +587,20 @@ matching basico e `EntityLookup` para resolucao de metadados.
 
 ### Colunas Disponiveis
 
+`data` sai das colunas: e o DatetimeIndex `date` do resultado de `read()`.
+
 | Coluna | Descricao |
 |--------|-----------|
-| DATA | Data do trimestre |
-| CNPJ_8 | CNPJ de 8 digitos |
-| INSTITUICAO | Nome |
-| SEGMENTO | Segmento regulatorio |
-| COD_CONGL_PRUD | Codigo conglomerado prudencial |
-| COD_CONGL_FIN | Codigo conglomerado financeiro |
-| CNPJ_LIDER_8 | CNPJ do lider do conglomerado |
-| SITUACAO | A (Ativa) ou I (Inativa) |
-| ATIVIDADE | Tipo de atividade |
-| UF | Estado |
-| MUNICIPIO | Municipio |
+| cnpj_8 | CNPJ de 8 digitos |
+| instituicao | Nome |
+| segmento | Segmento regulatorio |
+| cod_congl_prud | Codigo conglomerado prudencial |
+| cod_congl_fin | Codigo conglomerado financeiro |
+| cnpj_lider_8 | CNPJ do lider do conglomerado |
+| situacao | A (Ativa) ou I (Inativa) |
+| atividade | Tipo de atividade |
+| uf | Estado |
+| municipio | Municipio |
 
 ---
 
@@ -558,25 +614,25 @@ Modulo de enriquecimento cadastral inline. Permite adicionar colunas cadastrais 
 
 ```python
 VALID_CADASTRO_COLUMNS = {
-    "SEGMENTO",
-    "COD_CONGL_PRUD",
-    "COD_CONGL_FIN",
-    "CNPJ_LIDER_8",
-    "SITUACAO",
-    "ATIVIDADE",
-    "TCB",
-    "TD",
-    "TC",
-    "UF",
-    "MUNICIPIO",
-    "SR",
-    "DATA_INICIO_ATIVIDADE",
-    "NOME_CONGL_PRUD",
+    "segmento",
+    "cod_congl_prud",
+    "cod_congl_fin",
+    "cnpj_lider_8",
+    "situacao",
+    "atividade",
+    "tcb",
+    "td",
+    "tc",
+    "uf",
+    "municipio",
+    "sr",
+    "data_inicio_atividade",
+    "nome_congl_prud",
 }
 
 
 def validate_cadastro_columns(columns: list[str] | None) -> None:
-    """Valida nomes de colunas cadastrais. Raises InvalidScopeError."""
+    """Valida nomes de colunas cadastrais. Raises InvalidColumnError."""
 ```
 
 ### enrich_with_cadastro()
@@ -591,6 +647,11 @@ def enrich_with_cadastro(
     """
     Enriquece DataFrame financeiro com colunas cadastrais.
 
+    Consome o df de apresentacao (colunas lowercase, data ainda como
+    coluna -- roda antes de _to_datetime_index no read()). O retorno de
+    cadastro_explorer.read() vem com DatetimeIndex 'date' e volta a ser
+    coluna via reset_index(names="data") para o JOIN.
+
     Usa ASOF LEFT JOIN no DuckDB para alinhamento temporal backward-looking:
     cada linha financeira recebe os atributos cadastrais do trimestre
     mais recente <= sua data.
@@ -598,7 +659,7 @@ def enrich_with_cadastro(
     Para data unica: LEFT JOIN com ROW_NUMBER para pegar registro mais recente.
     Para time-series: ASOF LEFT JOIN via DuckDB SQL.
 
-    Suporta coluna derivada NOME_CONGL_PRUD: nome oficial do conglomerado
+    Suporta coluna derivada nome_congl_prud: nome oficial do conglomerado
     prudencial, resolvido a partir das alias rows do cadastro.
     """
 ```
@@ -661,8 +722,8 @@ from ifdata_bcb.infra.sql import join_conditions
 
 class NovoExplorer(BaseExplorer):
     _COLUMN_MAP = {
-        "data_original": "DATA",
-        "valor_original": "VALOR",
+        "data_original": "data",
+        "valor_original": "valor",
     }
 
     def _get_subdir(self):
@@ -685,7 +746,8 @@ class NovoExplorer(BaseExplorer):
             where=join_conditions(conditions),
         )
 
-        return self._finalize_read(df)
+        # data vira DatetimeIndex 'date' no ultimo passo
+        return self._to_datetime_index(self._finalize_read(df))
 
     def collect(self, start, end, force=False):
         from .collector import NovoCollector
