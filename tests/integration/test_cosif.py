@@ -170,7 +170,7 @@ class TestCOSIFDocumentoValidation:
         msg = str(exc_info.value)
         assert "'v', 'a', 'l'" not in msg
         assert "Validos" not in msg
-        assert "list(['DOCUMENTO'])" in msg
+        assert "list_values(['DOCUMENTO'])" in msg
 
     def test_documento_numeric_string_accepted(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]

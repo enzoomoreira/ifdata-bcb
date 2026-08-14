@@ -35,7 +35,7 @@ class ExplorerInfo(TypedDict, total=False):
 
     Chaves:
         escopos: valores aceitos em escopo=. Vazio quando nao ha escopo.
-        columns: colunas listaveis por list().
+        columns: colunas listaveis por list_values().
         read_columns: colunas que read() devolve, na ordem.
         filtros: parametros de filtro aceitos por read().
         cadastro_columns: valores aceitos em cadastro=. Vazio se nao aceita.

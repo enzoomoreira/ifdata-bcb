@@ -324,7 +324,7 @@ class COSIFExplorer(BaseExplorer):
             df.attrs["era"] = diag
         return df
 
-    def list(
+    def list_values(
         self,
         columns: list[str],
         *,
@@ -398,14 +398,14 @@ class COSIFExplorer(BaseExplorer):
                 docs_int.append(int(d))
             except (ValueError, TypeError):
                 # O dominio de DOCUMENTO nao e enumeravel a priori, entao nao ha
-                # lista de validos -- o caminho util e apontar para list().
+                # lista de validos -- o caminho util e apontar para list_values().
                 raise InvalidScopeError(
                     "documento",
                     str(d),
                     [],
                     hint=(
                         "Esperado codigo numerico (ex: 4010, 4016). "
-                        "Use cosif.list(['DOCUMENTO']) para ver os disponiveis."
+                        "Use cosif.list_values(['DOCUMENTO']) para ver os disponiveis."
                     ),
                 ) from None
         # DOCUMENTO e VARCHAR no parquet. Comparar com INT faz o DuckDB tentar
@@ -436,7 +436,7 @@ class COSIFExplorer(BaseExplorer):
         # Documento filter
         documento = filters.get("documento")
         if documento is not None:
-            # O valor chega tipado na fronteira publica (list() declara
+            # O valor chega tipado na fronteira publica (list_values() declara
             # documento: str | list[str] | None); **filters o apaga para object.
             documento_typed = cast("str | list[str]", documento)
             conditions.append(self._build_documento_condition(documento_typed))

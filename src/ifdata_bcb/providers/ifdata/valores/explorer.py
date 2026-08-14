@@ -498,7 +498,7 @@ class IFDATAExplorer(BaseExplorer):
             df.attrs["era"] = diag
         return df
 
-    def list(
+    def list_values(
         self,
         columns: list[str],
         *,

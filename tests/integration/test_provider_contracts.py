@@ -61,7 +61,7 @@ def test_cadastro_list_empty_when_cache_is_missing(
 ) -> None:
     explorer = CadastroExplorer(query_engine=query_engine)
 
-    # list() retorna DataFrame vazio com colunas corretas
-    df = explorer.list(["SEGMENTO"])
+    # list_values() retorna DataFrame vazio com colunas corretas
+    df = explorer.list_values(["SEGMENTO"])
     assert df.empty
     assert list(df.columns) == ["SEGMENTO"]

@@ -212,7 +212,7 @@ class CadastroExplorer(BaseExplorer):
             )
         return self._finalize_read(df)
 
-    def list(
+    def list_values(
         self,
         columns: list[str],
         *,

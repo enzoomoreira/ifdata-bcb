@@ -98,12 +98,12 @@ class TestEscoposEColunas:
         assert "SEGMENTO" in todos[0].describe()["cadastro_columns"]
         assert todos[2].describe()["cadastro_columns"] == []
 
-    def test_columns_sao_aceitas_por_list(
+    def test_columns_sao_aceitas_por_list_values(
         self, todos: tuple[BaseExplorer, ...]
     ) -> None:
         for explorer in todos:
             for coluna in explorer.describe()["columns"]:
-                explorer.list([coluna], limit=1)
+                explorer.list_values([coluna], limit=1)
 
 
 class TestDirNaoVazaInternos:

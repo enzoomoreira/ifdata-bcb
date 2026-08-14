@@ -89,7 +89,7 @@ class BaseExplorer(ABC):
     _ERA_SOURCE_NAME: str = ""
     _TRIMESTRAL: bool = False
 
-    # list() infrastructure -- overridden by subclasses
+    # list_values() infrastructure -- overridden by subclasses
     _LIST_COLUMNS: ClassVar[dict[str, str]] = {}
     _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {}
 
@@ -315,7 +315,7 @@ class BaseExplorer(ABC):
         )
         unknown = sorted(set(columns) - all_known)
         if unknown:
-            # list() ja usava InvalidColumnError para o mesmo erro; read()
+            # list_values() ja usava InvalidColumnError para o mesmo erro; read()
             # usava InvalidScopeError e produzia "Escopo '['FOO']' invalido".
             extras = ""
             if len(unknown) > 1:
@@ -577,7 +577,7 @@ class BaseExplorer(ABC):
         if source.lower() in self._VALID_ESCOPOS:
             hint = (
                 f"'{source}' e um escopo, nao uma fonte de armazenamento deste "
-                f"explorer. Use escopo='{source.lower()}' em read()/list()."
+                f"explorer. Use escopo='{source.lower()}' em read()/list_values()."
             )
         raise InvalidScopeError("source", source, sorted(sources), hint=hint)
 
@@ -650,7 +650,7 @@ class BaseExplorer(ABC):
         Retorna o que o explorer aceita e o que ha coletado.
 
         Alem dos periodos em disco, descreve a superficie de chamada: escopos
-        validos, colunas listaveis por list(), colunas devolvidas por read(),
+        validos, colunas listaveis por list_values(), colunas devolvidas por read(),
         filtros aceitos e colunas validas em cadastro=. E o suficiente para
         montar uma chamada a read() sem ler a documentacao.
 
@@ -691,11 +691,11 @@ class BaseExplorer(ABC):
         return result
 
     # ------------------------------------------------------------------
-    # list() generic infrastructure
+    # list_values() generic infrastructure
     # ------------------------------------------------------------------
 
     def _validate_list_columns(self, columns: list[str]) -> None:
-        """Valida colunas para list(). Levanta erro ou emite warning conforme o caso."""
+        """Valida colunas para list_values(). Levanta erro ou warning conforme o caso."""
         if not columns:
             raise ValueError("columns deve conter pelo menos uma coluna.")
 
@@ -735,7 +735,7 @@ class BaseExplorer(ABC):
         limit: int = 100,
         **filters: object,
     ) -> pd.DataFrame:
-        """Implementacao base de list(). Chamado pelas subclasses."""
+        """Implementacao base de list_values(). Chamado pelas subclasses."""
         if limit <= 0:
             raise ValueError(f"limit deve ser > 0, recebido: {limit}")
 
@@ -811,11 +811,11 @@ class BaseExplorer(ABC):
         end: DateScalar | None = None,
         **filters: object,
     ) -> str | None:
-        """Retorna expressao SQL FROM para list(). Override em subclasses multi-source."""
+        """FROM SQL para list_values(). Override em subclasses multi-source."""
         return self._get_list_path()
 
     def _get_list_path(self) -> str | None:
-        """Retorna expressao SQL FROM para list(). Default: glob do provider."""
+        """FROM SQL para list_values(). Default: glob do provider."""
         if not self._ensure_data_exists():
             return None
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
@@ -827,7 +827,7 @@ class BaseExplorer(ABC):
         end: DateScalar | None = None,
         **filters: object,
     ) -> list[str | None]:
-        """Retorna lista de WHERE clauses para list(). Override em subclasses."""
+        """WHERE clauses para list_values(). Override em subclasses."""
         return []
 
     def _diagnose_empty_result(

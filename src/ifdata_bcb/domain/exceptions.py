@@ -101,7 +101,7 @@ class DataProcessingError(BacenAnalysisError):
 
 
 class InvalidColumnError(BacenAnalysisError):
-    """Coluna invalida em read(), list() ou no parametro cadastro=."""
+    """Coluna invalida em read(), list_values() ou no parametro cadastro=."""
 
     def __init__(self, column: str, valid_columns: list[str], extras: str = ""):
         self.column = column
