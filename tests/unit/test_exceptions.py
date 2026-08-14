@@ -1,16 +1,33 @@
 """Testes para ifdata_bcb.domain.exceptions."""
 
+import subprocess
+import sys
+import warnings
+
 import pytest
 
+import ifdata_bcb as bcb
+from ifdata_bcb.domain import exceptions
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
+    BacenWarning,
+    DataProcessingError,
     DataUnavailableError,
+    DroppedReportWarning,
+    EmptyFilterWarning,
+    IncompatibleEraWarning,
+    InvalidColumnError,
     InvalidDateFormatError,
     InvalidDateRangeError,
     InvalidIdentifierError,
     InvalidScopeError,
     MissingRequiredParameterError,
+    NullValuesWarning,
+    PartialDataWarning,
     PeriodUnavailableError,
+    ScopeMigrationWarning,
+    ScopeUnavailableWarning,
+    TruncatedResultWarning,
 )
 
 
@@ -27,10 +44,86 @@ class TestExceptionHierarchy:
             InvalidDateRangeError,
             InvalidDateFormatError,
             PeriodUnavailableError,
+            DataProcessingError,
+            InvalidColumnError,
         ],
     )
     def test_inherits_from_base(self, exc_class: type) -> None:
         assert issubclass(exc_class, BacenAnalysisError)
+
+
+class TestWarningHierarchy:
+    """Todos os warnings devem herdar de BacenWarning (e continuar UserWarning)."""
+
+    WARNINGS = (
+        DroppedReportWarning,
+        EmptyFilterWarning,
+        IncompatibleEraWarning,
+        NullValuesWarning,
+        PartialDataWarning,
+        ScopeMigrationWarning,
+        ScopeUnavailableWarning,
+        TruncatedResultWarning,
+    )
+
+    @pytest.mark.parametrize("warn_class", WARNINGS)
+    def test_inherits_from_bacen_warning(self, warn_class: type) -> None:
+        assert issubclass(warn_class, BacenWarning)
+
+    @pytest.mark.parametrize("warn_class", WARNINGS)
+    def test_still_a_user_warning(self, warn_class: type) -> None:
+        """Quem ja filtrava por UserWarning nao pode ser afetado."""
+        assert issubclass(warn_class, UserWarning)
+
+    def test_um_filtro_silencia_todos(self) -> None:
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            warnings.simplefilter("ignore", BacenWarning)
+            warnings.warn(PartialDataWarning("da lib"), stacklevel=1)
+            warnings.warn(TruncatedResultWarning("da lib", limit=1), stacklevel=1)
+            warnings.warn(UserWarning("de outra lib"), stacklevel=1)
+        assert [str(w.message) for w in rec] == ["de outra lib"]
+
+
+class TestTopLevelReexport:
+    """3.8: tratar erro nao pode exigir conhecer ifdata_bcb.domain.exceptions."""
+
+    def test_todo_nome_de_all_e_alcancavel(self) -> None:
+        inacessiveis = [n for n in bcb.__all__ if not hasattr(bcb, n)]
+        assert inacessiveis == []
+
+    @pytest.mark.parametrize(
+        "nome",
+        [
+            "BacenAnalysisError",
+            "BacenWarning",
+            "InvalidColumnError",
+            "InvalidScopeError",
+            "PartialDataWarning",
+            "TruncatedResultWarning",
+        ],
+    )
+    def test_e_a_mesma_classe_do_modulo_interno(self, nome: str) -> None:
+        assert getattr(bcb, nome) is getattr(exceptions, nome)
+
+    def test_reexport_nao_carrega_pandas(self) -> None:
+        """As excecoes sao eager; o lazy loading dos explorers tem que sobreviver.
+
+        Subprocesso porque no processo do pytest o pandas ja foi importado por
+        outros testes -- aqui so um interpretador limpo responde a pergunta.
+        """
+        saida = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import ifdata_bcb, sys; print('pandas' in sys.modules)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        assert saida.stdout.strip() == "False"
 
 
 class TestInvalidScopeError:

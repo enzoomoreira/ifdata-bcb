@@ -34,10 +34,30 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-# Exceptions importadas diretamente (nao passam por domain/__init__.py)
+# Excecoes e warnings importados diretamente (nao passam por
+# domain/__init__.py). O modulo nao importa nada, entao expor o conjunto
+# completo aqui nao custa o pandas/duckdb que o lazy loading evita -- e
+# tratar erro ou filtrar warning deixa de exigir conhecer o layout interno.
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
+    BacenWarning,
+    DataProcessingError,
     DataUnavailableError,
+    DroppedReportWarning,
+    EmptyFilterWarning,
+    IncompatibleEraWarning,
+    InvalidColumnError,
+    InvalidDateFormatError,
+    InvalidDateRangeError,
+    InvalidIdentifierError,
+    InvalidScopeError,
+    MissingRequiredParameterError,
+    NullValuesWarning,
+    PartialDataWarning,
+    PeriodUnavailableError,
+    ScopeMigrationWarning,
+    ScopeUnavailableWarning,
+    TruncatedResultWarning,
 )
 
 if TYPE_CHECKING:
@@ -113,9 +133,27 @@ __all__ = [
     "cosif",
     "ifdata",
     "cadastro",
-    # Exceptions (BacenAnalysisError = base)
+    # Excecoes (BacenAnalysisError = base de todas)
     "BacenAnalysisError",
+    "DataProcessingError",
     "DataUnavailableError",
+    "InvalidColumnError",
+    "InvalidDateFormatError",
+    "InvalidDateRangeError",
+    "InvalidIdentifierError",
+    "InvalidScopeError",
+    "MissingRequiredParameterError",
+    "PeriodUnavailableError",
+    # Warnings (BacenWarning = base de todos; filtre por ela para silenciar tudo)
+    "BacenWarning",
+    "DroppedReportWarning",
+    "EmptyFilterWarning",
+    "IncompatibleEraWarning",
+    "NullValuesWarning",
+    "PartialDataWarning",
+    "ScopeMigrationWarning",
+    "ScopeUnavailableWarning",
+    "TruncatedResultWarning",
     # Diagnostico de era retornado por check_era() e em df.attrs['era']
     "EraDiagnostic",
     "GrupoEra",

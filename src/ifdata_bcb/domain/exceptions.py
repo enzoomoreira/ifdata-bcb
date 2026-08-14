@@ -91,7 +91,29 @@ class DataProcessingError(BacenAnalysisError):
         super().__init__(msg)
 
 
-class IncompatibleEraWarning(UserWarning):
+class InvalidColumnError(BacenAnalysisError):
+    """Coluna invalida em read(), list() ou no parametro cadastro=."""
+
+    def __init__(self, column: str, valid_columns: list[str], extras: str = ""):
+        self.column = column
+        self.valid_columns = valid_columns
+        valid_str = ", ".join(valid_columns)
+        msg = f"Coluna '{column}' invalida. Disponiveis: {valid_str}."
+        if extras:
+            msg += f" {extras}"
+        super().__init__(msg)
+
+
+class BacenWarning(UserWarning):
+    """Base dos warnings da biblioteca.
+
+    Existe para que `warnings.simplefilter("ignore", BacenWarning)` silencie
+    tudo que a lib emite -- antes era preciso listar as oito classes uma a uma.
+    Continua sendo UserWarning, entao quem ja filtrava por UserWarning nao muda.
+    """
+
+
+class IncompatibleEraWarning(BacenWarning):
     """Emitido quando uma query abrange periodos com codigos de conta incompativeis."""
 
     def __init__(self, message: str, boundary: int, source: str):
@@ -100,7 +122,7 @@ class IncompatibleEraWarning(UserWarning):
         super().__init__(message)
 
 
-class PartialDataWarning(UserWarning):
+class PartialDataWarning(BacenWarning):
     """Resultado incompleto - alguns periodos/entidades sem dados."""
 
     def __init__(self, message: str, reason: str = "", detail: dict | None = None):
@@ -109,7 +131,7 @@ class PartialDataWarning(UserWarning):
         super().__init__(message)
 
 
-class ScopeUnavailableWarning(UserWarning):
+class ScopeUnavailableWarning(BacenWarning):
     """Escopo indisponivel para entidade em parte do range temporal."""
 
     def __init__(
@@ -125,7 +147,7 @@ class ScopeUnavailableWarning(UserWarning):
         super().__init__(message)
 
 
-class NullValuesWarning(UserWarning):
+class NullValuesWarning(BacenWarning):
     """Entidade presente nos dados mas com todos os valores financeiros NULL."""
 
     def __init__(self, message: str, entities: list[str]):
@@ -133,7 +155,7 @@ class NullValuesWarning(UserWarning):
         super().__init__(message)
 
 
-class ScopeMigrationWarning(UserWarning):
+class ScopeMigrationWarning(BacenWarning):
     """Relatorio migrou de escopo entre eras (ex: credito de financeiro para prudencial)."""
 
     def __init__(
@@ -151,7 +173,7 @@ class ScopeMigrationWarning(UserWarning):
         super().__init__(message)
 
 
-class DroppedReportWarning(UserWarning):
+class DroppedReportWarning(BacenWarning):
     """Relatorio descontinuado a partir de determinada era."""
 
     def __init__(self, message: str, relatorio: str, last_period: int):
@@ -160,7 +182,7 @@ class DroppedReportWarning(UserWarning):
         super().__init__(message)
 
 
-class EmptyFilterWarning(UserWarning):
+class EmptyFilterWarning(BacenWarning):
     """Filtro vazio passado a um parametro (ex: columns=[], conta=[])."""
 
     def __init__(self, message: str, parameter: str):
@@ -168,20 +190,7 @@ class EmptyFilterWarning(UserWarning):
         super().__init__(message)
 
 
-class InvalidColumnError(BacenAnalysisError):
-    """Coluna invalida para list()."""
-
-    def __init__(self, column: str, valid_columns: list[str], extras: str = ""):
-        self.column = column
-        self.valid_columns = valid_columns
-        valid_str = ", ".join(valid_columns)
-        msg = f"Coluna '{column}' invalida. Disponiveis: {valid_str}."
-        if extras:
-            msg += f" {extras}"
-        super().__init__(msg)
-
-
-class TruncatedResultWarning(UserWarning):
+class TruncatedResultWarning(BacenWarning):
     """Resultado truncado pelo limit."""
 
     def __init__(self, message: str, limit: int):
