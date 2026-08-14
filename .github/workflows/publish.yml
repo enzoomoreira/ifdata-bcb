@@ -8,7 +8,18 @@ permissions:
   id-token: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen pyright
+      - run: uv run --frozen pytest tests/
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     steps:
