@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -31,14 +32,39 @@ def _atomic_write(filepath: Path) -> Iterator[Path]:
     nome definitivo: a deteccao de "periodo ja coletado" e feita por nome de
     arquivo, entao o periodo corrompido nunca seria recoletado.
     `os.replace` e atomico dentro do mesmo filesystem, incluindo Windows.
+
+    O nome do temporario carrega pid e thread id: com um nome deterministico,
+    dois collect() do mesmo periodo (threads ou processos na mesma cache)
+    colidiam no proprio .tmp -- WinError 32 no replace/unlink. Com nomes
+    unicos, a disputa fica so no os.replace do destino, que e last-writer-wins.
+    O sufixo .tmp e preservado para o cleanup de orfaos continuar enxergando.
     """
-    tmp_path = filepath.with_name(filepath.name + _TMP_SUFFIX)
+    tmp_path = filepath.with_name(
+        f"{filepath.name}.{os.getpid()}-{threading.get_ident()}{_TMP_SUFFIX}"
+    )
     try:
         yield tmp_path
-        os.replace(tmp_path, filepath)
+        _replace_with_retry(tmp_path, filepath)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _replace_with_retry(tmp_path: Path, filepath: Path) -> None:
+    """os.replace com retry curto para a corrida de rename do Windows.
+
+    Dois os.replace simultaneos no mesmo destino falham transitoriamente com
+    WinError 5/32 enquanto o rename do concorrente segura o destino. Em POSIX
+    o rename nunca falha por isso e o loop roda uma unica vez.
+    """
+    for tentativa in range(5):
+        try:
+            os.replace(tmp_path, filepath)
+            return
+        except PermissionError:
+            if tentativa == 4:
+                raise
+            time.sleep(0.01 * (tentativa + 1))
 
 
 def cleanup_partial_writes(subdir: str, base_path: Path | None = None) -> int:
