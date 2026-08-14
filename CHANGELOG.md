@@ -50,6 +50,14 @@ dos dados: um periodo so aparece para o escopo que tem linhas nele.
 `describe()` troca `source`/`subdir`/`prefix`/`sources`/`by_source` por
 `escopo`/`by_escopo` e para de vazar detalhes de armazenamento.
 
+### Removido
+
+**`DataUnavailableError`.** Nunca foi levantada por nenhum caminho da
+biblioteca -- quem escrevia `except DataUnavailableError` tinha um handler
+morto. Saiu do contrato publico na 0.6.0 com a promessa de remocao no major;
+indisponibilidade continua sinalizada com `ScopeUnavailableWarning` mais
+DataFrame vazio.
+
 ### Adicionado
 
 **`fetch()` stateless nos tres explorers.** Baixa do BCB e devolve o

@@ -13,7 +13,6 @@ from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
     BacenWarning,
     DataProcessingError,
-    DataUnavailableError,
     DroppedReportWarning,
     EmptyFilterWarning,
     IncompatibleEraWarning,
@@ -39,7 +38,6 @@ class TestExceptionHierarchy:
         "exc_class",
         [
             InvalidScopeError,
-            DataUnavailableError,
             InvalidIdentifierError,
             MissingRequiredParameterError,
             InvalidDateRangeError,
@@ -183,19 +181,6 @@ class TestInvalidScopeError:
         """
         err = InvalidScopeError("documento", "abc", ["4010", "4016"])
         assert "'4010', '4016'" in str(err)
-
-
-class TestDataUnavailableError:
-    def test_message_with_reason(self) -> None:
-        err = DataUnavailableError("12345678", "prudencial", "Sem conglomerado.")
-        assert "12345678" in str(err)
-        assert "prudencial" in str(err)
-        assert "Sem conglomerado." in str(err)
-
-    def test_message_without_reason(self) -> None:
-        err = DataUnavailableError("12345678", "cosif")
-        assert "12345678" in str(err)
-        assert "cosif" in str(err)
 
 
 class TestInvalidDateFormatError:

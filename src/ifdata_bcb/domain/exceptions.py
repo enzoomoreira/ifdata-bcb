@@ -33,26 +33,6 @@ class InvalidScopeError(BacenAnalysisError):
         super().__init__(msg)
 
 
-class DataUnavailableError(BacenAnalysisError):
-    """Nao levantada por nenhum caminho da biblioteca.
-
-    Escopo indisponivel para uma entidade e sinalizado com
-    ScopeUnavailableWarning mais DataFrame vazio, e nao com excecao: o
-    consumidor recebe os dados parciais junto do diagnostico em vez de perder
-    o resultado inteiro. Saiu do contrato publico na v0.6.0; a classe some na
-    v1.0.0, onde remover nome publico e permitido.
-    """
-
-    def __init__(self, entity: str, scope_type: str, reason: str = ""):
-        self.entity = entity
-        self.scope_type = scope_type
-        self.reason = reason
-        msg = f"Dados indisponiveis para '{entity}' no escopo '{scope_type}'."
-        if reason:
-            msg += f" {reason}"
-        super().__init__(msg)
-
-
 class InvalidIdentifierError(BacenAnalysisError):
     def __init__(self, identificador: str):
         self.identificador = identificador
