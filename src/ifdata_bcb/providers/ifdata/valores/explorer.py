@@ -16,6 +16,7 @@ from ifdata_bcb.core.eras import IFDATA_ERA_BOUNDARY, check_dropped_report
 from ifdata_bcb.domain.exceptions import ScopeUnavailableWarning
 from ifdata_bcb.domain.types import AccountInput, DateScalar, InstitutionInput
 from ifdata_bcb.infra.log import emit_user_warning
+from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     build_account_condition,
@@ -26,6 +27,7 @@ from ifdata_bcb.infra.sql import (
     join_conditions,
     merge_params,
 )
+from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.enrichment import (
     enrich_with_cadastro,
@@ -425,6 +427,54 @@ class IFDATAExplorer(BaseExplorer):
             df["escopo"] = escopo
             df = TemporalResolver.add_cnpj_mapping(df, merged_cnpj_map)
             frames.append(df)
+
+    def fetch(
+        self,
+        start: DateScalar,
+        end: DateScalar | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
+        escopo: EscopoIFDATA | None = None,
+        conta: AccountInput | None = None,
+        relatorio: str | None = None,
+        grupo: str | None = None,
+        columns: list[str] | None = None,
+        verbose: bool = True,
+    ) -> pd.DataFrame:
+        """Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+
+        Mesmos filtros e formato de read(), exceto cadastro= -- o
+        enriquecimento exige o cadastro no cache local. Os arquivos baixados
+        vivem num diretorio temporario descartado ao final; nada persiste.
+        Resolucao de conglomerados e nomes canonicos usam o cadastro do
+        cache local, quando coletado.
+        """
+        with temp_dir(prefix="ifdata_fetch") as tmp:
+            IFDATAValoresCollector(data_manager=DataManager(base_path=tmp)).collect(
+                start, end, verbose=verbose
+            )
+            explorer = IFDATAExplorer(
+                query_engine=QueryEngine(base_path=tmp),
+                entity_lookup=self._resolver,
+            )
+            # O resolver temporal consulta o cadastro, que vive no cache real
+            # -- o construtor acima o apontou para o temporario.
+            explorer._temporal = TemporalResolver(
+                query_engine=self._qe,
+                entity_lookup=self._resolver,
+                valores_subdir=explorer._get_subdir(),
+                valores_pattern=explorer._get_pattern(),
+            )
+            return explorer.read(
+                start,
+                end,
+                instituicao=instituicao,
+                escopo=escopo,
+                conta=conta,
+                relatorio=relatorio,
+                grupo=grupo,
+                columns=columns,
+            )
 
     def read(
         self,

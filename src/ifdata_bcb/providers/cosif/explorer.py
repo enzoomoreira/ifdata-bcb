@@ -11,6 +11,7 @@ from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY
 from ifdata_bcb.domain.exceptions import InvalidScopeError
 from ifdata_bcb.domain.types import AccountInput, DateScalar, InstitutionInput
+from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     SqlCondition,
@@ -21,6 +22,7 @@ from ifdata_bcb.infra.sql import (
     join_conditions,
     merge_params,
 )
+from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.cosif.collector import COSIFCollector
 from ifdata_bcb.providers.enrichment import (
@@ -250,6 +252,47 @@ class COSIFExplorer(BaseExplorer):
             indisponiveis=total_indisponiveis if total_indisponiveis > 0 else None,
             verbose=verbose,
         )
+
+    def fetch(
+        self,
+        start: DateScalar,
+        end: DateScalar | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
+        escopo: EscopoCOSIF | None = None,
+        conta: AccountInput | None = None,
+        documento: str | list[str] | None = None,
+        columns: list[str] | None = None,
+        verbose: bool = True,
+    ) -> pd.DataFrame:
+        """Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+
+        Mesmos filtros e formato de read(), exceto cadastro= -- o
+        enriquecimento exige o cadastro no cache local. Os arquivos baixados
+        vivem num diretorio temporario descartado ao final; nada persiste.
+        Nomes canonicos vem do cadastro do cache local, quando coletado.
+        """
+        escopos = (
+            [self._validate_escopo(escopo)] if escopo else list(self._ESCOPOS.keys())
+        )
+        with temp_dir(prefix="cosif_fetch") as tmp:
+            for esc in escopos:
+                COSIFCollector(esc, data_manager=DataManager(base_path=tmp)).collect(
+                    start, end, verbose=verbose
+                )
+            explorer = COSIFExplorer(
+                query_engine=QueryEngine(base_path=tmp),
+                entity_lookup=self._resolver,
+            )
+            return explorer.read(
+                start,
+                end,
+                instituicao=instituicao,
+                escopo=escopo,
+                conta=conta,
+                documento=documento,
+                columns=columns,
+            )
 
     def read(
         self,

@@ -9,11 +9,13 @@ import pandas as pd
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
 from ifdata_bcb.domain.types import DateScalar, InstitutionInput
+from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     build_string_condition,
     join_conditions,
 )
+from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.providers.base_explorer import BaseExplorer
 from ifdata_bcb.providers.ifdata.cadastro.collector import IFDATACadastroCollector
 from ifdata_bcb.providers.ifdata.cadastro.search import CadastroSearch
@@ -121,6 +123,53 @@ class CadastroExplorer(BaseExplorer):
         `end=None` coleta apenas o trimestre de `start`, como em read().
         """
         self._get_collector().collect(start, end, force=force, verbose=verbose)
+
+    def fetch(
+        self,
+        start: DateScalar,
+        end: DateScalar | None = None,
+        *,
+        instituicao: InstitutionInput | None = None,
+        segmento: str | None = None,
+        uf: str | None = None,
+        situacao: str | None = None,
+        atividade: str | None = None,
+        tcb: str | None = None,
+        td: str | None = None,
+        tc: str | int | None = None,
+        sr: str | None = None,
+        municipio: str | None = None,
+        columns: list[str] | None = None,
+        verbose: bool = True,
+    ) -> pd.DataFrame:
+        """Baixa do BCB e devolve o DataFrame sem tocar o cache local.
+
+        Mesmos filtros e formato de read(). Os arquivos baixados vivem num
+        diretorio temporario descartado ao final; nada persiste.
+        """
+        with temp_dir(prefix="cadastro_fetch") as tmp:
+            IFDATACadastroCollector(data_manager=DataManager(base_path=tmp)).collect(
+                start, end, verbose=verbose
+            )
+            explorer = CadastroExplorer(
+                query_engine=QueryEngine(base_path=tmp),
+                entity_lookup=self._resolver,
+            )
+            return explorer.read(
+                start,
+                end,
+                instituicao=instituicao,
+                segmento=segmento,
+                uf=uf,
+                situacao=situacao,
+                atividade=atividade,
+                tcb=tcb,
+                td=td,
+                tc=tc,
+                sr=sr,
+                municipio=municipio,
+                columns=columns,
+            )
 
     def read(
         self,
