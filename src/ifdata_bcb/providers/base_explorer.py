@@ -17,7 +17,12 @@ from ifdata_bcb.domain.exceptions import (
     PartialDataWarning,
     TruncatedResultWarning,
 )
-from ifdata_bcb.domain.types import AccountInput, DateInput, InstitutionInput
+from ifdata_bcb.domain.types import (
+    AccountInput,
+    DateInput,
+    DateScalar,
+    InstitutionInput,
+)
 from ifdata_bcb.domain.validation import (
     AccountList,
     InstitutionList,
@@ -197,8 +202,8 @@ class BaseExplorer(ABC):
 
     def _resolve_date_range(
         self,
-        start: str | None,
-        end: str | None,
+        start: DateScalar | None,
+        end: DateScalar | None,
         trimestral: bool = False,
     ) -> list[int] | None:
         """
@@ -237,7 +242,7 @@ class BaseExplorer(ABC):
 
     def _validate_required_params(
         self,
-        start: str | None,
+        start: DateScalar | None,
     ) -> None:
         if start is None:
             raise MissingRequiredParameterError("start")
@@ -333,8 +338,8 @@ class BaseExplorer(ABC):
 
     def _build_date_condition(
         self,
-        start: str | None,
-        end: str | None,
+        start: DateScalar | None,
+        end: DateScalar | None,
         trimestral: bool = False,
     ) -> SqlCondition | None:
         """Constroi condicao WHERE para range de datas. Usa nome de storage."""
@@ -432,8 +437,8 @@ class BaseExplorer(ABC):
 
     def check_era(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         escopo: str | None = None,
     ) -> EraDiagnostic:
@@ -658,8 +663,8 @@ class BaseExplorer(ABC):
         self,
         columns: list[str],
         *,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         limit: int = 100,
         **filters: object,
     ) -> pd.DataFrame:
@@ -735,8 +740,8 @@ class BaseExplorer(ABC):
     def _get_list_source(
         self,
         columns: list[str],
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> str | None:
         """Retorna expressao SQL FROM para list(). Override em subclasses multi-source."""
@@ -751,8 +756,8 @@ class BaseExplorer(ABC):
 
     def _build_list_conditions(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> list[str | None]:
         """Retorna lista de WHERE clauses para list(). Override em subclasses."""

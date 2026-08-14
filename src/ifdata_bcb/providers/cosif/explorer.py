@@ -10,7 +10,7 @@ from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.core.eras import COSIF_ERA_BOUNDARY
 from ifdata_bcb.domain.exceptions import InvalidScopeError
-from ifdata_bcb.domain.types import AccountInput, InstitutionInput
+from ifdata_bcb.domain.types import AccountInput, DateScalar, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     build_account_condition,
@@ -123,9 +123,9 @@ class COSIFExplorer(BaseExplorer):
     def _read_single_escopo(
         self,
         escopo: EscopoCOSIF,
-        instituicao: InstitutionInput,
-        start: str,
-        end: str | None,
+        instituicao: InstitutionInput | None,
+        start: DateScalar,
+        end: DateScalar | None,
         conta: AccountInput | None,
         columns: list[str] | None,
         documento: str | list[str] | None = None,
@@ -163,8 +163,8 @@ class COSIFExplorer(BaseExplorer):
 
     def collect(
         self,
-        start: str,
-        end: str,
+        start: DateScalar,
+        end: DateScalar,
         escopo: EscopoCOSIF | None = None,
         force: bool = False,
         verbose: bool = True,
@@ -178,8 +178,8 @@ class COSIFExplorer(BaseExplorer):
 
     def _collect_all_escopos(
         self,
-        start: str,
-        end: str,
+        start: DateScalar,
+        end: DateScalar,
         force: bool = False,
         verbose: bool = True,
     ) -> None:
@@ -239,8 +239,8 @@ class COSIFExplorer(BaseExplorer):
 
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         escopo: EscopoCOSIF | None = None,
@@ -322,8 +322,8 @@ class COSIFExplorer(BaseExplorer):
         self,
         columns: list[str],
         *,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         escopo: EscopoCOSIF | None = None,
         documento: str | list[str] | None = None,
         limit: int = 100,
@@ -353,8 +353,8 @@ class COSIFExplorer(BaseExplorer):
     def _get_list_source(
         self,
         columns: list[str],
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> str | None:
         """Monta UNION ALL de escopos disponiveis com coluna ESCOPO literal."""
@@ -401,8 +401,8 @@ class COSIFExplorer(BaseExplorer):
 
     def _build_list_conditions(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> list[str | None]:
         conditions: list[str | None] = []
@@ -428,8 +428,8 @@ class COSIFExplorer(BaseExplorer):
         self,
         termo: str | None = None,
         escopo: EscopoCOSIF | None = None,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """

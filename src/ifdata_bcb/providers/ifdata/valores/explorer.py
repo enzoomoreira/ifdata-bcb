@@ -14,7 +14,7 @@ from ifdata_bcb.core.constants import (
 from ifdata_bcb.core.entity import EntityLookup
 from ifdata_bcb.core.eras import IFDATA_ERA_BOUNDARY, check_dropped_report
 from ifdata_bcb.domain.exceptions import ScopeUnavailableWarning
-from ifdata_bcb.domain.types import AccountInput, InstitutionInput
+from ifdata_bcb.domain.types import AccountInput, DateScalar, InstitutionInput
 from ifdata_bcb.infra.log import emit_user_warning
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
@@ -154,7 +154,11 @@ class IFDATAExplorer(BaseExplorer):
         )
 
     def collect(
-        self, start: str, end: str, force: bool = False, verbose: bool = True
+        self,
+        start: DateScalar,
+        end: DateScalar,
+        force: bool = False,
+        verbose: bool = True,
     ) -> None:
         """Coleta dados IFDATA Valores do BCB (trimestral)."""
         self._get_collector().collect(start, end, force=force, verbose=verbose)
@@ -401,8 +405,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         escopo: EscopoIFDATA | None = None,
@@ -495,8 +499,8 @@ class IFDATAExplorer(BaseExplorer):
         self,
         columns: list[str],
         *,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         escopo: EscopoIFDATA | None = None,
         relatorio: str | None = None,
         grupo: str | None = None,
@@ -528,8 +532,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def _build_list_conditions(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> list[str | None]:
         conditions: list[str | None] = []
@@ -574,8 +578,8 @@ class IFDATAExplorer(BaseExplorer):
         termo: str | None = None,
         escopo: EscopoIFDATA | None = None,
         relatorio: str | None = None,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """
@@ -626,8 +630,8 @@ class IFDATAExplorer(BaseExplorer):
 
     def mapeamento(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
     ) -> pd.DataFrame:
         """Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo."""
         return self._temporal.resolve_mapeamento(start, end)

@@ -8,7 +8,7 @@ import pandas as pd
 
 from ifdata_bcb.core.constants import DATA_SOURCES, get_subdir
 from ifdata_bcb.core.entity import EntityLookup, EntitySearch
-from ifdata_bcb.domain.types import InstitutionInput
+from ifdata_bcb.domain.types import DateScalar, InstitutionInput
 from ifdata_bcb.infra.query import QueryEngine
 from ifdata_bcb.infra.sql import (
     build_string_condition,
@@ -109,15 +109,19 @@ class CadastroExplorer(BaseExplorer):
         return self._resolver.real_entity_condition()
 
     def collect(
-        self, start: str, end: str, force: bool = False, verbose: bool = True
+        self,
+        start: DateScalar,
+        end: DateScalar,
+        force: bool = False,
+        verbose: bool = True,
     ) -> None:
         """Coleta dados cadastrais IFDATA do BCB (trimestral)."""
         self._get_collector().collect(start, end, force=force, verbose=verbose)
 
     def read(
         self,
-        start: str,
-        end: str | None = None,
+        start: DateScalar,
+        end: DateScalar | None = None,
         *,
         instituicao: InstitutionInput | None = None,
         segmento: str | None = None,
@@ -199,8 +203,8 @@ class CadastroExplorer(BaseExplorer):
         self,
         columns: list[str],
         *,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         segmento: str | None = None,
         uf: str | None = None,
         situacao: str | None = None,
@@ -251,8 +255,8 @@ class CadastroExplorer(BaseExplorer):
 
     def _build_list_conditions(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         **filters: object,
     ) -> list[str | None]:
         conditions: list[str | None] = []
@@ -296,8 +300,8 @@ class CadastroExplorer(BaseExplorer):
         *,
         fonte: str | None = None,
         escopo: str | None = None,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """Busca instituicoes por nome ou lista todas com dados disponiveis.

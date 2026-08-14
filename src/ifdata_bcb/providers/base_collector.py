@@ -9,6 +9,7 @@ import httpx
 import pandas as pd
 
 from ifdata_bcb.domain.exceptions import PeriodUnavailableError
+from ifdata_bcb.domain.types import DateScalar
 from ifdata_bcb.infra.config import get_settings
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.paths import temp_dir
@@ -182,7 +183,7 @@ class BaseCollector(ABC):
     # Geracao de periodos
     # =========================================================================
 
-    def _generate_periods(self, start: str, end: str) -> list[int]:
+    def _generate_periods(self, start: DateScalar, end: DateScalar) -> list[int]:
         if self._PERIOD_TYPE == "quarterly":
             periods = generate_quarter_range(start, end)
         else:
@@ -205,7 +206,7 @@ class BaseCollector(ABC):
             )
         return filtered
 
-    def _get_missing_periods(self, start: str, end: str) -> list[int]:
+    def _get_missing_periods(self, start: DateScalar, end: DateScalar) -> list[int]:
         all_periods = self._generate_periods(start, end)
         existing = self.dm.get_periodos_disponiveis(
             self._get_file_prefix(), self._get_subdir()
@@ -269,8 +270,8 @@ class BaseCollector(ABC):
 
     def collect(
         self,
-        start: str,
-        end: str,
+        start: DateScalar,
+        end: DateScalar,
         force: bool = False,
         verbose: bool = True,
         progress_desc: str | None = None,

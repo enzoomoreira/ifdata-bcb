@@ -30,7 +30,7 @@ Uso:
     )  # escopo=None busca em todos os escopos
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -39,6 +39,21 @@ from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
     DataUnavailableError,
 )
+
+if TYPE_CHECKING:
+    # Declaracoes so para o type checker: em runtime os nomes continuam
+    # resolvendo por __getattr__ (anotacao de modulo nao vincula nome), mas
+    # sem isto o checker enxerga bcb.cosif como Any e nao ha autocomplete de
+    # read()/collect()/search() -- justamente no ponto de entrada principal.
+    from ifdata_bcb.core.eras import EraDiagnostic, GrupoEra
+    from ifdata_bcb.infra.log import disable_logging, enable_logging
+    from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
+    from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
+    from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
+
+    cosif: COSIFExplorer
+    ifdata: IFDATAExplorer
+    cadastro: CadastroExplorer
 
 # Biblioteca nao loga por padrao: o logger global do loguru pertence a aplicacao
 # consumidora. Consumidor ativa com enable_logging().

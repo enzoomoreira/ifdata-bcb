@@ -9,6 +9,7 @@ import pandas as pd
 from ifdata_bcb.core.constants import TIPO_INST_MAP
 from ifdata_bcb.core.entity.lookup import EntityLookup
 from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb.domain.types import DateScalar
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.sql import build_in_clause, merge_params
 from ifdata_bcb.utils.date import normalize_date_to_int
@@ -59,8 +60,8 @@ class CadastroSearch:
 
     @staticmethod
     def _resolve_date_range(
-        start: str | None,
-        end: str | None,
+        start: DateScalar | None,
+        end: DateScalar | None,
     ) -> tuple[int, int] | None:
         """Converte start/end em tupla (min_yyyymm, max_yyyymm) para filtro."""
         if start is None:
@@ -75,8 +76,8 @@ class CadastroSearch:
         *,
         fonte: str | None = None,
         escopo: str | None = None,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
         limit: int = 100,
     ) -> pd.DataFrame:
         """Busca instituicoes por nome ou lista todas com dados disponiveis.

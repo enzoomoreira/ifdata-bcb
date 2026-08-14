@@ -10,6 +10,7 @@ from ifdata_bcb.core.constants import (
     get_subdir,
 )
 from ifdata_bcb.core.entity import EntityLookup
+from ifdata_bcb.domain.types import DateScalar
 from ifdata_bcb.domain.validation import NormalizedDates
 from ifdata_bcb.infra.log import get_logger
 from ifdata_bcb.infra.query import QueryEngine
@@ -47,7 +48,9 @@ _EMPTY_MAPEAMENTO_COLUMNS = [
 ]
 
 
-def _resolve_quarter_dates(start: str | None, end: str | None) -> list[int] | None:
+def _resolve_quarter_dates(
+    start: DateScalar | None, end: DateScalar | None
+) -> list[int] | None:
     """Converte start/end em lista de YYYYMM trimestrais."""
     if start is None:
         return None
@@ -80,8 +83,8 @@ class TemporalResolver:
 
     def _ifdata_date_where(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
     ) -> SqlCondition:
         """Constroi WHERE clause para datas AnoMes (trimestral)."""
         periodos = _resolve_quarter_dates(start, end)
@@ -225,8 +228,8 @@ class TemporalResolver:
 
     def resolve_mapeamento(
         self,
-        start: str | None = None,
-        end: str | None = None,
+        start: DateScalar | None = None,
+        end: DateScalar | None = None,
     ) -> pd.DataFrame:
         """Junta reporters com cadastro via SQL, resolve lookup por escopo."""
         valores_path = (
