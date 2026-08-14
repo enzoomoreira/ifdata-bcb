@@ -16,7 +16,12 @@ from ifdata_bcb.infra.paths import temp_dir
 from ifdata_bcb.infra.resilience import request_slot, retry
 from ifdata_bcb.infra.storage import DataManager
 from ifdata_bcb.ui.display import get_display
-from ifdata_bcb.utils.date import generate_month_range, generate_quarter_range
+from ifdata_bcb.utils.date import (
+    align_to_quarter_end,
+    generate_month_range,
+    generate_quarter_range,
+    normalize_date_to_int,
+)
 from ifdata_bcb.utils.text import normalize_text
 
 
@@ -183,8 +188,18 @@ class BaseCollector(ABC):
     # Geracao de periodos
     # =========================================================================
 
-    def _generate_periods(self, start: DateScalar, end: DateScalar) -> list[int]:
-        if self._PERIOD_TYPE == "quarterly":
+    def _generate_periods(
+        self, start: DateScalar, end: DateScalar | None = None
+    ) -> list[int]:
+        if end is None:
+            # Periodo unico, mesma semantica de read(). Nao da para delegar a
+            # generate_quarter_range(start, start): ela alinha o inicio para o
+            # fim do trimestre, que fica > end e devolve lista vazia.
+            single = normalize_date_to_int(start)
+            if self._PERIOD_TYPE == "quarterly":
+                single = align_to_quarter_end(single)
+            periods = [single]
+        elif self._PERIOD_TYPE == "quarterly":
             periods = generate_quarter_range(start, end)
         else:
             periods = generate_month_range(start, end)
@@ -206,7 +221,9 @@ class BaseCollector(ABC):
             )
         return filtered
 
-    def _get_missing_periods(self, start: DateScalar, end: DateScalar) -> list[int]:
+    def _get_missing_periods(
+        self, start: DateScalar, end: DateScalar | None = None
+    ) -> list[int]:
         all_periods = self._generate_periods(start, end)
         existing = self.dm.get_periodos_disponiveis(
             self._get_file_prefix(), self._get_subdir()
@@ -271,7 +288,7 @@ class BaseCollector(ABC):
     def collect(
         self,
         start: DateScalar,
-        end: DateScalar,
+        end: DateScalar | None = None,
         force: bool = False,
         verbose: bool = True,
         progress_desc: str | None = None,
@@ -280,6 +297,7 @@ class BaseCollector(ABC):
         """
         Coleta dados do BCB com progresso Rich e logging dual.
 
+        `end=None` coleta apenas o periodo de `start`, como em read().
         Usa coleta paralela. Retorna (registros, ok, falhas, indisponiveis).
         """
         # Escritas interrompidas em execucoes anteriores deixam .tmp orfaos

@@ -338,3 +338,34 @@ class TestCadastroProcessToParquet:
         assert df is not None
         assert df["Data"].dtype == pd.Int64Dtype()
         assert df.iloc[0]["Data"] == 202303
+
+
+class TestGeneratePeriodsEndOpcional:
+    """3.12: collect(start) sem end coleta o periodo unico, como read()."""
+
+    def test_mensal_end_none(self) -> None:
+        from ifdata_bcb.providers.cosif.collector import COSIFCollector
+
+        collector = COSIFCollector("individual", data_manager=MagicMock())
+        assert collector._generate_periods("2024-07") == [202407]
+
+    def test_trimestral_end_none_alinha_para_o_fim_do_trimestre(self) -> None:
+        collector = _make_valores_collector()
+        assert collector._generate_periods("2024-07") == [202409]
+        assert collector._generate_periods("2024-09") == [202409]
+
+    def test_trimestral_start_igual_end_devolvia_vazio(self) -> None:
+        """O workaround que os docs sugeriam nao coletava nada, em silencio.
+
+        generate_quarter_range alinha o inicio para o fim do trimestre, que
+        fica maior que end -- collect('2024-07', '2024-07') baixava zero
+        periodos sem erro. Por isso end=None nao pode delegar a ele.
+        """
+        collector = _make_valores_collector()
+        assert collector._generate_periods("2024-07", "2024-07") == []
+        assert collector._generate_periods("2024-07") == [202409]
+
+    def test_range_continua_igual(self) -> None:
+        collector = _make_valores_collector()
+        periodos = collector._generate_periods("2024-01", "2024-12")
+        assert periodos == [202403, 202406, 202409, 202412]

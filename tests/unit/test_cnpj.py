@@ -1,6 +1,48 @@
 """Testes para ifdata_bcb.utils.cnpj."""
 
-from ifdata_bcb.utils.cnpj import standardize_cnpj_base8
+import pytest
+
+from ifdata_bcb.utils.cnpj import is_valid_cnpj14, only_digits, standardize_cnpj_base8
+
+
+class TestOnlyDigits:
+    def test_remove_formatacao(self) -> None:
+        assert only_digits("60.872.504/0001-23") == "60872504000123"
+
+    def test_ignora_digitos_fullwidth(self) -> None:
+        """`\\d` casaria U+FF10..U+FF19 e int() os converteria em silencio."""
+        assert only_digits("".join(chr(0xFF10 + i) for i in range(1, 9))) == ""
+
+    def test_aceita_int(self) -> None:
+        assert only_digits(12345678) == "12345678"
+
+
+class TestIsValidCnpj14:
+    @pytest.mark.parametrize(
+        "cnpj",
+        [
+            "60872504000123",  # Itau Unibanco Holding
+            "60746948000112",  # Bradesco
+            "00000000000191",  # Banco do Brasil
+        ],
+    )
+    def test_cnpjs_reais_passam(self, cnpj: str) -> None:
+        assert is_valid_cnpj14(cnpj) is True
+
+    @pytest.mark.parametrize(
+        "cnpj",
+        [
+            "60872504000124",  # DV trocado
+            "99999999999999",
+            "11111111111111",
+            "6087250400012",  # 13 digitos
+            "608725040001234",  # 15 digitos
+            "6087250400012a",
+            "",
+        ],
+    )
+    def test_invalidos_falham(self, cnpj: str) -> None:
+        assert is_valid_cnpj14(cnpj) is False
 
 
 class TestStandardizeCnpjBase8:

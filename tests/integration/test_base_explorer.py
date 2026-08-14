@@ -81,9 +81,18 @@ class TestResolveEntity:
         with pytest.raises(InvalidIdentifierError):
             explorer._resolve_entidade("1234567a")
 
-    def test_formatted_cnpj_raises(self, explorer: ConcreteExplorer) -> None:
+    def test_formatted_cnpj_is_normalized(self, explorer: ConcreteExplorer) -> None:
+        """Formatacao e o que o usuario cola do sistema dele (item 3.11)."""
+        assert explorer._resolve_entidade("12.345.678") == "12345678"
+
+    def test_cnpj14_is_truncated_to_base(self, explorer: ConcreteExplorer) -> None:
+        assert explorer._resolve_entidade("60.872.504/0001-23") == "60872504"
+
+    def test_cnpj14_with_bad_check_digits_raises(
+        self, explorer: ConcreteExplorer
+    ) -> None:
         with pytest.raises(InvalidIdentifierError):
-            explorer._resolve_entidade("12.345.678")
+            explorer._resolve_entidade("99999999999999")
 
     def test_empty_raises(self, explorer: ConcreteExplorer) -> None:
         with pytest.raises(InvalidIdentifierError):

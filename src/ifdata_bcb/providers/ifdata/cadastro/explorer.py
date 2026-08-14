@@ -111,11 +111,14 @@ class CadastroExplorer(BaseExplorer):
     def collect(
         self,
         start: DateScalar,
-        end: DateScalar,
+        end: DateScalar | None = None,
         force: bool = False,
         verbose: bool = True,
     ) -> None:
-        """Coleta dados cadastrais IFDATA do BCB (trimestral)."""
+        """Coleta dados cadastrais IFDATA do BCB (trimestral).
+
+        `end=None` coleta apenas o trimestre de `start`, como em read().
+        """
         self._get_collector().collect(start, end, force=force, verbose=verbose)
 
     def read(

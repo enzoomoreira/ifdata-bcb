@@ -164,12 +164,15 @@ class COSIFExplorer(BaseExplorer):
     def collect(
         self,
         start: DateScalar,
-        end: DateScalar,
+        end: DateScalar | None = None,
         escopo: EscopoCOSIF | None = None,
         force: bool = False,
         verbose: bool = True,
     ) -> None:
-        """Coleta dados COSIF do BCB. Se escopo=None, coleta ambos."""
+        """Coleta dados COSIF do BCB. Se escopo=None, coleta ambos.
+
+        `end=None` coleta apenas o periodo de `start`, como em read().
+        """
         if escopo is not None:
             escopo = self._validate_escopo(escopo)  # type: ignore[assignment]
             COSIFCollector(escopo).collect(start, end, force=force, verbose=verbose)
@@ -179,7 +182,7 @@ class COSIFExplorer(BaseExplorer):
     def _collect_all_escopos(
         self,
         start: DateScalar,
-        end: DateScalar,
+        end: DateScalar | None = None,
         force: bool = False,
         verbose: bool = True,
     ) -> None:

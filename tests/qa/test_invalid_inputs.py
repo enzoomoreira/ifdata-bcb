@@ -50,9 +50,19 @@ class TestInvalidCNPJ:
         with pytest.raises(InvalidIdentifierError):
             qa_cosif.read(instituicao="'; DROP TABLE--", start="2023-03")
 
-    def test_cnpj_with_spaces(self, qa_cosif: COSIFExplorer) -> None:
+    def test_cnpj_with_spaces_is_accepted(self, qa_cosif: COSIFExplorer) -> None:
+        """Espaco no meio e artefato de copiar/colar, nao input invalido."""
+        df = qa_cosif.read(instituicao="6087 2504", start="2023-03")
+        assert not df.empty
+
+    def test_cnpj_completo_14_digitos(self, qa_cosif: COSIFExplorer) -> None:
+        df = qa_cosif.read(instituicao="60.872.504/0001-23", start="2023-03")
+        assert not df.empty
+        assert set(df["CNPJ_8"].unique()) == {"60872504"}
+
+    def test_cnpj_14_digitos_com_dv_errado(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(InvalidIdentifierError):
-            qa_cosif.read(instituicao="6087 2504", start="2023-03")
+            qa_cosif.read(instituicao="99999999999999", start="2023-03")
 
     def test_cnpj_fullwidth_unicode_digits(self, qa_cosif: COSIFExplorer) -> None:
         fullwidth = "".join(chr(0xFF10 + i) for i in range(1, 9))
