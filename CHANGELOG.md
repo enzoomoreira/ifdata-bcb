@@ -58,7 +58,20 @@ sob `TYPE_CHECKING`, sem mudar o runtime.
 `start: str`, mas `int`, `date`, `datetime` e `pd.Timestamp` ja funcionavam.
 `bcb.cosif.read(202412)` deixa de ser erro no type checker do usuario.
 
+**A promessa do `py.typed` virou verificavel.** `pyright` roda zerado sobre
+`src/` e passa a ser gate de CI, junto com a suite rodando tambem em
+`windows-latest`, um cron semanal dos testes de contrato contra a API real do
+BCB (o maior risco sistemico da lib e o BCB mudar schema em silencio) e a
+publicacao no PyPI condicionada a lint, type check e testes.
+
 ### Corrigido
+
+**Escritas concorrentes na mesma cache nao colidem mais.** Dois `collect()` do
+mesmo periodo -- threads ou dois processos -- disputavam o mesmo arquivo
+temporario da escrita atomica e, no Windows, falhavam com `WinError 32`; o
+vencedor da corrida de rename tambem podia derrubar o outro com `WinError 5`
+transitorio. O temporario agora e unico por escritor e o rename do destino tem
+retry curto: vale last-writer-wins, nunca um arquivo hibrido ou truncado.
 
 **Mensagem corrompida em `documento` invalido.** `cosif.read(documento='abc')`
 respondia `"Escopo 'abc' invalido. Validos: 'v', 'a', 'l', 'o', 'r', ..."` --
@@ -90,6 +103,16 @@ certa, entao a mesma falha levantava tipos diferentes conforme o metodo. Quem
 capturava `InvalidScopeError` nesses dois casos precisa trocar para
 `InvalidColumnError`. Ambas herdam de `BacenAnalysisError`, entao quem captura
 a base nao e afetado.
+
+**`domain/validation.py` expoe funcoes, nao modelos Pydantic.**
+`NormalizedDates`, `ValidatedCnpj8`, `InstitutionList` e `AccountList` viraram
+`normalize_dates()`, `validate_cnpj8()`, `normalize_institutions()` e
+`normalize_accounts()`. O `__init__` gerado pelo Pydantic e tipado com a
+anotacao pos-validacao, entao todo uso dos validators `mode="before"` era um
+erro de type check por construcao; os modelos ja se comportavam como funcoes
+(todo call site desembrulhava `.values` na hora) e nenhuma `ValidationError`
+era capturada. Modulo interno -- quem importava os modelos diretamente troca
+pela funcao equivalente.
 
 ### Removido
 
