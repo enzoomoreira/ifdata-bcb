@@ -446,6 +446,7 @@ class COSIFExplorer(BaseExplorer):
     def list_contas(
         self,
         termo: str | None = None,
+        *,
         escopo: EscopoCOSIF | None = None,
         start: DateScalar | None = None,
         end: DateScalar | None = None,

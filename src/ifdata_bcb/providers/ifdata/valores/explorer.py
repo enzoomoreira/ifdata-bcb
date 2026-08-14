@@ -579,6 +579,7 @@ class IFDATAExplorer(BaseExplorer):
     def list_contas(
         self,
         termo: str | None = None,
+        *,
         escopo: EscopoIFDATA | None = None,
         relatorio: str | None = None,
         start: DateScalar | None = None,
