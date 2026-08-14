@@ -19,7 +19,7 @@ from ifdata_bcb.providers.base_explorer import BaseExplorer
 class ConcreteExplorer(BaseExplorer):
     """Implementacao concreta minima para testes."""
 
-    _COLUMN_MAP = {"DATA_BASE": "DATA", "NOME_INST": "INSTITUICAO"}
+    _COLUMN_MAP = {"DATA_BASE": "data", "NOME_INST": "instituicao"}
 
     def _get_subdir(self) -> str:
         return "test/data"
@@ -134,15 +134,15 @@ class TestColumnMapping:
     """_COLUMN_MAP e metodos auxiliares de mapeamento."""
 
     def test_storage_col_mapped(self, explorer: ConcreteExplorer) -> None:
-        assert explorer._storage_col("DATA") == "DATA_BASE"
+        assert explorer._storage_col("data") == "DATA_BASE"
 
     def test_storage_col_unmapped(self, explorer: ConcreteExplorer) -> None:
         assert explorer._storage_col("UNKNOWN") == "UNKNOWN"
 
     def test_reverse_map(self, explorer: ConcreteExplorer) -> None:
         reverse = explorer._reverse_column_map
-        assert reverse["DATA"] == "DATA_BASE"
-        assert reverse["INSTITUICAO"] == "NOME_INST"
+        assert reverse["data"] == "DATA_BASE"
+        assert reverse["instituicao"] == "NOME_INST"
 
     def test_translate_columns_none(self, explorer: ConcreteExplorer) -> None:
         assert explorer._translate_columns(None) is None
@@ -150,7 +150,7 @@ class TestColumnMapping:
     def test_translate_columns_presentation_names(
         self, explorer: ConcreteExplorer
     ) -> None:
-        result = explorer._translate_columns(["DATA", "INSTITUICAO"])
+        result = explorer._translate_columns(["data", "instituicao"])
         assert result == ["DATA_BASE", "NOME_INST"]
 
     def test_translate_columns_storage_names_passthrough(
@@ -160,14 +160,14 @@ class TestColumnMapping:
         assert result == ["DATA_BASE", "CNPJ_8"]
 
     def test_translate_columns_mixed(self, explorer: ConcreteExplorer) -> None:
-        result = explorer._translate_columns(["DATA", "CNPJ_8"])
+        result = explorer._translate_columns(["data", "CNPJ_8"])
         assert result == ["DATA_BASE", "CNPJ_8"]
 
     def test_apply_column_mapping_empty_df(self, explorer: ConcreteExplorer) -> None:
         """DataFrames vazios devem ter colunas renomeadas."""
         df = pd.DataFrame(columns=["DATA_BASE", "NOME_INST"])
         result = explorer._apply_column_mapping(df)
-        assert list(result.columns) == ["DATA", "INSTITUICAO"]
+        assert list(result.columns) == ["data", "instituicao"]
         assert result.empty
 
 
@@ -202,11 +202,10 @@ class TestResolveDateRange:
 class DerivedExplorer(BaseExplorer):
     """Explorer com colunas derivadas e escopos para testes adversariais."""
 
-    _COLUMN_MAP = {"AnoMes": "DATA", "CodInst": "COD_INST", "NomeColuna": "CONTA"}
-    _DERIVED_COLUMNS: set[str] = {"CNPJ_8", "INSTITUICAO", "ESCOPO"}
-    _PASSTHROUGH_COLUMNS: set[str] = {"NATIVE_COL"}
+    _COLUMN_MAP = {"AnoMes": "data", "CodInst": "cod_inst", "NomeColuna": "conta"}
+    _DERIVED_COLUMNS: set[str] = {"cnpj_8", "instituicao", "escopo"}
     _DROP_COLUMNS = ["TipoInstituicao"]
-    _COLUMN_ORDER = ["DATA", "CNPJ_8", "ESCOPO", "COD_INST", "CONTA"]
+    _COLUMN_ORDER = ["data", "cnpj_8", "escopo", "cod_inst", "conta"]
     _VALID_ESCOPOS = ["individual", "prudencial"]
 
     def _get_subdir(self) -> str:
@@ -233,28 +232,28 @@ class TestStorageColumnsForQuery:
         self, derived_explorer: DerivedExplorer
     ) -> None:
         result = derived_explorer._storage_columns_for_query(
-            ["CNPJ_8", "ESCOPO"], required=["CodInst", "TipoInstituicao"]
+            ["cnpj_8", "escopo"], required=["CodInst", "TipoInstituicao"]
         )
         assert result == ["CodInst", "TipoInstituicao"]
 
     def test_all_derived_no_required_returns_none(
         self, derived_explorer: DerivedExplorer
     ) -> None:
-        result = derived_explorer._storage_columns_for_query(["CNPJ_8", "ESCOPO"])
+        result = derived_explorer._storage_columns_for_query(["cnpj_8", "escopo"])
         assert result is None
 
     def test_mix_derived_storage_with_required(
         self, derived_explorer: DerivedExplorer
     ) -> None:
         result = derived_explorer._storage_columns_for_query(
-            ["DATA", "CNPJ_8"], required=["CodInst"]
+            ["data", "cnpj_8"], required=["CodInst"]
         )
-        assert "AnoMes" in result  # DATA -> AnoMes
+        assert "AnoMes" in result  # data -> AnoMes
         assert "CodInst" in result
 
     def test_required_not_duplicated(self, derived_explorer: DerivedExplorer) -> None:
         result = derived_explorer._storage_columns_for_query(
-            ["COD_INST"], required=["CodInst"]
+            ["cod_inst"], required=["CodInst"]
         )
         assert result.count("CodInst") == 1
 
@@ -278,25 +277,19 @@ class TestValidateColumnsEdgeCases:
         assert len(empty_warnings) == 1
 
     def test_derived_column_accepted(self, derived_explorer: DerivedExplorer) -> None:
-        derived_explorer._validate_columns(["CNPJ_8", "ESCOPO"])
-
-    def test_passthrough_column_accepted(
-        self, derived_explorer: DerivedExplorer
-    ) -> None:
-        result = derived_explorer._validate_columns(["NATIVE_COL", "DATA"])
-        assert result == ["NATIVE_COL", "DATA"]
+        derived_explorer._validate_columns(["cnpj_8", "escopo"])
 
     def test_unknown_column_raises_with_suggestions(
         self, derived_explorer: DerivedExplorer
     ) -> None:
         with pytest.raises(InvalidColumnError, match="COLUNA_FAKE"):
-            derived_explorer._validate_columns(["DATA", "COLUNA_FAKE"])
+            derived_explorer._validate_columns(["data", "COLUNA_FAKE"])
 
     def test_multiple_unknown_columns_are_all_reported(
         self, derived_explorer: DerivedExplorer
     ) -> None:
         with pytest.raises(InvalidColumnError) as exc_info:
-            derived_explorer._validate_columns(["FOO", "BAR", "DATA"])
+            derived_explorer._validate_columns(["FOO", "BAR", "data"])
         msg = str(exc_info.value)
         assert "BAR" in msg
         assert "FOO" in msg
@@ -306,17 +299,17 @@ class TestFilterColumnsEdgeCases:
     """_filter_columns com inputs de borda."""
 
     def test_empty_df_returns_empty(self, derived_explorer: DerivedExplorer) -> None:
-        df = pd.DataFrame(columns=["DATA", "CNPJ_8"])
-        result = derived_explorer._filter_columns(df, ["DATA"])
+        df = pd.DataFrame(columns=["data", "cnpj_8"])
+        result = derived_explorer._filter_columns(df, ["data"])
         assert result.empty
 
     def test_presentation_name_after_mapping(
         self, derived_explorer: DerivedExplorer
     ) -> None:
         """Coluna ja renomeada para apresentacao e encontrada corretamente."""
-        df = pd.DataFrame({"DATA": [202303], "COD_INST": ["X"]})
-        result = derived_explorer._filter_columns(df, ["DATA", "COD_INST"])
-        assert list(result.columns) == ["DATA", "COD_INST"]
+        df = pd.DataFrame({"data": [202303], "cod_inst": ["X"]})
+        result = derived_explorer._filter_columns(df, ["data", "cod_inst"])
+        assert list(result.columns) == ["data", "cod_inst"]
 
 
 class TestFinalizeReadEdgeCases:
@@ -331,9 +324,9 @@ class TestFinalizeReadEdgeCases:
     def test_without_data_column_skips_conversion(
         self, derived_explorer: DerivedExplorer
     ) -> None:
-        df = pd.DataFrame({"VALOR": [100.0, 200.0]})
+        df = pd.DataFrame({"valor": [100.0, 200.0]})
         result = derived_explorer._finalize_read(df)
-        assert "DATA" not in result.columns
+        assert "data" not in result.columns
         assert len(result) == 2
 
 

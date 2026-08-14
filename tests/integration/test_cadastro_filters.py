@@ -41,27 +41,27 @@ class TestCadastroNewFilters:
         cadastro = explorers[2]
         df = cadastro.read("2023-03", uf="SP")
         assert not df.empty
-        assert (df["UF"] == "SP").all()
+        assert (df["uf"] == "SP").all()
 
     def test_filter_segmento(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        segmentos = df_all["SEGMENTO"].dropna().unique()
+        segmentos = df_all["segmento"].dropna().unique()
         if len(segmentos) > 0:
             seg = segmentos[0]
             df = cadastro.read("2023-03", segmento=seg)
             assert not df.empty
-            assert (df["SEGMENTO"] == seg).all()
+            assert (df["segmento"] == seg).all()
 
     def test_filter_atividade(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        if "ATIVIDADE" in df_all.columns:
-            atividades = df_all["ATIVIDADE"].dropna().unique()
+        if "atividade" in df_all.columns:
+            atividades = df_all["atividade"].dropna().unique()
             if len(atividades) > 0:
                 ativ = atividades[0]
                 df = cadastro.read("2023-03", atividade=ativ)
@@ -72,8 +72,8 @@ class TestCadastroNewFilters:
     ) -> None:
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        if "TCB" in df_all.columns:
-            tcbs = df_all["TCB"].dropna().unique()
+        if "tcb" in df_all.columns:
+            tcbs = df_all["tcb"].dropna().unique()
             if len(tcbs) > 0:
                 df = cadastro.read("2023-03", tcb=tcbs[0])
                 assert not df.empty
@@ -83,8 +83,8 @@ class TestCadastroNewFilters:
     ) -> None:
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        if "TC" in df_all.columns:
-            tcs = df_all["TC"].dropna().unique()
+        if "tc" in df_all.columns:
+            tcs = df_all["tc"].dropna().unique()
             if len(tcs) > 0:
                 df = cadastro.read("2023-03", tc=str(tcs[0]))
                 assert not df.empty
@@ -95,8 +95,8 @@ class TestCadastroNewFilters:
         """tc aceita int, deve converter para str internamente."""
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        if "TC" in df_all.columns:
-            tcs = df_all["TC"].dropna().unique()
+        if "tc" in df_all.columns:
+            tcs = df_all["tc"].dropna().unique()
             numeric = [t for t in tcs if str(t).isdigit()]
             if numeric:
                 df = cadastro.read("2023-03", tc=int(numeric[0]))
@@ -107,12 +107,12 @@ class TestCadastroNewFilters:
     ) -> None:
         cadastro = explorers[2]
         df_all = cadastro.read("2023-03")
-        if "MUNICIPIO" in df_all.columns:
-            munis = df_all["MUNICIPIO"].dropna().unique()
+        if "municipio" in df_all.columns:
+            munis = df_all["municipio"].dropna().unique()
             if len(munis) > 0:
                 df = cadastro.read("2023-03", municipio=munis[0])
                 assert not df.empty
-                assert (df["MUNICIPIO"] == munis[0]).all()
+                assert (df["municipio"] == munis[0]).all()
 
     def test_nonexistent_filter_value_returns_empty(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -128,5 +128,5 @@ class TestCadastroNewFilters:
         cadastro = explorers[2]
         df = cadastro.read("2023-03", uf="SP", situacao="A")
         if not df.empty:
-            assert (df["UF"] == "SP").all()
-            assert (df["SITUACAO"] == "A").all()
+            assert (df["uf"] == "SP").all()
+            assert (df["situacao"] == "A").all()

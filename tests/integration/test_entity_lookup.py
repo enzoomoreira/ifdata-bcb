@@ -198,27 +198,27 @@ class TestSearch:
         df = search.search("BANCO ALFA")
 
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_finds_by_partial_name(self, populated_cache: Path) -> None:
         search = _make_search(populated_cache)
         df = search.search("ALFA")
 
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_returns_score_column(self, populated_cache: Path) -> None:
         search = _make_search(populated_cache)
         df = search.search("ALFA")
 
-        assert "SCORE" in df.columns
-        assert all(df["SCORE"] > 0)
+        assert "score" in df.columns
+        assert all(df["score"] > 0)
 
     def test_returns_situacao(self, populated_cache: Path) -> None:
         search = _make_search(populated_cache)
         df = search.search("ALFA")
 
-        assert "SITUACAO" in df.columns
+        assert "situacao" in df.columns
 
     def test_respects_limit(self, populated_cache: Path) -> None:
         search = _make_search(populated_cache)
@@ -232,11 +232,11 @@ class TestSearch:
 
         assert df.empty
         assert list(df.columns) == [
-            "CNPJ_8",
-            "INSTITUICAO",
-            "SITUACAO",
-            "FONTES",
-            "SCORE",
+            "cnpj_8",
+            "instituicao",
+            "situacao",
+            "fontes",
+            "score",
         ]
 
     def test_no_match_returns_empty(self, populated_cache: Path) -> None:
@@ -307,8 +307,8 @@ class TestSearchByCnpj:
         df = search.search(BANCO_A_CNPJ)
 
         assert not df.empty
-        assert df.iloc[0]["CNPJ_8"] == BANCO_A_CNPJ
-        assert df.iloc[0]["SCORE"] == 100
+        assert df.iloc[0]["cnpj_8"] == BANCO_A_CNPJ
+        assert df.iloc[0]["score"] == 100
 
     def test_search_by_cnpj_unknown_returns_empty(self, populated_cache: Path) -> None:
         """CNPJ desconhecido de 8 digitos sem match fuzzy retorna vazio."""
@@ -321,7 +321,7 @@ class TestSearchByCnpj:
         search = _make_search(populated_cache)
         df = search.search(BANCO_A_CNPJ)
 
-        expected_cols = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
+        expected_cols = ["cnpj_8", "instituicao", "situacao", "fontes", "score"]
         assert list(df.columns) == expected_cols
 
     def test_search_by_name_still_works(self, populated_cache: Path) -> None:
@@ -329,7 +329,7 @@ class TestSearchByCnpj:
         df = search.search("BANCO ALFA")
 
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_search_cnpj_exact_no_sources_returns_empty(
         self, populated_cache: Path
@@ -338,4 +338,4 @@ class TestSearchByCnpj:
         search = _make_search(populated_cache)
         df = search.search(BANCO_B_CNPJ)
         if not df.empty:
-            assert (df["FONTES"] != "").all()
+            assert (df["fontes"] != "").all()

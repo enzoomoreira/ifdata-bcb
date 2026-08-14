@@ -22,27 +22,27 @@ class TestCOSIFRead:
         df = cosif.read(instituicao=BANCO_A_CNPJ, start="2023-03")
 
         assert not df.empty
-        for col in ("DATA", "CNPJ_8", "INSTITUICAO", "ESCOPO", "CONTA", "VALOR"):
+        for col in ("data", "cnpj_8", "instituicao", "escopo", "conta", "valor"):
             assert col in df.columns
 
     def test_read_converts_data_to_datetime(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
-        assert pd.api.types.is_datetime64_any_dtype(df["DATA"])
+        assert pd.api.types.is_datetime64_any_dtype(df["data"])
 
     def test_read_filters_by_institution(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
-        assert all(df["CNPJ_8"] == BANCO_A_CNPJ)
+        assert all(df["cnpj_8"] == BANCO_A_CNPJ)
 
     def test_read_both_scopes_returns_escopo_column(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
-        assert "ESCOPO" in df.columns
-        assert "individual" in df["ESCOPO"].unique()
+        assert "escopo" in df.columns
+        assert "individual" in df["escopo"].unique()
 
     def test_read_single_escopo(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -51,7 +51,7 @@ class TestCOSIFRead:
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
         )
         assert not df.empty
-        assert all(df["ESCOPO"] == "individual")
+        assert all(df["escopo"] == "individual")
 
     def test_read_filters_by_account(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -60,48 +60,48 @@ class TestCOSIFRead:
             instituicao=BANCO_A_CNPJ, start="2023-03", conta="ATIVO TOTAL"
         )
         assert not df.empty
-        assert all(df["CONTA"] == "ATIVO TOTAL")
+        assert all(df["conta"] == "ATIVO TOTAL")
 
     def test_read_no_data_returns_empty_with_columns(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao="99999999", start="2023-03")
         assert df.empty
-        assert "DATA" in df.columns
+        assert "data" in df.columns
 
     def test_read_applies_canonical_names(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
         if not df.empty:
-            assert "BANCO ALFA S.A." in df["INSTITUICAO"].unique()
+            assert "BANCO ALFA S.A." in df["instituicao"].unique()
 
     def test_read_with_cadastro_enrichment(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(
-            instituicao=BANCO_A_CNPJ, start="2023-03", cadastro=["SEGMENTO", "UF"]
+            instituicao=BANCO_A_CNPJ, start="2023-03", cadastro=["segmento", "uf"]
         )
-        assert "SEGMENTO" in df.columns
-        assert "UF" in df.columns
+        assert "segmento" in df.columns
+        assert "uf" in df.columns
 
     def test_read_includes_cod_conta_and_documento(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
 
-        assert "COD_CONTA" in df.columns
-        assert "DOCUMENTO" in df.columns
-        assert "10100" in df["COD_CONTA"].astype(str).values
-        assert "20200" in df["COD_CONTA"].astype(str).values
-        assert df["DOCUMENTO"].notna().all()
+        assert "cod_conta" in df.columns
+        assert "documento" in df.columns
+        assert "10100" in df["cod_conta"].astype(str).values
+        assert "20200" in df["cod_conta"].astype(str).values
+        assert df["documento"].notna().all()
 
     def test_read_filters_by_account_code(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03", conta="10100")
         assert not df.empty
-        assert all(df["COD_CONTA"].astype(str) == "10100")
+        assert all(df["cod_conta"].astype(str) == "10100")
 
 
 class TestCOSIFListMethods:
@@ -129,15 +129,15 @@ class TestCOSIFListMethods:
     ) -> None:
         df = explorers[0].list_contas()
         assert not df.empty
-        assert "COD_CONTA" in df.columns
-        assert "ESCOPOS" in df.columns
+        assert "cod_conta" in df.columns
+        assert "escopos" in df.columns
 
     def test_list_contas_with_filter(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].list_contas(termo="ATIVO")
         assert not df.empty
-        assert all("ATIVO" in c.upper() for c in df["CONTA"])
+        assert all("ATIVO" in c.upper() for c in df["conta"])
 
     def test_list_contas_limit_applies_to_total(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -150,8 +150,8 @@ class TestCOSIFListMethods:
     ) -> None:
         df = explorers[0].list_contas(escopo="individual")
         assert not df.empty
-        assert "ESCOPOS" not in df.columns
-        assert list(df.columns) == ["COD_CONTA", "CONTA"]
+        assert "escopos" not in df.columns
+        assert list(df.columns) == ["cod_conta", "conta"]
 
 
 class TestCOSIFDocumentoValidation:
@@ -171,7 +171,7 @@ class TestCOSIFDocumentoValidation:
         msg = str(exc_info.value)
         assert "'v', 'a', 'l'" not in msg
         assert "Validos" not in msg
-        assert "list_values(['DOCUMENTO'])" in msg
+        assert "list_values(['documento'])" in msg
 
     def test_documento_numeric_string_accepted(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -226,4 +226,4 @@ class TestCOSIFDocumentoValidation:
         df = cosif.read("2023-03", instituicao=BANCO_A_CNPJ, documento="4010")
 
         assert len(df) == 1
-        assert df.iloc[0]["DOCUMENTO"] == "4010"
+        assert df.iloc[0]["documento"] == "4010"

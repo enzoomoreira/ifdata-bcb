@@ -61,7 +61,7 @@ class TestInvalidCNPJ:
     def test_cnpj_completo_14_digitos(self, qa_cosif: COSIFExplorer) -> None:
         df = qa_cosif.read(instituicao="60.872.504/0001-23", start="2023-03")
         assert not df.empty
-        assert set(df["CNPJ_8"].unique()) == {"60872504"}
+        assert set(df["cnpj_8"].unique()) == {"60872504"}
 
     def test_cnpj_14_digitos_com_dv_errado(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(InvalidIdentifierError):
@@ -160,19 +160,19 @@ class TestEscopoEmIntrospeccao:
 
 
 class TestPassthroughColumns:
-    """Colunas nativas do parquet que nao estao em _COLUMN_MAP devem ser aceitas."""
+    """Colunas canonicas em columns= sao aceitas e retornadas lowercase."""
 
     def test_cosif_cnpj8_accepted(self, qa_cosif: COSIFExplorer) -> None:
         df = qa_cosif.read(
-            "2023-03", instituicao="60872504", columns=["CNPJ_8", "DATA", "VALOR"]
+            "2023-03", instituicao="60872504", columns=["cnpj_8", "data", "valor"]
         )
-        assert list(df.columns) == ["CNPJ_8", "DATA", "VALOR"]
+        assert list(df.columns) == ["cnpj_8", "data", "valor"]
 
     def test_cosif_documento_accepted(self, qa_cosif: COSIFExplorer) -> None:
         df = qa_cosif.read(
-            "2023-03", instituicao="60872504", columns=["DOCUMENTO", "DATA"]
+            "2023-03", instituicao="60872504", columns=["documento", "data"]
         )
-        assert "DOCUMENTO" in df.columns
+        assert "documento" in df.columns
 
 
 class TestValoresNaoEntramNoSQL:

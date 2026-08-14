@@ -109,7 +109,7 @@ class TestDataEdgeCases:
         )
         df = cosif.read(instituicao="60872504", start="2023-03")
         assert not df.empty
-        assert df["VALOR"].isna().any()
+        assert df["valor"].isna().any()
 
     def test_saldo_inf_accepted(self, workspace_tmp_dir: Path) -> None:
         _save_parquet(
@@ -181,11 +181,11 @@ class TestDataEdgeCases:
             query_engine=qe, entity_lookup=EntityLookup(query_engine=qe)
         )
         df = cosif.read(
-            instituicao="60872504", start="2023-03", cadastro=["SEGMENTO", "UF"]
+            instituicao="60872504", start="2023-03", cadastro=["segmento", "uf"]
         )
-        assert "SEGMENTO" in df.columns
-        assert "UF" in df.columns
-        assert df["SEGMENTO"].isna().all()
+        assert "segmento" in df.columns
+        assert "uf" in df.columns
+        assert df["segmento"].isna().all()
 
 
 class TestEntityLookupEdgeCases:

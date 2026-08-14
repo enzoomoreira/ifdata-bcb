@@ -49,7 +49,7 @@ class QueryEngine:
         where: str | None = None,
         distinct: bool = False,
         date_column: str | None = None,
-        date_alias: str = "DATA",
+        date_alias: str = "data",
         exclude_columns: list[str] | None = None,
         params: Mapping[str, object] | None = None,
     ) -> pd.DataFrame:
@@ -64,7 +64,7 @@ class QueryEngine:
                 seus params sao vinculados automaticamente.
             distinct: Se True, adiciona DISTINCT ao SELECT.
             date_column: Coluna YYYYMM int a converter pra datetime via DuckDB.
-            date_alias: Nome da coluna datetime no output (default "DATA").
+            date_alias: Nome da coluna datetime no output (default "data").
             exclude_columns: Colunas a excluir via EXCLUDE (so quando columns=None).
             params: Params extras, para quem montou parte do WHERE a mao.
 

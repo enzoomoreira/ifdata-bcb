@@ -81,14 +81,14 @@ class TestAttrsNoRead:
     def test_attrs_sobrevive_ao_filtro_de_colunas(
         self, ifdata_cross_era: IFDATAExplorer
     ) -> None:
-        """columns= remove COD_CONTA do output, mas a analise ja rodou antes."""
+        """columns= remove cod_conta do output, mas a analise ja rodou antes."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata_cross_era.read(
-                "2024-12", "2025-03", escopo="individual", columns=["DATA", "VALOR"]
+                "2024-12", "2025-03", escopo="individual", columns=["data", "valor"]
             )
 
-        assert list(df.columns) == ["DATA", "VALOR"]
+        assert list(df.columns) == ["data", "valor"]
         assert df.attrs["era"]["grupos"]["Resumo"]["status"] == "renumerado"
 
     def test_read_cruzando_boundary_emite_warning(

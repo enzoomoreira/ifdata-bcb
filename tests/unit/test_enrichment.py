@@ -20,7 +20,7 @@ class TestValidateCadastroColumns:
         validate_cadastro_columns(None)
 
     def test_valid_columns_pass(self) -> None:
-        validate_cadastro_columns(["SEGMENTO", "UF"])
+        validate_cadastro_columns(["segmento", "uf"])
 
     def test_invalid_column_raises(self) -> None:
         with pytest.raises(InvalidColumnError, match="INEXISTENTE"):
@@ -28,7 +28,7 @@ class TestValidateCadastroColumns:
 
     def test_mix_valid_invalid_reports_invalid(self) -> None:
         with pytest.raises(InvalidColumnError, match="INEXISTENTE"):
-            validate_cadastro_columns(["SEGMENTO", "INEXISTENTE"])
+            validate_cadastro_columns(["segmento", "INEXISTENTE"])
 
     def test_empty_list_passes(self) -> None:
         validate_cadastro_columns([])
@@ -44,9 +44,9 @@ class TestValidateCadastroColumns:
 
 class TestEnrichWithCadastroEdgeCases:
     def test_empty_financial_df_returns_empty(self) -> None:
-        df = pd.DataFrame(columns=["DATA", "CNPJ_8", "VALOR"])
+        df = pd.DataFrame(columns=["data", "cnpj_8", "valor"])
         result = enrich_with_cadastro(
-            df, ["SEGMENTO"], query_engine=None, entity_lookup=None
+            df, ["segmento"], query_engine=None, entity_lookup=None
         )
         assert result.empty
 
@@ -56,9 +56,9 @@ class TestEnrichWithCadastroEdgeCases:
         """Se cadastro nao retorna dados, colunas solicitadas ficam NA."""
         df = pd.DataFrame(
             {
-                "DATA": pd.to_datetime(["2023-03-31"]),
-                "CNPJ_8": ["60872504"],
-                "VALOR": [100.0],
+                "data": pd.to_datetime(["2023-03-31"]),
+                "cnpj_8": ["60872504"],
+                "valor": [100.0],
             }
         )
 
@@ -74,29 +74,29 @@ class TestEnrichWithCadastroEdgeCases:
         monkeypatch.setattr(cad_mod, "CadastroExplorer", FakeCadastro)
 
         result = enrich_with_cadastro(
-            df, ["SEGMENTO", "UF"], query_engine=None, entity_lookup=None
+            df, ["segmento", "uf"], query_engine=None, entity_lookup=None
         )
-        assert "SEGMENTO" in result.columns
-        assert "UF" in result.columns
-        assert result["SEGMENTO"].isna().all()
+        assert "segmento" in result.columns
+        assert "uf" in result.columns
+        assert result["segmento"].isna().all()
 
     def test_single_period_uses_simple_merge(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Com data unica, merge e feito por CNPJ_8 sem merge_asof."""
+        """Com data unica, merge e feito por cnpj_8 sem merge_asof."""
         df = pd.DataFrame(
             {
-                "DATA": pd.to_datetime(["2023-03-31", "2023-03-31"]),
-                "CNPJ_8": ["60872504", "90400888"],
-                "VALOR": [100.0, 200.0],
+                "data": pd.to_datetime(["2023-03-31", "2023-03-31"]),
+                "cnpj_8": ["60872504", "90400888"],
+                "valor": [100.0, 200.0],
             }
         )
 
         cad_df = pd.DataFrame(
             {
-                "DATA": pd.to_datetime(["2023-03-31", "2023-03-31"]),
-                "CNPJ_8": ["60872504", "90400888"],
-                "SEGMENTO": ["S1", "S2"],
+                "data": pd.to_datetime(["2023-03-31", "2023-03-31"]),
+                "cnpj_8": ["60872504", "90400888"],
+                "segmento": ["S1", "S2"],
             }
         )
 
@@ -112,8 +112,8 @@ class TestEnrichWithCadastroEdgeCases:
         monkeypatch.setattr(cad_mod, "CadastroExplorer", FakeCadastro)
 
         result = enrich_with_cadastro(
-            df, ["SEGMENTO"], query_engine=None, entity_lookup=None
+            df, ["segmento"], query_engine=None, entity_lookup=None
         )
         assert not result.empty
-        assert "SEGMENTO" in result.columns
-        assert set(result["SEGMENTO"]) == {"S1", "S2"}
+        assert "segmento" in result.columns
+        assert set(result["segmento"]) == {"S1", "S2"}

@@ -233,8 +233,8 @@ def diagnose_eras(
     source: str,
     periodos_solicitados: list[int] | None,
     group_col: str | None = None,
-    date_col: str = "DATA",
-    account_col: str = "COD_CONTA",
+    date_col: str = "data",
+    account_col: str = "cod_conta",
     escopo: str | None = None,
 ) -> EraDiagnostic:
     """Analisa continuidade dos dados retornados atraves do boundary de era.

@@ -37,7 +37,7 @@ from ifdata_bcb.utils.text import format_entity_labels, stem_ptbr
 
 EscopoIFDATA = Literal["individual", "prudencial", "financeiro"]
 
-_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
+_ACCOUNT_COLUMNS = ["cod_conta", "conta", "relatorio", "grupo"]
 
 
 class IFDATAExplorer(BaseExplorer):
@@ -48,58 +48,58 @@ class IFDATAExplorer(BaseExplorer):
     """
 
     _COLUMN_MAP: ClassVar[dict[str, str]] = {
-        "AnoMes": "DATA",
-        "CodInst": "COD_INST",
-        "NomeColuna": "CONTA",
-        "Conta": "COD_CONTA",
-        "Saldo": "VALOR",
-        "NomeRelatorio": "RELATORIO",
-        "Grupo": "GRUPO",
+        "AnoMes": "data",
+        "CodInst": "cod_inst",
+        "NomeColuna": "conta",
+        "Conta": "cod_conta",
+        "Saldo": "valor",
+        "NomeRelatorio": "relatorio",
+        "Grupo": "grupo",
     }
 
-    _DERIVED_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "INSTITUICAO", "ESCOPO"}
+    _DERIVED_COLUMNS: ClassVar[set[str]] = {"cnpj_8", "instituicao", "escopo"}
 
     _DROP_COLUMNS: ClassVar[list[str]] = ["TipoInstituicao"]
 
     _DATE_COLUMN = "AnoMes"
 
     _COLUMN_ORDER: ClassVar[list[str]] = [
-        "DATA",
-        "CNPJ_8",
-        "INSTITUICAO",
-        "ESCOPO",
-        "COD_INST",
-        "COD_CONTA",
-        "CONTA",
-        "VALOR",
-        "RELATORIO",
-        "GRUPO",
+        "data",
+        "cnpj_8",
+        "instituicao",
+        "escopo",
+        "cod_inst",
+        "cod_conta",
+        "conta",
+        "valor",
+        "relatorio",
+        "grupo",
     ]
 
     _VALID_ESCOPOS: ClassVar[list[str]] = ["individual", "prudencial", "financeiro"]
 
     _ERA_BOUNDARY = IFDATA_ERA_BOUNDARY
-    _ERA_GROUP_COLUMN = "RELATORIO"
+    _ERA_GROUP_COLUMN = "relatorio"
     _ERA_SOURCE_NAME = "IFDATA"
     _TRIMESTRAL = True
 
     _LIST_COLUMNS: ClassVar[dict[str, str]] = {
-        "DATA": "AnoMes",
-        "ESCOPO": (
+        "data": "AnoMes",
+        "escopo": (
             "CASE TipoInstituicao "
             "WHEN 1 THEN 'prudencial' "
             "WHEN 2 THEN 'financeiro' "
             "WHEN 3 THEN 'individual' END"
         ),
-        "RELATORIO": "NomeRelatorio",
-        "GRUPO": "Grupo",
+        "relatorio": "NomeRelatorio",
+        "grupo": "Grupo",
     }
 
     _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
-        "CONTA": "Use list_contas(termo='...') para buscar contas.",
-        "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
-        "COD_INST": "Use cadastro.search(fonte='ifdata') para listar instituicoes.",
-        "VALOR": "VALOR e uma metrica continua, nao listavel.",
+        "conta": "Use list_contas(termo='...') para buscar contas.",
+        "cod_conta": "Use list_contas(termo='...') para buscar contas.",
+        "cod_inst": "Use cadastro.search(fonte='ifdata') para listar instituicoes.",
+        "valor": "valor e uma metrica continua, nao listavel.",
     }
 
     def __init__(
@@ -139,7 +139,7 @@ class IFDATAExplorer(BaseExplorer):
         path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
         df = self._qe.sql(
             f"SELECT DISTINCT AnoMes AS ano_mes, "
-            f"{self._LIST_COLUMNS['ESCOPO']} AS escopo "
+            f"{self._LIST_COLUMNS['escopo']} AS escopo "
             f"FROM read_parquet('{path}', union_by_name=true)"
         )
         return {
@@ -199,15 +199,15 @@ class IFDATAExplorer(BaseExplorer):
             if contas:
                 conditions.append(
                     build_account_condition(
-                        self._storage_col("CONTA"),
-                        self._storage_col("COD_CONTA"),
+                        self._storage_col("conta"),
+                        self._storage_col("cod_conta"),
                         contas,
                     )
                 )
         if relatorio:
             conditions.append(
                 build_string_condition(
-                    self._storage_col("RELATORIO"),
+                    self._storage_col("relatorio"),
                     [relatorio],
                     case_insensitive=True,
                     accent_insensitive=True,
@@ -216,7 +216,7 @@ class IFDATAExplorer(BaseExplorer):
         if grupo:
             conditions.append(
                 build_string_condition(
-                    self._storage_col("GRUPO"),
+                    self._storage_col("grupo"),
                     [grupo],
                     case_insensitive=True,
                     accent_insensitive=True,
@@ -280,21 +280,21 @@ class IFDATAExplorer(BaseExplorer):
                 if df.empty:
                     continue
                 df = df.copy()
-                df["ESCOPO"] = esc
+                df["escopo"] = esc
                 if esc == "individual":
-                    df["CNPJ_8"] = df["CodInst"]
+                    df["cnpj_8"] = df["CodInst"]
                 else:
                     # CodInst com 8 digitos = CNPJ (inst. independente)
                     # Demais (numerico curto ou nao-numerico) = conglomerado
                     is_cnpj = df["CodInst"].str.match(r"^\d{8}$", na=False)
-                    df.loc[is_cnpj, "CNPJ_8"] = df.loc[is_cnpj, "CodInst"]
+                    df.loc[is_cnpj, "cnpj_8"] = df.loc[is_cnpj, "CodInst"]
 
                     congl_codes = df.loc[~is_cnpj, "CodInst"].unique().tolist()
                     if congl_codes:
                         cnpj_map = self._resolve_bulk_conglomerate_cnpjs(
                             congl_codes, esc
                         )
-                        df.loc[~is_cnpj, "CNPJ_8"] = df.loc[~is_cnpj, "CodInst"].map(
+                        df.loc[~is_cnpj, "cnpj_8"] = df.loc[~is_cnpj, "CodInst"].map(
                             cnpj_map
                         )
                         resolved = len(cnpj_map)
@@ -388,7 +388,7 @@ class IFDATAExplorer(BaseExplorer):
             )
             if not df.empty:
                 df = df.copy()
-                df["ESCOPO"] = escopo
+                df["escopo"] = escopo
                 df = TemporalResolver.add_cnpj_mapping(df, group.cnpj_map)
                 frames.append(df)
             return
@@ -422,7 +422,7 @@ class IFDATAExplorer(BaseExplorer):
             if df.empty:
                 continue
             df = df.copy()
-            df["ESCOPO"] = escopo
+            df["escopo"] = escopo
             df = TemporalResolver.add_cnpj_mapping(df, merged_cnpj_map)
             frames.append(df)
 
@@ -452,9 +452,9 @@ class IFDATAExplorer(BaseExplorer):
             grupo: Filtro por grupo (case/accent insensitive).
             columns: Colunas a retornar. Se None, retorna todas.
             cadastro: Colunas cadastrais para enriquecer o resultado.
-                Validas: ATIVIDADE, CNPJ_LIDER_8, COD_CONGL_FIN,
-                COD_CONGL_PRUD, DATA_INICIO_ATIVIDADE, MUNICIPIO,
-                NOME_CONGL_PRUD, SEGMENTO, SITUACAO, SR, TC, TCB, TD, UF.
+                Validas: atividade, cnpj_lider_8, cod_congl_fin,
+                cod_congl_prud, data_inicio_atividade, municipio,
+                nome_congl_prud, segmento, situacao, sr, tc, tcb, td, uf.
 
         Raises:
             MissingRequiredParameterError: Se start nao fornecido.
@@ -499,14 +499,14 @@ class IFDATAExplorer(BaseExplorer):
         if cadastro is not None:
             from ifdata_bcb.domain.exceptions import PartialDataWarning
 
-            has_cnpj = "CNPJ_8" in df.columns and df["CNPJ_8"].notna().any()
+            has_cnpj = "cnpj_8" in df.columns and df["cnpj_8"].notna().any()
             if has_cnpj:
                 df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
             elif instituicao is None:
                 emit_user_warning(
                     PartialDataWarning(
                         "Enrichment cadastral nao disponivel para bulk "
-                        "prudencial/financeiro (sem CNPJ_8 no resultado). "
+                        "prudencial/financeiro (sem cnpj_8 no resultado). "
                         "Use instituicao= ou escopo='individual' para ativar.",
                         reason="no_cnpj_for_enrichment",
                     ),
@@ -532,7 +532,7 @@ class IFDATAExplorer(BaseExplorer):
         """Lista valores distintos para as colunas solicitadas.
 
         Args:
-            columns: Colunas a listar (DATA, ESCOPO, RELATORIO, GRUPO).
+            columns: Colunas a listar (data, escopo, relatorio, grupo).
             start: Periodo inicial (opcional).
             end: Periodo final (opcional).
             escopo: Filtro por escopo.
@@ -643,11 +643,11 @@ class IFDATAExplorer(BaseExplorer):
         where = f"WHERE {cond}" if cond else ""
 
         query = f"""
-            SELECT DISTINCT Conta as COD_CONTA, NomeColuna as CONTA,
-                            NomeRelatorio as RELATORIO, Grupo as GRUPO
+            SELECT DISTINCT Conta as "cod_conta", NomeColuna as "conta",
+                            NomeRelatorio as "relatorio", Grupo as "grupo"
             FROM '{path}'
             {where}
-            ORDER BY RELATORIO, GRUPO, CONTA, COD_CONTA
+            ORDER BY "relatorio", "grupo", "conta", "cod_conta"
             LIMIT {limit}
         """
         return self._qe.sql(query, params=merge_params(cond))
@@ -657,5 +657,5 @@ class IFDATAExplorer(BaseExplorer):
         start: DateScalar | None = None,
         end: DateScalar | None = None,
     ) -> pd.DataFrame:
-        """Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo."""
+        """Tabela de mapeamento cod_inst <-> cnpj_8 por escopo."""
         return self._temporal.resolve_mapeamento(start, end)

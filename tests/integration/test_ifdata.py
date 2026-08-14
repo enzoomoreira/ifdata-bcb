@@ -18,7 +18,7 @@ class TestIFDATARead:
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
         )
         assert not df.empty
-        for col in ("DATA", "CNPJ_8", "VALOR"):
+        for col in ("data", "cnpj_8", "valor"):
             assert col in df.columns
 
     def test_read_individual_filters_by_institution(
@@ -27,7 +27,7 @@ class TestIFDATARead:
         df = explorers[1].read(
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
         )
-        assert all(df["CNPJ_8"] == BANCO_A_CNPJ)
+        assert all(df["cnpj_8"] == BANCO_A_CNPJ)
 
     def test_read_prudencial_resolves_conglomerate(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -36,7 +36,7 @@ class TestIFDATARead:
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="prudencial"
         )
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_read_no_data_returns_empty(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -45,7 +45,7 @@ class TestIFDATARead:
             instituicao="99999999", start="2023-03", escopo="individual"
         )
         assert df.empty
-        assert "DATA" in df.columns
+        assert "data" in df.columns
 
     def test_read_includes_cod_conta(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -53,7 +53,7 @@ class TestIFDATARead:
         df = explorers[1].read(
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
         )
-        assert "COD_CONTA" in df.columns
+        assert "cod_conta" in df.columns
 
     def test_read_filters_by_account_code(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -65,7 +65,7 @@ class TestIFDATARead:
             escopo="individual",
         )
         assert not df.empty
-        assert all(df["COD_CONTA"] == "10100")
+        assert all(df["cod_conta"] == "10100")
 
 
 class TestIFDATAListMethods:
@@ -83,22 +83,22 @@ class TestIFDATAListMethods:
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[1].list_contas()
-        assert "RELATORIO" in df.columns
-        assert "GRUPO" in df.columns
+        assert "relatorio" in df.columns
+        assert "grupo" in df.columns
 
     def test_list_contas_filters_by_relatorio(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[1].list_contas(relatorio="Resumo")
         assert not df.empty
-        assert all(df["RELATORIO"].str.upper().str.contains("RESUMO"))
+        assert all(df["relatorio"].str.upper().str.contains("RESUMO"))
 
     def test_list_contas_filters_by_period(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[1].list_contas(start="2023-03")
         assert not df.empty
-        assert "COD_CONTA" in df.columns
+        assert "cod_conta" in df.columns
 
 
 class TestIFDATAReadRelatorio:
@@ -114,7 +114,7 @@ class TestIFDATAReadRelatorio:
             relatorio="Resumo",
         )
         assert not df.empty
-        assert (df["RELATORIO"] == "Resumo").all()
+        assert (df["relatorio"] == "Resumo").all()
 
     def test_read_with_relatorio_and_conta_combined(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -127,8 +127,8 @@ class TestIFDATAReadRelatorio:
             conta="ATIVO TOTAL",
         )
         assert not df.empty
-        assert (df["RELATORIO"] == "Resumo").all()
-        assert (df["CONTA"] == "ATIVO TOTAL").all()
+        assert (df["relatorio"] == "Resumo").all()
+        assert (df["conta"] == "ATIVO TOTAL").all()
 
 
 class TestIFDATAListMethodsExtended:
@@ -139,7 +139,7 @@ class TestIFDATAListMethodsExtended:
     ) -> None:
         df = explorers[1].mapeamento()
         assert not df.empty
-        for col in ("COD_INST", "TIPO_INST", "ESCOPO", "CNPJ_8"):
+        for col in ("cod_inst", "tipo_inst", "escopo", "cnpj_8"):
             assert col in df.columns
 
     def test_describe_returns_info(
@@ -161,32 +161,32 @@ class TestIFDATAColumns:
     def test_columns_storage_only(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        """Solicitar apenas colunas de storage (nomes do parquet) funciona."""
+        """Solicitar apenas colunas vindas do storage (nao-derivadas) funciona."""
         df = explorers[1].read(
             instituicao=BANCO_A_CNPJ,
             start="2023-03",
             escopo="individual",
-            columns=["DATA", "VALOR"],
+            columns=["data", "valor"],
         )
         assert not df.empty
-        assert "DATA" in df.columns
-        assert "VALOR" in df.columns
+        assert "data" in df.columns
+        assert "valor" in df.columns
         # Colunas nao solicitadas nao devem estar presentes
-        assert "COD_CONTA" not in df.columns
+        assert "cod_conta" not in df.columns
 
     def test_columns_derived_only(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
-        """Solicitar apenas colunas derivadas (CNPJ_8, ESCOPO, INSTITUICAO)."""
+        """Solicitar apenas colunas derivadas (cnpj_8, escopo, instituicao)."""
         df = explorers[1].read(
             instituicao=BANCO_A_CNPJ,
             start="2023-03",
             escopo="individual",
-            columns=["CNPJ_8", "ESCOPO"],
+            columns=["cnpj_8", "escopo"],
         )
         assert not df.empty
-        assert "CNPJ_8" in df.columns
-        assert "ESCOPO" in df.columns
+        assert "cnpj_8" in df.columns
+        assert "escopo" in df.columns
 
     def test_columns_mix_storage_and_derived(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -196,10 +196,10 @@ class TestIFDATAColumns:
             instituicao=BANCO_A_CNPJ,
             start="2023-03",
             escopo="individual",
-            columns=["DATA", "CNPJ_8", "VALOR", "ESCOPO"],
+            columns=["data", "cnpj_8", "valor", "escopo"],
         )
         assert not df.empty
-        assert set(df.columns) == {"DATA", "CNPJ_8", "VALOR", "ESCOPO"}
+        assert set(df.columns) == {"data", "cnpj_8", "valor", "escopo"}
 
     def test_columns_unknown_raises_early(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -212,7 +212,7 @@ class TestIFDATAColumns:
                 instituicao=BANCO_A_CNPJ,
                 start="2023-03",
                 escopo="individual",
-                columns=["DATA", "COLUNA_INEXISTENTE"],
+                columns=["data", "COLUNA_INEXISTENTE"],
             )
 
     def test_columns_none_returns_all(
@@ -227,7 +227,7 @@ class TestIFDATAColumns:
         )
         assert not df.empty
         # Deve conter colunas padrao
-        for col in ("DATA", "CNPJ_8", "VALOR", "COD_CONTA", "CONTA"):
+        for col in ("data", "cnpj_8", "valor", "cod_conta", "conta"):
             assert col in df.columns
 
 
@@ -248,8 +248,8 @@ class TestIFDATAFinanceiro:
             escopo="financeiro",
         )
         assert not df.empty
-        assert "ESCOPO" in df.columns
-        assert (df["ESCOPO"] == "financeiro").all()
+        assert "escopo" in df.columns
+        assert (df["escopo"] == "financeiro").all()
 
     def test_read_financeiro_entity_without_congl_returns_empty(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -303,11 +303,11 @@ class TestEnrichmentMultiPeriod:
             start="2023-03",
             end="2023-06",
             escopo="individual",
-            cadastro=["SEGMENTO"],
+            cadastro=["segmento"],
         )
         assert not df.empty
-        assert "SEGMENTO" in df.columns
-        assert df["SEGMENTO"].notna().any()
+        assert "segmento" in df.columns
+        assert df["segmento"].notna().any()
 
 
 # =========================================================================
@@ -324,11 +324,11 @@ class TestIFDATAColumnsAdversarial:
             instituicao=BANCO_A_CNPJ,
             start="2023-03",
             escopo="individual",
-            columns=["CNPJ_8", "ESCOPO"],
+            columns=["cnpj_8", "escopo"],
         )
         assert not df.empty
-        assert "CNPJ_8" in df.columns
-        assert "ESCOPO" in df.columns
+        assert "cnpj_8" in df.columns
+        assert "escopo" in df.columns
 
     def test_columns_empty_list_warns_and_returns_all(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -353,7 +353,7 @@ class TestIFDATAColumnsAdversarial:
         assert len(empty_col_warnings) == 1
         # Retorna todas as colunas (mesmo comportamento que columns=None)
         assert not df.empty
-        for col in ("DATA", "CNPJ_8", "VALOR", "COD_CONTA", "CONTA"):
+        for col in ("data", "cnpj_8", "valor", "cod_conta", "conta"):
             assert col in df.columns
 
 
@@ -368,7 +368,7 @@ class TestIFDATAReadAdversarial:
             escopo="individual",
         )
         assert not df.empty
-        cnpjs = df["CNPJ_8"].unique()
+        cnpjs = df["cnpj_8"].unique()
         assert BANCO_A_CNPJ in cnpjs
 
     def test_read_nonexistent_account_returns_empty(

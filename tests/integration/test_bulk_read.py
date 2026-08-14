@@ -22,7 +22,7 @@ BANCO_B_CNPJ = "90400888"
 
 
 class TestIFDATABulkIndividual:
-    """Bulk individual: CodInst = CNPJ_8, canonical names aplicados."""
+    """Bulk individual: CodInst = cnpj_8, canonical names aplicados."""
 
     def test_bulk_individual_returns_data(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -40,8 +40,8 @@ class TestIFDATABulkIndividual:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03", escopo="individual")
-        assert "CNPJ_8" in df.columns
-        assert df["CNPJ_8"].notna().all()
+        assert "cnpj_8" in df.columns
+        assert df["cnpj_8"].notna().all()
 
     def test_bulk_individual_has_instituicao(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -51,18 +51,18 @@ class TestIFDATABulkIndividual:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03", escopo="individual")
-        assert "INSTITUICAO" in df.columns
+        assert "instituicao" in df.columns
 
     def test_bulk_individual_cnpj_matches_codinst(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """No escopo individual, COD_INST e o proprio CNPJ_8."""
+        """No escopo individual, cod_inst e o proprio cnpj_8."""
         ifdata = explorers[1]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03", escopo="individual")
-        if "COD_INST" in df.columns:
-            assert (df["CNPJ_8"] == df["COD_INST"]).all()
+        if "cod_inst" in df.columns:
+            assert (df["cnpj_8"] == df["cod_inst"]).all()
 
     def test_bulk_individual_has_escopo_column(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -71,12 +71,12 @@ class TestIFDATABulkIndividual:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03", escopo="individual")
-        assert "ESCOPO" in df.columns
-        assert (df["ESCOPO"] == "individual").all()
+        assert "escopo" in df.columns
+        assert (df["escopo"] == "individual").all()
 
 
 class TestIFDATABulkPrudencial:
-    """Bulk prudencial: sem CNPJ_8 (CodInst e codigo de conglomerado)."""
+    """Bulk prudencial: sem cnpj_8 direto (CodInst e codigo de conglomerado)."""
 
     def test_bulk_prudencial_returns_data(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -88,11 +88,11 @@ class TestIFDATABulkPrudencial:
     def test_bulk_prudencial_resolves_cnpj8_via_conglomerate(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """Prudencial bulk resolve CNPJ_8 via lookup de conglomerado no cadastro."""
+        """Prudencial bulk resolve cnpj_8 via lookup de conglomerado no cadastro."""
         ifdata = explorers[1]
         df = ifdata.read("2023-03", escopo="prudencial")
-        if "CNPJ_8" in df.columns:
-            resolved = df["CNPJ_8"].dropna()
+        if "cnpj_8" in df.columns:
+            resolved = df["cnpj_8"].dropna()
             if not resolved.empty:
                 assert resolved.str.match(r"^\d{8}$").all()
 
@@ -101,8 +101,8 @@ class TestIFDATABulkPrudencial:
     ) -> None:
         ifdata = explorers[1]
         df = ifdata.read("2023-03", escopo="prudencial")
-        assert "COD_INST" in df.columns
-        assert df["COD_INST"].notna().all()
+        assert "cod_inst" in df.columns
+        assert df["cod_inst"].notna().all()
 
 
 class TestIFDATABulkMultiEscopo:
@@ -116,7 +116,7 @@ class TestIFDATABulkMultiEscopo:
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03")
         assert not df.empty
-        escopos = set(df["ESCOPO"].unique())
+        escopos = set(df["escopo"].unique())
         assert len(escopos) >= 2
 
     def test_multi_escopo_all_have_cnpj8(
@@ -127,11 +127,11 @@ class TestIFDATABulkMultiEscopo:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03")
-        if "CNPJ_8" not in df.columns:
-            pytest.skip("CNPJ_8 nao presente no resultado")
-        ind = df[df["ESCOPO"] == "individual"]
+        if "cnpj_8" not in df.columns:
+            pytest.skip("cnpj_8 nao presente no resultado")
+        ind = df[df["escopo"] == "individual"]
         if not ind.empty:
-            assert ind["CNPJ_8"].notna().all()
+            assert ind["cnpj_8"].notna().all()
 
 
 class TestIFDATABulkWithFilters:
@@ -145,7 +145,7 @@ class TestIFDATABulkWithFilters:
             warnings.simplefilter("ignore")
             df = ifdata.read("2023-03", escopo="individual", conta="10100")
         assert not df.empty
-        assert (df["COD_CONTA"].astype(str) == "10100").all()
+        assert (df["cod_conta"].astype(str) == "10100").all()
 
     def test_bulk_with_relatorio_filter(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -186,23 +186,23 @@ class TestIFDATABulkEnrichment:
     def test_bulk_individual_enrichment_works(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """Individual bulk tem CNPJ_8, entao enrichment deve funcionar."""
+        """Individual bulk tem cnpj_8, entao enrichment deve funcionar."""
         ifdata = explorers[1]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            df = ifdata.read("2023-03", escopo="individual", cadastro=["SEGMENTO"])
-        assert "SEGMENTO" in df.columns
+            df = ifdata.read("2023-03", escopo="individual", cadastro=["segmento"])
+        assert "segmento" in df.columns
 
     def test_bulk_prudencial_enrichment_works(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
     ) -> None:
-        """Prudencial bulk com CNPJ_8 resolvido permite enrichment."""
+        """Prudencial bulk com cnpj_8 resolvido permite enrichment."""
         ifdata = explorers[1]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            df = ifdata.read("2023-03", escopo="prudencial", cadastro=["SEGMENTO"])
-        if not df.empty and "CNPJ_8" in df.columns and df["CNPJ_8"].notna().any():
-            assert "SEGMENTO" in df.columns
+            df = ifdata.read("2023-03", escopo="prudencial", cadastro=["segmento"])
+        if not df.empty and "cnpj_8" in df.columns and df["cnpj_8"].notna().any():
+            assert "segmento" in df.columns
 
 
 class TestIFDATABulkDiagnostics:
@@ -242,8 +242,8 @@ class TestCOSIFBulk:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = cosif.read("2023-03")
-        assert "CNPJ_8" in df.columns
-        assert df["CNPJ_8"].notna().all()
+        assert "cnpj_8" in df.columns
+        assert df["cnpj_8"].notna().all()
 
     def test_cosif_bulk_individual_escopo(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -251,7 +251,7 @@ class TestCOSIFBulk:
         cosif = explorers[0]
         df = cosif.read("2023-03", escopo="individual")
         assert not df.empty
-        assert (df["ESCOPO"] == "individual").all()
+        assert (df["escopo"] == "individual").all()
 
     def test_cosif_bulk_prudencial_escopo(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -259,7 +259,7 @@ class TestCOSIFBulk:
         cosif = explorers[0]
         df = cosif.read("2023-03", escopo="prudencial")
         assert not df.empty
-        assert (df["ESCOPO"] == "prudencial").all()
+        assert (df["escopo"] == "prudencial").all()
 
     def test_cosif_bulk_returns_more_than_single_institution(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, ...]
@@ -269,7 +269,7 @@ class TestCOSIFBulk:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             df = cosif.read("2023-03", escopo="individual")
-        unique_cnpjs = df["CNPJ_8"].nunique()
+        unique_cnpjs = df["cnpj_8"].nunique()
         assert unique_cnpjs >= 2
 
     def test_cosif_bulk_same_data_as_sum_of_parts(

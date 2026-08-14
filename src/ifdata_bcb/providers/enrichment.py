@@ -14,20 +14,20 @@ from ifdata_bcb.infra.sql import build_in_clause, merge_params
 logger = get_logger(__name__)
 
 VALID_CADASTRO_COLUMNS = {
-    "SEGMENTO",
-    "COD_CONGL_PRUD",
-    "COD_CONGL_FIN",
-    "CNPJ_LIDER_8",
-    "SITUACAO",
-    "ATIVIDADE",
-    "TCB",
-    "TD",
-    "TC",
-    "UF",
-    "MUNICIPIO",
-    "SR",
-    "DATA_INICIO_ATIVIDADE",
-    "NOME_CONGL_PRUD",
+    "segmento",
+    "cod_congl_prud",
+    "cod_congl_fin",
+    "cnpj_lider_8",
+    "situacao",
+    "atividade",
+    "tcb",
+    "td",
+    "tc",
+    "uf",
+    "municipio",
+    "sr",
+    "data_inicio_atividade",
+    "nome_congl_prud",
 }
 
 
@@ -57,20 +57,20 @@ def _derive_nome_congl_prud(
     df_cad: pd.DataFrame,
     query_engine: QueryEngine,
 ) -> pd.DataFrame:
-    """Deriva NOME_CONGL_PRUD a partir das alias rows do cadastro.
+    """Deriva nome_congl_prud a partir das alias rows do cadastro.
 
     O BCB armazena os nomes oficiais dos conglomerados em linhas com CodInst
     nao-numerico (ex: C0080714 -> "GOLDMAN SACHS - PRUDENCIAL"). Essas linhas
     sao filtradas pelo real_entity_condition nas queries normais, mas contem
     o nome correto do conglomerado.
     """
-    if "COD_CONGL_PRUD" not in df_cad.columns:
-        df_cad["NOME_CONGL_PRUD"] = None
+    if "cod_congl_prud" not in df_cad.columns:
+        df_cad["nome_congl_prud"] = None
         return df_cad
 
-    cod_pruds = [str(c) for c in df_cad["COD_CONGL_PRUD"].dropna().unique()]
+    cod_pruds = [str(c) for c in df_cad["cod_congl_prud"].dropna().unique()]
     if not cod_pruds:
-        df_cad["NOME_CONGL_PRUD"] = None
+        df_cad["nome_congl_prud"] = None
         return df_cad
 
     cadastro_path = (
@@ -79,10 +79,10 @@ def _derive_nome_congl_prud(
     cod_str = build_in_clause(cod_pruds)
 
     sql = f"""
-    SELECT COD_CONGL_PRUD, NOME_CONGL_PRUD
+    SELECT "cod_congl_prud", "nome_congl_prud"
     FROM (
-        SELECT CodInst AS COD_CONGL_PRUD,
-               NomeInstituicao AS NOME_CONGL_PRUD,
+        SELECT CodInst AS "cod_congl_prud",
+               NomeInstituicao AS "nome_congl_prud",
                ROW_NUMBER() OVER (
                    PARTITION BY CodInst ORDER BY Data DESC
                ) AS rn
@@ -96,30 +96,30 @@ def _derive_nome_congl_prud(
     try:
         df_names = query_engine.sql(sql, params=merge_params(cod_str))
         if df_names.empty:
-            df_cad["NOME_CONGL_PRUD"] = None
+            df_cad["nome_congl_prud"] = None
             return df_cad
 
         nome_map = dict(
             zip(
-                df_names["COD_CONGL_PRUD"].astype(str).values,
-                df_names["NOME_CONGL_PRUD"].astype(str).values,
+                df_names["cod_congl_prud"].astype(str).values,
+                df_names["nome_congl_prud"].astype(str).values,
                 strict=True,
             )
         )
         df_cad = df_cad.copy()
-        df_cad["NOME_CONGL_PRUD"] = df_cad["COD_CONGL_PRUD"].map(nome_map)
+        df_cad["nome_congl_prud"] = df_cad["cod_congl_prud"].map(nome_map)
 
-        resolved = df_cad["NOME_CONGL_PRUD"].notna().sum()
-        logger.debug(f"enrichment NOME_CONGL_PRUD: {resolved}/{len(df_cad)} resolvidos")
+        resolved = df_cad["nome_congl_prud"].notna().sum()
+        logger.debug(f"enrichment nome_congl_prud: {resolved}/{len(df_cad)} resolvidos")
         return df_cad
     except Exception as e:
         emit_user_warning(
             PartialDataWarning(
-                f"Falha ao derivar NOME_CONGL_PRUD: {e}. Coluna preenchida com NULL.",
+                f"Falha ao derivar nome_congl_prud: {e}. Coluna preenchida com NULL.",
                 reason="enrichment_derivation_failed",
             )
         )
-        df_cad["NOME_CONGL_PRUD"] = pd.Series([None] * len(df_cad), dtype="string")
+        df_cad["nome_congl_prud"] = pd.Series([None] * len(df_cad), dtype="string")
         return df_cad
 
 
@@ -135,7 +135,7 @@ def enrich_with_cadastro(
     cada linha financeira recebe os atributos cadastrais do trimestre
     mais recente <= sua data.
 
-    Suporta coluna derivada NOME_CONGL_PRUD: nome oficial do conglomerado
+    Suporta coluna derivada nome_congl_prud: nome oficial do conglomerado
     prudencial, resolvido a partir das alias rows do cadastro.
     """
     if df.empty:
@@ -150,9 +150,9 @@ def enrich_with_cadastro(
         query_engine=query_engine, entity_lookup=entity_lookup
     )
 
-    cnpjs = df["CNPJ_8"].unique().tolist()
-    min_date = df["DATA"].min()
-    max_date = df["DATA"].max()
+    cnpjs = df["cnpj_8"].unique().tolist()
+    min_date = df["data"].min()
+    max_date = df["data"].max()
 
     # Buscar cadastro com 1 trimestre de margem anterior (aritmetica Python pura)
     min_y, min_m = min_date.year, min_date.month
@@ -174,30 +174,30 @@ def enrich_with_cadastro(
             df[col] = pd.Series([None] * len(df), dtype="string")
         return df
 
-    # Derivar NOME_CONGL_PRUD antes de filtrar colunas
-    if "NOME_CONGL_PRUD" in cadastro_columns:
+    # Derivar nome_congl_prud antes de filtrar colunas
+    if "nome_congl_prud" in cadastro_columns:
         df_cad = _derive_nome_congl_prud(df_cad, query_engine)
 
-    cad_cols = ["CNPJ_8", "DATA", *cadastro_columns]
+    cad_cols = ["cnpj_8", "data", *cadastro_columns]
     df_cad = df_cad[[c for c in cad_cols if c in df_cad.columns]]
 
     # Colunas de cadastro presentes para o SELECT
     merge_cols = [c for c in cadastro_columns if c in df_cad.columns]
-    cad_select = ", ".join(f"c.{col}" for col in merge_cols)
+    cad_select = ", ".join(f'c."{col}"' for col in merge_cols)
     if not cad_select:
         return df
 
     # Caso data unica: LEFT JOIN com ROW_NUMBER para pegar registro mais recente
-    if df["DATA"].nunique() == 1:
+    if df["data"].nunique() == 1:
         sql = f"""
             SELECT f.*, {cad_select}
             FROM _financial f
             LEFT JOIN (
                 SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY CNPJ_8 ORDER BY DATA DESC
+                    PARTITION BY cnpj_8 ORDER BY data DESC
                 ) as _rn
                 FROM _cadastro
-            ) c ON f.CNPJ_8 = c.CNPJ_8 AND c._rn = 1
+            ) c ON f.cnpj_8 = c.cnpj_8 AND c._rn = 1
         """
         return query_engine.sql_with_df(sql, _financial=df, _cadastro=df_cad)
 
@@ -206,9 +206,9 @@ def enrich_with_cadastro(
         SELECT f.*, {cad_select}
         FROM _financial f
         ASOF LEFT JOIN _cadastro c
-            ON f.CNPJ_8 = c.CNPJ_8
-            AND f.DATA >= c.DATA
-        ORDER BY f.DATA
+            ON f.cnpj_8 = c.cnpj_8
+            AND f.data >= c.data
+        ORDER BY f.data
     """
     return query_engine.sql_with_df(sql, _financial=df, _cadastro=df_cad).reset_index(
         drop=True

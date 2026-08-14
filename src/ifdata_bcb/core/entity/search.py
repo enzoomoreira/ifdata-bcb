@@ -26,11 +26,11 @@ class EntitySearch:
     """
 
     _SEARCH_RESULT_COLUMNS: ClassVar[list[str]] = [
-        "CNPJ_8",
-        "INSTITUICAO",
-        "SITUACAO",
-        "FONTES",
-        "SCORE",
+        "cnpj_8",
+        "instituicao",
+        "situacao",
+        "fontes",
+        "score",
     ]
 
     def __init__(
@@ -59,9 +59,9 @@ class EntitySearch:
                 a verificacao de disponibilidade de dados. Se None,
                 verifica todos os periodos.
 
-        Retorna DataFrame com CNPJ_8, INSTITUICAO, SITUACAO, FONTES, SCORE.
+        Retorna DataFrame com cnpj_8, instituicao, situacao, fontes, score.
         Ordenado por ativas primeiro, depois por score.
-        FONTES indica onde ha dados disponiveis: 'cosif', 'ifdata'.
+        fontes indica onde ha dados disponiveis: 'cosif', 'ifdata'.
         """
         if limit <= 0:
             raise ValueError(f"limit deve ser > 0, recebido: {limit}")
@@ -171,11 +171,11 @@ class EntitySearch:
         return pd.DataFrame(
             [
                 {
-                    "CNPJ_8": termo_norm,
-                    "INSTITUICAO": data["nome"],
-                    "SITUACAO": cnpj_situacao.get(termo_norm, ""),
-                    "FONTES": ",".join(sorted(fontes)),
-                    "SCORE": 100,
+                    "cnpj_8": termo_norm,
+                    "instituicao": data["nome"],
+                    "situacao": cnpj_situacao.get(termo_norm, ""),
+                    "fontes": ",".join(sorted(fontes)),
+                    "score": 100,
                 }
             ]
         )
@@ -208,11 +208,11 @@ class EntitySearch:
             situacao = cnpj_situacao.get(cnpj, "")
             results.append(
                 {
-                    "CNPJ_8": cnpj,
-                    "INSTITUICAO": data["nome"],
-                    "SITUACAO": situacao,
-                    "FONTES": ",".join(sorted(fontes)) if fontes else "",
-                    "SCORE": score,
+                    "cnpj_8": cnpj,
+                    "instituicao": data["nome"],
+                    "situacao": situacao,
+                    "fontes": ",".join(sorted(fontes)) if fontes else "",
+                    "score": score,
                 }
             )
 
@@ -222,12 +222,12 @@ class EntitySearch:
         # sai. Sem date_range, so filtra se houver alguma entidade com fonte --
         # caso contrario o cadastro esta sem dados coletados e o filtro
         # esvaziaria o resultado inteiro em vez de mostrar as entidades achadas.
-        tem_alguma_fonte = not result_df.empty and (result_df["FONTES"] != "").any()
+        tem_alguma_fonte = not result_df.empty and (result_df["fontes"] != "").any()
         if date_range is not None or tem_alguma_fonte:
-            result_df = result_df[result_df["FONTES"] != ""].copy()
+            result_df = result_df[result_df["fontes"] != ""].copy()
 
         result_df = result_df.sort_values(
-            by=["SITUACAO", "SCORE", "INSTITUICAO"],
+            by=["situacao", "score", "instituicao"],
             ascending=[True, False, True],
         ).reset_index(drop=True)
 

@@ -95,7 +95,7 @@ class TestEscoposEColunas:
     def test_cadastro_columns_so_onde_read_aceita_cadastro(
         self, todos: tuple[BaseExplorer, ...]
     ) -> None:
-        assert "SEGMENTO" in todos[0].describe()["cadastro_columns"]
+        assert "segmento" in todos[0].describe()["cadastro_columns"]
         assert todos[2].describe()["cadastro_columns"] == []
 
     def test_columns_sao_aceitas_por_list_values(

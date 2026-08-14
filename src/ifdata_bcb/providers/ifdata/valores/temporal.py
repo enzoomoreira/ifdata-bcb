@@ -39,12 +39,12 @@ _ESCOPO_TO_COD_COL: dict[str, str] = {
 }
 
 _EMPTY_MAPEAMENTO_COLUMNS = [
-    "COD_INST",
-    "TIPO_INST",
-    "ESCOPO",
-    "REPORT_KEY_TYPE",
-    "CNPJ_8",
-    "INSTITUICAO",
+    "cod_inst",
+    "tipo_inst",
+    "escopo",
+    "report_key_type",
+    "cnpj_8",
+    "instituicao",
 ]
 
 
@@ -280,8 +280,9 @@ class TemporalResolver:
                 )
                 WHERE rn = 1
             )
-            SELECT DISTINCT COD_INST, TIPO_INST, ESCOPO, REPORT_KEY_TYPE,
-                            CNPJ_8, INSTITUICAO
+            SELECT DISTINCT COD_INST AS "cod_inst", TIPO_INST AS "tipo_inst",
+                            ESCOPO AS "escopo", REPORT_KEY_TYPE AS "report_key_type",
+                            CNPJ_8 AS "cnpj_8", INSTITUICAO AS "instituicao"
             FROM (
                 SELECT r.COD_INST, r.TIPO_INST, 'individual' as ESCOPO,
                        'cnpj' as REPORT_KEY_TYPE,
@@ -312,7 +313,7 @@ class TemporalResolver:
                     ON (r.COD_INST = c.CNPJ_8 OR r.COD_INST = c.COD_CONGL_FIN)
                 WHERE r.TIPO_INST = {tipo_fin}
             )
-            ORDER BY COD_INST, TIPO_INST, CNPJ_8
+            ORDER BY "cod_inst", "tipo_inst", "cnpj_8"
         """
 
         try:
@@ -332,17 +333,17 @@ class TemporalResolver:
         cnpj_map: dict[str, list[str]],
         cod_inst_col: str = "CodInst",
     ) -> pd.DataFrame:
-        """Adiciona CNPJ_8 via merge com mapa cod_inst -> cnpjs."""
+        """Adiciona cnpj_8 via merge com mapa cod_inst -> cnpjs."""
         if df.empty:
             return df
 
         if not cnpj_map:
             df = df.copy()
-            df["CNPJ_8"] = df[cod_inst_col]
+            df["cnpj_8"] = df[cod_inst_col]
             return df
 
         rows = [
-            {cod_inst_col: cod, "CNPJ_8": cnpj}
+            {cod_inst_col: cod, "cnpj_8": cnpj}
             for cod, cnpjs in cnpj_map.items()
             for cnpj in cnpjs
         ]

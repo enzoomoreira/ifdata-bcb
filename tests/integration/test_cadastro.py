@@ -19,28 +19,28 @@ class TestCadastroRead:
     ) -> None:
         df = explorers[2].read(instituicao=BANCO_A_CNPJ, start="2023-03")
         assert not df.empty
-        for col in ("DATA", "CNPJ_8", "INSTITUICAO", "SEGMENTO", "SITUACAO"):
+        for col in ("data", "cnpj_8", "instituicao", "segmento", "situacao"):
             assert col in df.columns
 
     def test_read_filters_by_institution(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[2].read(instituicao=BANCO_A_CNPJ, start="2023-03")
-        assert all(df["CNPJ_8"] == BANCO_A_CNPJ)
+        assert all(df["cnpj_8"] == BANCO_A_CNPJ)
 
     def test_read_filters_by_uf(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[2].read(start="2023-03", uf="SP")
         assert not df.empty
-        assert all(df["UF"].str.upper() == "SP")
+        assert all(df["uf"].str.upper() == "SP")
 
     def test_read_filters_by_situacao(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[2].read(start="2023-06", situacao="A")
         assert not df.empty
-        assert "I" not in df["SITUACAO"].values
+        assert "I" not in df["situacao"].values
 
     def test_read_all_institutions_without_filter(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -48,7 +48,7 @@ class TestCadastroRead:
         """read() sem instituicao= retorna todas as entidades."""
         df = explorers[2].read(start="2023-03")
         assert not df.empty
-        assert len(df["CNPJ_8"].unique()) > 1
+        assert len(df["cnpj_8"].unique()) > 1
 
 
 # =========================================================================
@@ -69,37 +69,37 @@ class TestSearchWithTermo:
         cad = _make_cadastro(populated_cache)
         df = cad.search("BANCO ALFA")
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_score_present_with_termo(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search("ALFA")
-        assert "SCORE" in df.columns
-        assert all(df["SCORE"] > 0)
+        assert "score" in df.columns
+        assert all(df["score"] > 0)
 
     def test_correct_columns_with_termo(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search("BANCO ALFA")
-        expected = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES", "SCORE"]
+        expected = ["cnpj_8", "instituicao", "situacao", "fontes", "score"]
         assert list(df.columns) == expected
 
     def test_no_match_returns_empty(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search("XYZNONEXISTENT")
         assert df.empty
-        assert "SCORE" in df.columns
+        assert "score" in df.columns
 
     def test_search_with_fonte_ifdata(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search("BANCO ALFA", fonte="ifdata")
         assert not df.empty
-        assert all(df["FONTES"].str.contains("ifdata"))
+        assert all(df["fontes"].str.contains("ifdata"))
 
     def test_search_with_fonte_cosif(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search("BANCO ALFA", fonte="cosif")
         if not df.empty:
-            assert all(df["FONTES"].str.contains("cosif"))
+            assert all(df["fontes"].str.contains("cosif"))
 
     def test_respects_limit(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
@@ -115,42 +115,42 @@ class TestSearchWithoutTermo:
         df = cad.search()
         assert not df.empty
         # Must have at least BANCO_A_CNPJ (has IFDATA + COSIF data)
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_no_score_without_termo(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search()
-        assert "SCORE" not in df.columns
+        assert "score" not in df.columns
 
     def test_correct_columns_without_termo(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search()
-        expected = ["CNPJ_8", "INSTITUICAO", "SITUACAO", "FONTES"]
+        expected = ["cnpj_8", "instituicao", "situacao", "fontes"]
         assert list(df.columns) == expected
 
     def test_fontes_column_populated(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search()
-        assert all(df["FONTES"] != "")
+        assert all(df["fontes"] != "")
 
     def test_fonte_ifdata_filter(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="ifdata")
         assert not df.empty
-        assert all(df["FONTES"].str.contains("ifdata"))
+        assert all(df["fontes"].str.contains("ifdata"))
 
     def test_fonte_cosif_filter(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="cosif")
         if not df.empty:
-            assert all(df["FONTES"].str.contains("cosif"))
+            assert all(df["fontes"].str.contains("cosif"))
 
     def test_sorted_by_situacao_then_name(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search()
         if len(df) > 1:
             # Ativas (A) before Inativas (I)
-            situacoes = df["SITUACAO"].tolist()
+            situacoes = df["situacao"].tolist()
             assert situacoes == sorted(situacoes)
 
     def test_respects_limit(self, populated_cache: Path) -> None:
@@ -167,34 +167,34 @@ class TestSearchEscopoFilter:
         df = cad.search(fonte="ifdata", escopo="individual")
         # BANCO_A has individual data (CodInst == CNPJ_8 with TipoInstituicao=3)
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_escopo_prudencial_ifdata(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="ifdata", escopo="prudencial")
         # BANCO_A has conglomerado prudencial (COD_CONGL_PRUD="40")
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_escopo_financeiro_ifdata(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="ifdata", escopo="financeiro")
         # BANCO_A has conglomerado financeiro (COD_CONGL_FIN="50")
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_escopo_cosif_prudencial(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="cosif", escopo="prudencial")
         # LIDER_CNPJ == BANCO_A_CNPJ has prudencial COSIF data
         if not df.empty:
-            assert BANCO_A_CNPJ in df["CNPJ_8"].values
+            assert BANCO_A_CNPJ in df["cnpj_8"].values
 
     def test_escopo_cosif_individual(self, populated_cache: Path) -> None:
         cad = _make_cadastro(populated_cache)
         df = cad.search(fonte="cosif", escopo="individual")
         if not df.empty:
-            assert all(df["FONTES"].str.contains("cosif"))
+            assert all(df["fontes"].str.contains("cosif"))
 
     def test_escopo_without_fonte_uses_ifdata(self, populated_cache: Path) -> None:
         """escopo= sem fonte= filtra por escopo IFDATA."""
@@ -206,8 +206,8 @@ class TestSearchEscopoFilter:
         cad = _make_cadastro(populated_cache)
         df = cad.search("BANCO ALFA", fonte="ifdata", escopo="individual")
         assert not df.empty
-        assert BANCO_A_CNPJ in df["CNPJ_8"].values
-        assert "SCORE" in df.columns
+        assert BANCO_A_CNPJ in df["cnpj_8"].values
+        assert "score" in df.columns
 
 
 class TestSearchValidation:

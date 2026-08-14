@@ -23,62 +23,63 @@ class CadastroExplorer(BaseExplorer):
     """Explorer para dados cadastrais IFDATA (trimestrais)."""
 
     _DROP_COLUMNS: ClassVar[list[str]] = ["CodInst"]
-    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "CNPJ_LIDER_8"}
 
     _DATE_COLUMN = "Data"
 
     _COLUMN_MAP: ClassVar[dict[str, str]] = {
-        "Data": "DATA",
-        "NomeInstituicao": "INSTITUICAO",
-        "SegmentoTb": "SEGMENTO",
-        "CodConglomeradoPrudencial": "COD_CONGL_PRUD",
-        "CodConglomeradoFinanceiro": "COD_CONGL_FIN",
-        "Situacao": "SITUACAO",
-        "Atividade": "ATIVIDADE",
-        "Tcb": "TCB",
-        "Td": "TD",
-        "Tc": "TC",
-        "Uf": "UF",
-        "Municipio": "MUNICIPIO",
-        "Sr": "SR",
-        "DataInicioAtividade": "DATA_INICIO_ATIVIDADE",
+        "Data": "data",
+        "CNPJ_8": "cnpj_8",
+        "NomeInstituicao": "instituicao",
+        "SegmentoTb": "segmento",
+        "CodConglomeradoPrudencial": "cod_congl_prud",
+        "CodConglomeradoFinanceiro": "cod_congl_fin",
+        "CNPJ_LIDER_8": "cnpj_lider_8",
+        "Situacao": "situacao",
+        "Atividade": "atividade",
+        "Tcb": "tcb",
+        "Td": "td",
+        "Tc": "tc",
+        "Uf": "uf",
+        "Municipio": "municipio",
+        "Sr": "sr",
+        "DataInicioAtividade": "data_inicio_atividade",
     }
 
     _COLUMN_ORDER: ClassVar[list[str]] = [
-        "DATA",
-        "CNPJ_8",
-        "INSTITUICAO",
-        "SEGMENTO",
-        "COD_CONGL_PRUD",
-        "COD_CONGL_FIN",
-        "CNPJ_LIDER_8",
-        "SITUACAO",
-        "ATIVIDADE",
-        "TCB",
-        "TD",
-        "TC",
-        "UF",
-        "MUNICIPIO",
-        "SR",
-        "DATA_INICIO_ATIVIDADE",
+        "data",
+        "cnpj_8",
+        "instituicao",
+        "segmento",
+        "cod_congl_prud",
+        "cod_congl_fin",
+        "cnpj_lider_8",
+        "situacao",
+        "atividade",
+        "tcb",
+        "td",
+        "tc",
+        "uf",
+        "municipio",
+        "sr",
+        "data_inicio_atividade",
     ]
 
     _LIST_COLUMNS: ClassVar[dict[str, str]] = {
-        "DATA": "Data",
-        "SEGMENTO": "SegmentoTb",
-        "UF": "Uf",
-        "SITUACAO": "Situacao",
-        "ATIVIDADE": "Atividade",
-        "TCB": "Tcb",
-        "TD": "Td",
-        "TC": "Tc",
-        "SR": "Sr",
-        "MUNICIPIO": "Municipio",
+        "data": "Data",
+        "segmento": "SegmentoTb",
+        "uf": "Uf",
+        "situacao": "Situacao",
+        "atividade": "Atividade",
+        "tcb": "Tcb",
+        "td": "Td",
+        "tc": "Tc",
+        "sr": "Sr",
+        "municipio": "Municipio",
     }
 
     _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
-        "CNPJ_8": "Use cadastro.search() para buscar instituicoes.",
-        "INSTITUICAO": "Use cadastro.search() para buscar instituicoes.",
+        "cnpj_8": "Use cadastro.search() para buscar instituicoes.",
+        "instituicao": "Use cadastro.search() para buscar instituicoes.",
     }
 
     def __init__(
@@ -169,15 +170,15 @@ class CadastroExplorer(BaseExplorer):
         ]
 
         filter_params: dict[str, str | int | None] = {
-            "SEGMENTO": segmento,
-            "UF": uf,
-            "SITUACAO": situacao,
-            "ATIVIDADE": atividade,
-            "TCB": tcb,
-            "TD": td,
-            "TC": tc,
-            "SR": sr,
-            "MUNICIPIO": municipio,
+            "segmento": segmento,
+            "uf": uf,
+            "situacao": situacao,
+            "atividade": atividade,
+            "tcb": tcb,
+            "td": td,
+            "tc": tc,
+            "sr": sr,
+            "municipio": municipio,
         }
 
         for col_name, value in filter_params.items():
@@ -232,8 +233,8 @@ class CadastroExplorer(BaseExplorer):
         """Lista valores distintos para as colunas solicitadas.
 
         Args:
-            columns: Colunas a listar (DATA, SEGMENTO, UF, SITUACAO, ATIVIDADE,
-                     TCB, TD, TC, SR, MUNICIPIO).
+            columns: Colunas a listar (data, segmento, uf, situacao, atividade,
+                     tcb, td, tc, sr, municipio).
             start: Periodo inicial (opcional).
             end: Periodo final (opcional).
             segmento: Filtro por segmento (case/accent insensitive).

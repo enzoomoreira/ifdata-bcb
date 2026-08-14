@@ -54,17 +54,17 @@ def _make_df(
     rows: list[tuple[int, str, str]], date_as_int: bool = False
 ) -> pd.DataFrame:
     """Constroi DataFrame de (periodo YYYYMM, grupo, codigo de conta)."""
-    df = pd.DataFrame(rows, columns=["_p", "RELATORIO", "COD_CONTA"])
+    df = pd.DataFrame(rows, columns=["_p", "relatorio", "cod_conta"])
     if date_as_int:
-        df["DATA"] = df["_p"]
+        df["data"] = df["_p"]
     else:
-        df["DATA"] = pd.to_datetime(df["_p"].astype(str) + "01", format="%Y%m%d")
+        df["data"] = pd.to_datetime(df["_p"].astype(str) + "01", format="%Y%m%d")
     return df.drop(columns="_p")
 
 
 def _diagnose(rows, solicitados, **kwargs):
     """diagnose_eras com os defaults do IFDATA."""
-    kwargs.setdefault("group_col", "RELATORIO")
+    kwargs.setdefault("group_col", "relatorio")
     return diagnose_eras(
         _make_df(rows, date_as_int=kwargs.pop("date_as_int", False)),
         boundary=IFDATA_ERA_BOUNDARY,
@@ -270,16 +270,16 @@ class TestDiagnoseErasCobertura:
         assert diag["grupos"]["Ativo"]["status"] == "renumerado"
 
     def test_sem_coluna_de_conta_so_cobertura(self) -> None:
-        """columns= pode remover COD_CONTA: degrada para cobertura de periodo."""
+        """columns= pode remover cod_conta: degrada para cobertura de periodo."""
         df = _make_df([(202412, "Ativo", "1"), (202503, "Ativo", "2")]).drop(
-            columns="COD_CONTA"
+            columns="cod_conta"
         )
         diag = diagnose_eras(
             df,
             boundary=IFDATA_ERA_BOUNDARY,
             source="IFDATA",
             periodos_solicitados=CRUZA,
-            group_col="RELATORIO",
+            group_col="relatorio",
         )
         assert diag["cruza_boundary"] is True
         assert diag["grupos"] == {}
@@ -500,11 +500,11 @@ class TestEmitEraWarnings:
     def test_source_aparece_na_mensagem(self) -> None:
         df = _make_df([(202412, "4010", "1"), (202501, "4010", "9")])
         diag = diagnose_eras(
-            df.rename(columns={"RELATORIO": "DOCUMENTO"}),
+            df.rename(columns={"relatorio": "documento"}),
             boundary=COSIF_ERA_BOUNDARY,
             source="COSIF",
             periodos_solicitados=[202412, 202501],
-            group_col="DOCUMENTO",
+            group_col="documento",
         )
         msg = str(_emit(diag)[0].message)
         assert "COSIF" in msg

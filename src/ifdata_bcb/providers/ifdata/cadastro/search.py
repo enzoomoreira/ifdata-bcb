@@ -34,17 +34,17 @@ class CadastroSearch:
     _IFDATA_ESCOPOS = ("individual", "prudencial", "financeiro")
 
     _SEARCH_COLUMNS: ClassVar[list[str]] = [
-        "CNPJ_8",
-        "INSTITUICAO",
-        "SITUACAO",
-        "FONTES",
+        "cnpj_8",
+        "instituicao",
+        "situacao",
+        "fontes",
     ]
     _SEARCH_COLUMNS_WITH_SCORE: ClassVar[list[str]] = [
-        "CNPJ_8",
-        "INSTITUICAO",
-        "SITUACAO",
-        "FONTES",
-        "SCORE",
+        "cnpj_8",
+        "instituicao",
+        "situacao",
+        "fontes",
+        "score",
     ]
 
     def __init__(
@@ -173,25 +173,25 @@ class CadastroSearch:
         if all_entities.empty:
             return empty
 
-        cnpjs = all_entities["CNPJ_8"].tolist()
+        cnpjs = all_entities["cnpj_8"].tolist()
         cnpj_sources = self._lookup._get_data_sources_for_cnpjs(
             cnpjs, date_range=date_range
         )
 
         rows: list[dict[str, str]] = []
-        cnpjs_arr = all_entities["CNPJ_8"].values
-        insts_arr = all_entities["INSTITUICAO"].values
-        sits_arr = all_entities["SITUACAO"].values
+        cnpjs_arr = all_entities["cnpj_8"].values
+        insts_arr = all_entities["instituicao"].values
+        sits_arr = all_entities["situacao"].values
         for cnpj, inst, sit in zip(cnpjs_arr, insts_arr, sits_arr, strict=True):
             fontes = cnpj_sources.get(cnpj, set())
             if not fontes:
                 continue
             rows.append(
                 {
-                    "CNPJ_8": cnpj,
-                    "INSTITUICAO": inst,
-                    "SITUACAO": sit,
-                    "FONTES": ",".join(sorted(fontes)),
+                    "cnpj_8": cnpj,
+                    "instituicao": inst,
+                    "situacao": sit,
+                    "fontes": ",".join(sorted(fontes)),
                 }
             )
 
@@ -203,7 +203,7 @@ class CadastroSearch:
         df = self._apply_escopo_filter(df, fonte, escopo, date_range)
 
         df = (
-            df.sort_values(by=["SITUACAO", "INSTITUICAO"], ascending=[True, True])
+            df.sort_values(by=["situacao", "instituicao"], ascending=[True, True])
             .reset_index(drop=True)
             .head(limit)
             .reset_index(drop=True)
@@ -214,27 +214,29 @@ class CadastroSearch:
     def _get_all_entities(self) -> pd.DataFrame:
         """Retorna todas as entidades do cadastro (linha mais recente por CNPJ)."""
         sql = self._lookup._latest_cadastro_sql(
-            inner_cols="CNPJ_8, NomeInstituicao AS INSTITUICAO, Situacao AS SITUACAO",
-            outer_cols="CNPJ_8, INSTITUICAO, SITUACAO",
+            inner_cols=(
+                'CNPJ_8, NomeInstituicao AS "instituicao", Situacao AS "situacao"'
+            ),
+            outer_cols='CNPJ_8 AS "cnpj_8", "instituicao", "situacao"',
             extra_where="NomeInstituicao IS NOT NULL",
         )
         try:
             df = self._qe.sql(sql)
             if not df.empty:
-                df["CNPJ_8"] = df["CNPJ_8"].astype(str)
-                df["INSTITUICAO"] = df["INSTITUICAO"].astype(str)
-                df["SITUACAO"] = df["SITUACAO"].astype(str)
+                df["cnpj_8"] = df["cnpj_8"].astype(str)
+                df["instituicao"] = df["instituicao"].astype(str)
+                df["situacao"] = df["situacao"].astype(str)
             return df
         except Exception as e:
             self._logger.warning(f"search: failed to query cadastro: {e}")
-            return pd.DataFrame(columns=["CNPJ_8", "INSTITUICAO", "SITUACAO"])
+            return pd.DataFrame(columns=["cnpj_8", "instituicao", "situacao"])
 
     def _apply_fonte_filter(self, df: pd.DataFrame, fonte: str | None) -> pd.DataFrame:
         """Filtra DataFrame de resultados por fonte de dados."""
         if fonte is None or df.empty:
             return df
         fonte_lower = fonte.lower()
-        mask = df["FONTES"].str.contains(fonte_lower, na=False)
+        mask = df["fontes"].str.contains(fonte_lower, na=False)
         return df[mask].copy()
 
     def _apply_escopo_filter(
@@ -249,7 +251,7 @@ class CadastroSearch:
             return df
 
         escopo_lower = escopo.lower()
-        cnpjs = df["CNPJ_8"].tolist()
+        cnpjs = df["cnpj_8"].tolist()
 
         if fonte is not None and fonte.lower() == "cosif":
             valid_cnpjs = self._get_cnpjs_with_cosif_escopo(
@@ -260,7 +262,7 @@ class CadastroSearch:
                 cnpjs, escopo_lower, date_range
             )
 
-        return df[df["CNPJ_8"].isin(valid_cnpjs)].copy()
+        return df[df["cnpj_8"].isin(valid_cnpjs)].copy()
 
     def _get_cnpjs_with_cosif_escopo(
         self,

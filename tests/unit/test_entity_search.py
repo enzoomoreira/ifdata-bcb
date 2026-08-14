@@ -97,8 +97,8 @@ class TestDedup:
         )
         df = search.search("BANCO ALFA")
         assert len(df) == 1
-        assert df.loc[0, "CNPJ_8"] == "11111111"
-        assert df.loc[0, "SCORE"] == 100
+        assert df.loc[0, "cnpj_8"] == "11111111"
+        assert df.loc[0, "score"] == 100
 
 
 class TestRanking:
@@ -113,7 +113,7 @@ class TestRanking:
         df = search.search("BANCO TESTE")
         # Os tres empatam no score (mesma distancia do termo); decide situacao
         # (ATIVA < CANCELADA) e, dentro do empate, nome em ordem alfabetica.
-        assert list(df["CNPJ_8"]) == ["22222222", "33333333", "11111111"]
+        assert list(df["cnpj_8"]) == ["22222222", "33333333", "11111111"]
 
     def test_score_maior_vence_dentro_da_mesma_situacao(self) -> None:
         search = make_search(
@@ -125,8 +125,8 @@ class TestRanking:
         df = search.search("BANCO TESTE")
         # Empate de nome favoreceria TESTA (alfabetico); o match exato (100)
         # tem que vir primeiro, provando que score desc domina o tiebreak.
-        assert list(df["CNPJ_8"]) == ["11111111", "22222222"]
-        assert df.loc[0, "SCORE"] > df.loc[1, "SCORE"]
+        assert list(df["cnpj_8"]) == ["11111111", "22222222"]
+        assert df.loc[0, "score"] > df.loc[1, "score"]
 
     def test_limit_corta_depois_da_ordenacao(self) -> None:
         search = make_search(
@@ -137,7 +137,7 @@ class TestRanking:
             ]
         )
         df = search.search("BANCO TESTE", limit=2)
-        assert list(df["CNPJ_8"]) == ["22222222", "33333333"]
+        assert list(df["cnpj_8"]) == ["22222222", "33333333"]
 
 
 class TestThreshold:
@@ -153,11 +153,11 @@ class TestThreshold:
         search = make_search([("11111111", "BANCO ALFA", _ATIVA)])
         df = search.search("XYZ QWERTY")
         assert list(df.columns) == [
-            "CNPJ_8",
-            "INSTITUICAO",
-            "SITUACAO",
-            "FONTES",
-            "SCORE",
+            "cnpj_8",
+            "instituicao",
+            "situacao",
+            "fontes",
+            "score",
         ]
 
 
@@ -169,8 +169,8 @@ class TestExactCnpj:
         )
         df = search.search("60872504")
         assert len(df) == 1
-        assert df.loc[0, "SCORE"] == 100
-        assert df.loc[0, "FONTES"] == "cosif,ifdata"
+        assert df.loc[0, "score"] == 100
+        assert df.loc[0, "fontes"] == "cosif,ifdata"
 
     def test_cnpj_presente_sem_fontes_retorna_vazio(self) -> None:
         search = make_search([("60872504", "BANCO ALFA", _ATIVA)], sources={})
@@ -191,7 +191,7 @@ class TestFilaFontes:
             sources={"22222222": {"cosif"}},
         )
         df = search.search("BANCO TESTE", date_range=(202401, 202412))
-        assert list(df["CNPJ_8"]) == ["22222222"]
+        assert list(df["cnpj_8"]) == ["22222222"]
 
     def test_sem_date_range_e_sem_nenhuma_fonte_mantem_os_matches(self) -> None:
         """Cadastro coletado mas dados nao: filtrar esvaziaria tudo."""
@@ -204,7 +204,7 @@ class TestFilaFontes:
         )
         df = search.search("BANCO TESTE")
         assert len(df) == 2
-        assert (df["FONTES"] == "").all()
+        assert (df["fontes"] == "").all()
 
 
 class TestInputs:

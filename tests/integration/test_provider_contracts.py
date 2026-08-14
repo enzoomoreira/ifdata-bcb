@@ -30,15 +30,15 @@ def test_ifdata_list_methods_return_empty_when_cache_is_missing(
     reporters = explorer.mapeamento()
 
     assert accounts.empty
-    assert list(accounts.columns) == ["COD_CONTA", "CONTA", "RELATORIO", "GRUPO"]
+    assert list(accounts.columns) == ["cod_conta", "conta", "relatorio", "grupo"]
     assert reporters.empty
     assert list(reporters.columns) == [
-        "COD_INST",
-        "TIPO_INST",
-        "ESCOPO",
-        "REPORT_KEY_TYPE",
-        "CNPJ_8",
-        "INSTITUICAO",
+        "cod_inst",
+        "tipo_inst",
+        "escopo",
+        "report_key_type",
+        "cnpj_8",
+        "instituicao",
     ]
 
 
@@ -51,9 +51,9 @@ def test_cosif_list_methods_return_empty_when_cache_is_missing(
     scoped_accounts = explorer.list_contas(escopo="individual")
 
     assert accounts.empty
-    assert list(accounts.columns) == ["COD_CONTA", "CONTA", "ESCOPOS"]
+    assert list(accounts.columns) == ["cod_conta", "conta", "escopos"]
     assert scoped_accounts.empty
-    assert list(scoped_accounts.columns) == ["COD_CONTA", "CONTA"]
+    assert list(scoped_accounts.columns) == ["cod_conta", "conta"]
 
 
 def test_cadastro_list_empty_when_cache_is_missing(
@@ -62,6 +62,6 @@ def test_cadastro_list_empty_when_cache_is_missing(
     explorer = CadastroExplorer(query_engine=query_engine)
 
     # list_values() retorna DataFrame vazio com colunas corretas
-    df = explorer.list_values(["SEGMENTO"])
+    df = explorer.list_values(["segmento"])
     assert df.empty
-    assert list(df.columns) == ["SEGMENTO"]
+    assert list(df.columns) == ["segmento"]

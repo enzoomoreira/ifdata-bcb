@@ -70,7 +70,6 @@ class BaseExplorer(ABC):
     Configuracao por class attributes:
     - _COLUMN_MAP: Mapeamento de colunas storage -> apresentacao
     - _DERIVED_COLUMNS: Colunas adicionadas pos-query por Python
-    - _PASSTHROUGH_COLUMNS: Colunas nativas do parquet sem rename (passam direto)
     - _DROP_COLUMNS: Colunas a remover antes do mapeamento
     - _COLUMN_ORDER: Ordem desejada das colunas no output
     - _VALID_ESCOPOS: Lista de escopos validos para _validate_escopo
@@ -80,7 +79,6 @@ class BaseExplorer(ABC):
 
     _COLUMN_MAP: ClassVar[dict[str, str]] = {}
     _DERIVED_COLUMNS: ClassVar[set[str]] = set()
-    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = set()
     _DROP_COLUMNS: ClassVar[list[str]] = []
     _COLUMN_ORDER: ClassVar[list[str]] = []
     _VALID_ESCOPOS: ClassVar[list[str]] = []
@@ -129,7 +127,7 @@ class BaseExplorer(ABC):
         where: str | None = None,
     ) -> pd.DataFrame:
         """Le parquets via DuckDB com dedup, datetime e exclude automaticos."""
-        date_alias = "DATA"
+        date_alias = "data"
         if self._DATE_COLUMN and self._DATE_COLUMN in self._COLUMN_MAP:
             date_alias = self._COLUMN_MAP[self._DATE_COLUMN]
 
@@ -312,7 +310,6 @@ class BaseExplorer(ABC):
             set(self._COLUMN_MAP.keys())
             | set(self._COLUMN_MAP.values())
             | self._DERIVED_COLUMNS
-            | self._PASSTHROUGH_COLUMNS
         )
         unknown = sorted(set(columns) - all_known)
         if unknown:
@@ -357,7 +354,7 @@ class BaseExplorer(ABC):
         datas = self._resolve_date_range(start, end, trimestral=trimestral)
         if not datas:
             return None
-        data_col = self._storage_col("DATA")
+        data_col = self._storage_col("data")
         return build_int_condition(data_col, datas)
 
     def _build_cnpj_condition(
@@ -388,9 +385,9 @@ class BaseExplorer(ABC):
         if df.empty:
             return df
 
-        # 3. Sort por DATA (pandas e 40x mais rapido que DuckDB ORDER BY)
-        if "DATA" in df.columns:
-            df = df.sort_values("DATA", ascending=True).reset_index(drop=True)
+        # 3. Sort por data (pandas e 40x mais rapido que DuckDB ORDER BY)
+        if "data" in df.columns:
+            df = df.sort_values("data", ascending=True).reset_index(drop=True)
 
         # 4. Reordenar colunas (se _COLUMN_ORDER definido)
         if self._COLUMN_ORDER:
@@ -403,7 +400,7 @@ class BaseExplorer(ABC):
     def _era_required_columns(self, periodos: list[int] | None) -> list[str]:
         """Colunas de dimensao a forcar na query para viabilizar a analise de era.
 
-        `columns=` projeta na propria query, entao um read(columns=['DATA','VALOR'])
+        `columns=` projeta na propria query, entao um read(columns=['data','valor'])
         -- justamente quem esta montando serie temporal -- nao teria como detectar
         a renumeracao. Sao lidas apenas quando o range cruza o boundary; no caso
         comum o custo e zero.
@@ -415,7 +412,7 @@ class BaseExplorer(ABC):
         )
         if not cruza:
             return []
-        cols = [self._storage_col("COD_CONTA")]
+        cols = [self._storage_col("cod_conta")]
         if self._ERA_GROUP_COLUMN:
             cols.append(self._storage_col(self._ERA_GROUP_COLUMN))
         return cols
@@ -477,7 +474,7 @@ class BaseExplorer(ABC):
                 f"{type(self).__name__} nao tem transicao de era conhecida."
             )
 
-        cols = ["DATA", "COD_CONTA"]
+        cols = ["data", "cod_conta"]
         if self._ERA_GROUP_COLUMN:
             cols.append(self._ERA_GROUP_COLUMN)
 
@@ -499,13 +496,13 @@ class BaseExplorer(ABC):
         )
 
     def _check_null_value_instituicoes(self, df: pd.DataFrame) -> None:
-        """Emite warning para instituicoes com todos os VALOR NULL."""
-        if df.empty or "VALOR" not in df.columns or "CNPJ_8" not in df.columns:
+        """Emite warning para instituicoes com todos os valores NULL."""
+        if df.empty or "valor" not in df.columns or "cnpj_8" not in df.columns:
             return
 
-        has_value = set(df.loc[df["VALOR"].notna(), "CNPJ_8"].unique())
+        has_value = set(df.loc[df["valor"].notna(), "cnpj_8"].unique())
         all_null_cnpjs = sorted(
-            str(c) for c in df["CNPJ_8"].unique() if c not in has_value
+            str(c) for c in df["cnpj_8"].unique() if c not in has_value
         )
         if not all_null_cnpjs:
             return
@@ -514,7 +511,7 @@ class BaseExplorer(ABC):
         entity_str = format_entity_labels(all_null_cnpjs, nomes)
         emit_user_warning(
             NullValuesWarning(
-                f"Dados com VALOR inteiramente NULL para {entity_str}. "
+                f"Dados com valor inteiramente NULL para {entity_str}. "
                 f"O BCB registrou a entidade mas nao forneceu valores financeiros.",
                 entities=all_null_cnpjs,
             ),
@@ -522,25 +519,25 @@ class BaseExplorer(ABC):
         )
 
     def _apply_canonical_names(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica nomes canonicos do cadastro a coluna INSTITUICAO.
+        """Aplica nomes canonicos do cadastro a coluna instituicao.
 
-        So atua quando INSTITUICAO nao existe no DataFrame (ex: IFDATA bulk
-        individual onde CNPJ_8 vem de CodInst e nao ha nome no parquet).
-        Quando INSTITUICAO ja existe (ex: COSIF tem NOME_INSTITUICAO), pula
+        So atua quando instituicao nao existe no DataFrame (ex: IFDATA bulk
+        individual onde cnpj_8 vem de CodInst e nao ha nome no parquet).
+        Quando instituicao ja existe (ex: COSIF tem NOME_INSTITUICAO), pula
         o lookup pois o parquet ja tem os nomes corretos.
         """
-        if df.empty or "CNPJ_8" not in df.columns:
+        if df.empty or "cnpj_8" not in df.columns:
             return df
 
-        if "INSTITUICAO" in df.columns:
+        if "instituicao" in df.columns:
             return df
 
-        cnpjs = df["CNPJ_8"].dropna().astype(str).unique().tolist()
+        cnpjs = df["cnpj_8"].dropna().astype(str).unique().tolist()
         if not cnpjs:
             return df
 
         nomes = self._resolver.get_canonical_names_for_cnpjs(cnpjs)
-        df["INSTITUICAO"] = df["CNPJ_8"].astype(str).map(nomes)
+        df["instituicao"] = df["cnpj_8"].astype(str).map(nomes)
 
         return df
 
@@ -692,9 +689,9 @@ class BaseExplorer(ABC):
 
         blocked_found: list[str] = []
         for col in columns:
-            col_upper = col.upper()
-            if col_upper in self._BLOCKED_COLUMNS:
-                blocked_found.append(col_upper)
+            col_lower = col.lower()
+            if col_lower in self._BLOCKED_COLUMNS:
+                blocked_found.append(col_lower)
 
         if blocked_found:
             for col_name in blocked_found:
@@ -709,13 +706,13 @@ class BaseExplorer(ABC):
             "Para contas: use list_contas(). Para instituicoes: use cadastro.search()."
         )
         for col in columns:
-            col_upper = col.upper()
-            if col_upper not in self._LIST_COLUMNS:
+            col_lower = col.lower()
+            if col_lower not in self._LIST_COLUMNS:
                 raise InvalidColumnError(col, valid_names, extras)
 
     def _has_blocked_columns(self, columns: list[str]) -> bool:
         """Retorna True se alguma coluna esta bloqueada."""
-        return any(col.upper() in self._BLOCKED_COLUMNS for col in columns)
+        return any(col.lower() in self._BLOCKED_COLUMNS for col in columns)
 
     def _base_list(
         self,
@@ -734,19 +731,19 @@ class BaseExplorer(ABC):
 
         # Se coluna bloqueada, retornar DataFrame vazio com colunas solicitadas
         if self._has_blocked_columns(columns):
-            return pd.DataFrame(columns=[c.upper() for c in columns])
+            return pd.DataFrame(columns=[c.lower() for c in columns])
 
         # Montar SELECT com expressoes SQL dos _LIST_COLUMNS
         select_parts: list[str] = []
         canonical_names: list[str] = []
         for col in columns:
-            col_upper = col.upper()
-            canonical_names.append(col_upper)
-            expr = self._LIST_COLUMNS[col_upper]
-            if col_upper == "DATA":
-                select_parts.append(QueryEngine._date_sql_expr(expr, "DATA"))
+            col_lower = col.lower()
+            canonical_names.append(col_lower)
+            expr = self._LIST_COLUMNS[col_lower]
+            if col_lower == "data":
+                select_parts.append(QueryEngine._date_sql_expr(expr, "data"))
             else:
-                select_parts.append(f"{expr} AS {col_upper}")
+                select_parts.append(f'{expr} AS "{col_lower}"')
 
         select_clause = ", ".join(select_parts)
         from_expr = self._get_list_source(
@@ -781,9 +778,9 @@ class BaseExplorer(ABC):
         # Truncation warning
         if len(df) == limit:
             extra_hints: list[str] = []
-            if "MUNICIPIO" in canonical_names:
+            if "municipio" in canonical_names:
                 extra_hints.append("Filtre com uf='...' para reduzir.")
-            if "DATA" in canonical_names:
+            if "data" in canonical_names:
                 extra_hints.append("Use start=/end= para filtrar periodo.")
             msg = f"Resultado truncado em {limit}. Aumente limit= ou adicione filtros."
             if extra_hints:

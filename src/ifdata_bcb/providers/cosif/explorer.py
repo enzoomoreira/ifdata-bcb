@@ -32,8 +32,8 @@ from ifdata_bcb.utils.text import stem_ptbr
 
 EscopoCOSIF = Literal["individual", "prudencial"]
 
-_ACCOUNT_COLUMNS = ["COD_CONTA", "CONTA"]
-_ACCOUNT_COLUMNS_ALL = ["COD_CONTA", "CONTA", "ESCOPOS"]
+_ACCOUNT_COLUMNS = ["cod_conta", "conta"]
+_ACCOUNT_COLUMNS_ALL = ["cod_conta", "conta", "escopos"]
 
 
 class COSIFExplorer(BaseExplorer):
@@ -44,33 +44,34 @@ class COSIFExplorer(BaseExplorer):
     """
 
     _COLUMN_MAP: ClassVar[dict[str, str]] = {
-        "DATA_BASE": "DATA",
-        "NOME_INSTITUICAO": "INSTITUICAO",
-        "NOME_CONTA": "CONTA",
-        "CONTA": "COD_CONTA",
-        "SALDO": "VALOR",
+        "DATA_BASE": "data",
+        "CNPJ_8": "cnpj_8",
+        "NOME_INSTITUICAO": "instituicao",
+        "NOME_CONTA": "conta",
+        "CONTA": "cod_conta",
+        "DOCUMENTO": "documento",
+        "SALDO": "valor",
     }
 
-    _DERIVED_COLUMNS: ClassVar[set[str]] = {"ESCOPO"}
-    _PASSTHROUGH_COLUMNS: ClassVar[set[str]] = {"CNPJ_8", "DOCUMENTO"}
+    _DERIVED_COLUMNS: ClassVar[set[str]] = {"escopo"}
 
     _DATE_COLUMN = "DATA_BASE"
 
     _COLUMN_ORDER: ClassVar[list[str]] = [
-        "DATA",
-        "CNPJ_8",
-        "INSTITUICAO",
-        "ESCOPO",
-        "COD_CONTA",
-        "CONTA",
-        "DOCUMENTO",
-        "VALOR",
+        "data",
+        "cnpj_8",
+        "instituicao",
+        "escopo",
+        "cod_conta",
+        "conta",
+        "documento",
+        "valor",
     ]
 
     _VALID_ESCOPOS: ClassVar[list[str]] = ["individual", "prudencial"]
 
     _ERA_BOUNDARY = COSIF_ERA_BOUNDARY
-    _ERA_GROUP_COLUMN = "DOCUMENTO"
+    _ERA_GROUP_COLUMN = "documento"
     _ERA_SOURCE_NAME = "COSIF"
 
     _ESCOPOS: ClassVar[dict[str, dict[str, str]]] = {
@@ -85,18 +86,18 @@ class COSIFExplorer(BaseExplorer):
     }
 
     _LIST_COLUMNS: ClassVar[dict[str, str]] = {
-        "DATA": "DATA_BASE",
-        "ESCOPO": "ESCOPO",
-        "DOCUMENTO": "DOCUMENTO",
+        "data": "DATA_BASE",
+        "escopo": "ESCOPO",
+        "documento": "DOCUMENTO",
     }
 
     _BLOCKED_COLUMNS: ClassVar[dict[str, str]] = {
-        "CONTA": "Use list_contas(termo='...') para buscar contas.",
-        "COD_CONTA": "Use list_contas(termo='...') para buscar contas.",
-        "CNPJ_8": "Use cadastro.search() para buscar instituicoes.",
-        "INSTITUICAO": "Use cadastro.search() para buscar instituicoes.",
-        "VALOR": "VALOR e uma metrica continua, nao listavel.",
-        "SALDO": "VALOR e uma metrica continua, nao listavel.",
+        "conta": "Use list_contas(termo='...') para buscar contas.",
+        "cod_conta": "Use list_contas(termo='...') para buscar contas.",
+        "cnpj_8": "Use cadastro.search() para buscar instituicoes.",
+        "instituicao": "Use cadastro.search() para buscar instituicoes.",
+        "valor": "valor e uma metrica continua, nao listavel.",
+        "saldo": "valor e uma metrica continua, nao listavel.",
     }
 
     def __init__(
@@ -148,8 +149,8 @@ class COSIFExplorer(BaseExplorer):
         if contas:
             conditions.append(
                 build_account_condition(
-                    self._storage_col("CONTA"),
-                    self._storage_col("COD_CONTA"),
+                    self._storage_col("conta"),
+                    self._storage_col("cod_conta"),
                     contas,
                 )
             )
@@ -274,9 +275,9 @@ class COSIFExplorer(BaseExplorer):
             documento: Filtro por documento COSIF.
             columns: Colunas a retornar. Se None, retorna todas.
             cadastro: Colunas cadastrais para enriquecer o resultado.
-                Validas: ATIVIDADE, CNPJ_LIDER_8, COD_CONGL_FIN,
-                COD_CONGL_PRUD, DATA_INICIO_ATIVIDADE, MUNICIPIO,
-                NOME_CONGL_PRUD, SEGMENTO, SITUACAO, SR, TC, TCB, TD, UF.
+                Validas: atividade, cnpj_lider_8, cod_congl_fin,
+                cod_congl_prud, data_inicio_atividade, municipio,
+                nome_congl_prud, segmento, situacao, sr, tc, tcb, td, uf.
 
         Raises:
             MissingRequiredParameterError: Se start nao fornecido.
@@ -299,7 +300,7 @@ class COSIFExplorer(BaseExplorer):
             )
             if not df.empty:
                 df = df.copy()
-                df["ESCOPO"] = esc
+                df["escopo"] = esc
                 results.append(df)
 
         if not results:
@@ -344,7 +345,7 @@ class COSIFExplorer(BaseExplorer):
         """Lista valores distintos para as colunas solicitadas.
 
         Args:
-            columns: Colunas a listar (DATA, ESCOPO, DOCUMENTO).
+            columns: Colunas a listar (data, escopo, documento).
             start: Periodo inicial (opcional).
             end: Periodo final (opcional).
             escopo: Filtro por escopo.
@@ -412,7 +413,7 @@ class COSIFExplorer(BaseExplorer):
                     [],
                     hint=(
                         "Esperado codigo numerico (ex: 4010, 4016). "
-                        "Use cosif.list_values(['DOCUMENTO']) para ver os disponiveis."
+                        "Use cosif.list_values(['documento']) para ver os disponiveis."
                     ),
                 ) from None
         # DOCUMENTO e VARCHAR no parquet. Comparar com INT faz o DuckDB tentar
@@ -491,10 +492,10 @@ class COSIFExplorer(BaseExplorer):
 
         combined = pd.concat(dfs, ignore_index=True)
         result = (
-            combined.groupby(["COD_CONTA", "CONTA"], sort=False)
-            .agg(ESCOPOS=("_escopo", lambda x: ", ".join(sorted(x.unique()))))
+            combined.groupby(["cod_conta", "conta"], sort=False)
+            .agg(escopos=("_escopo", lambda x: ", ".join(sorted(x.unique()))))
             .reset_index()
-            .sort_values(["CONTA", "COD_CONTA"])
+            .sort_values(["conta", "cod_conta"])
             .reset_index(drop=True)
         )
         if limit is not None:
@@ -543,10 +544,10 @@ class COSIFExplorer(BaseExplorer):
                 FROM '{path}'
                 {base_where}
             )
-            SELECT DISTINCT CONTA AS COD_CONTA, NOME_CONTA AS CONTA
+            SELECT DISTINCT CONTA AS "cod_conta", NOME_CONTA AS "conta"
             FROM deduped
             {outer_where}
-            ORDER BY CONTA, COD_CONTA
+            ORDER BY "conta", "cod_conta"
             {limit_clause}
         """
         return self._qe.sql(query, params=merge_params(base_cond, outer_cond))

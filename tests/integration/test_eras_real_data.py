@@ -81,18 +81,18 @@ def diagnostico() -> dict:
     df = (
         duckdb.connect()
         .sql(f"""
-        SELECT AnoMes, NomeRelatorio AS RELATORIO, Conta AS COD_CONTA
+        SELECT AnoMes, NomeRelatorio AS relatorio, Conta AS cod_conta
         FROM read_parquet(['{paths[0]}', '{paths[1]}'])
     """)
         .df()
     )
-    df["DATA"] = pd.to_datetime(df["AnoMes"].astype(str) + "01", format="%Y%m%d")
+    df["data"] = pd.to_datetime(df["AnoMes"].astype(str) + "01", format="%Y%m%d")
     return diagnose_eras(
         df,
         boundary=IFDATA_ERA_BOUNDARY,
         source="IFDATA",
         periodos_solicitados=[PRE, POST],
-        group_col="RELATORIO",
+        group_col="relatorio",
     )
 
 

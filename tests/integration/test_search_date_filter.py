@@ -164,14 +164,14 @@ class TestEntitySearchDateRange:
         search = _make_search(populated_cache)
         df = search.search("ALFA")
         assert not df.empty
-        assert "FONTES" in df.columns
+        assert "fontes" in df.columns
 
     def test_search_with_matching_date_range(self, populated_cache: Path) -> None:
         """Busca com date_range que inclui dados retorna resultados."""
         search = _make_search(populated_cache)
         df = search.search("ALFA", date_range=(202303, 202303))
         assert not df.empty
-        assert df.iloc[0]["FONTES"] != ""
+        assert df.iloc[0]["fontes"] != ""
 
     def test_search_with_future_date_range_returns_empty(
         self, populated_cache: Path
@@ -209,7 +209,7 @@ class TestCadastroSearchDateFilter:
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", start="2023-03")
         assert not df.empty
-        assert "SCORE" in df.columns
+        assert "score" in df.columns
 
     def test_search_with_future_start_returns_empty(
         self, populated_cache: Path
@@ -226,8 +226,8 @@ class TestCadastroSearchDateFilter:
         df_dated = cadastro.search(start="2023-03")
         # Com date_range, deve retornar <= sem date_range
         assert len(df_dated) <= len(df_all)
-        # Coluna SCORE nao presente sem termo
-        assert "SCORE" not in df_dated.columns
+        # Coluna score nao presente sem termo
+        assert "score" not in df_dated.columns
 
     def test_search_without_termo_future_returns_empty(
         self, populated_cache: Path
@@ -248,8 +248,8 @@ class TestCadastroSearchDateFilter:
         cadastro = _make_cadastro(populated_cache)
         df = cadastro.search("ALFA", fonte="cosif", start="2023-03")
         assert not df.empty
-        # FONTES deve conter cosif
-        assert all(df["FONTES"].str.contains("cosif"))
+        # fontes deve conter cosif
+        assert all(df["fontes"].str.contains("cosif"))
 
     def test_search_with_fonte_and_future_dates(self, populated_cache: Path) -> None:
         """search(fonte=, start=) com periodo futuro retorna vazio."""
