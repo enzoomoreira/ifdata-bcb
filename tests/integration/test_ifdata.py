@@ -2,6 +2,7 @@
 
 import warnings
 
+import pandas as pd
 import pytest
 
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
@@ -18,7 +19,8 @@ class TestIFDATARead:
             instituicao=BANCO_A_CNPJ, start="2023-03", escopo="individual"
         )
         assert not df.empty
-        for col in ("data", "cnpj_8", "valor"):
+        assert df.index.name == "date"
+        for col in ("cnpj_8", "valor"):
             assert col in df.columns
 
     def test_read_individual_filters_by_institution(
@@ -45,7 +47,8 @@ class TestIFDATARead:
             instituicao="99999999", start="2023-03", escopo="individual"
         )
         assert df.empty
-        assert "data" in df.columns
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert "cnpj_8" in df.columns
 
     def test_read_includes_cod_conta(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -169,10 +172,9 @@ class TestIFDATAColumns:
             columns=["data", "valor"],
         )
         assert not df.empty
-        assert "data" in df.columns
-        assert "valor" in df.columns
-        # Colunas nao solicitadas nao devem estar presentes
-        assert "cod_conta" not in df.columns
+        # data pedida em columns= vira o DatetimeIndex, nao uma coluna
+        assert df.index.name == "date"
+        assert list(df.columns) == ["valor"]
 
     def test_columns_derived_only(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -199,7 +201,8 @@ class TestIFDATAColumns:
             columns=["data", "cnpj_8", "valor", "escopo"],
         )
         assert not df.empty
-        assert set(df.columns) == {"data", "cnpj_8", "valor", "escopo"}
+        assert df.index.name == "date"
+        assert set(df.columns) == {"cnpj_8", "valor", "escopo"}
 
     def test_columns_unknown_raises_early(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -226,8 +229,9 @@ class TestIFDATAColumns:
             columns=None,
         )
         assert not df.empty
-        # Deve conter colunas padrao
-        for col in ("data", "cnpj_8", "valor", "cod_conta", "conta"):
+        # Deve conter colunas padrao (data vira o index)
+        assert df.index.name == "date"
+        for col in ("cnpj_8", "valor", "cod_conta", "conta"):
             assert col in df.columns
 
 
@@ -353,7 +357,8 @@ class TestIFDATAColumnsAdversarial:
         assert len(empty_col_warnings) == 1
         # Retorna todas as colunas (mesmo comportamento que columns=None)
         assert not df.empty
-        for col in ("data", "cnpj_8", "valor", "cod_conta", "conta"):
+        assert df.index.name == "date"
+        for col in ("cnpj_8", "valor", "cod_conta", "conta"):
             assert col in df.columns
 
 

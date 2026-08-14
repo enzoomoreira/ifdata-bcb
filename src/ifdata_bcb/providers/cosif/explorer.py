@@ -313,7 +313,7 @@ class COSIFExplorer(BaseExplorer):
                 had_conta_filter=conta is not None,
                 had_institution_filter=instituicao is not None,
             )
-            return pd.DataFrame(columns=self._COLUMN_ORDER)
+            return self._to_datetime_index(pd.DataFrame(columns=self._COLUMN_ORDER))
 
         df = pd.concat(results, ignore_index=True)
         self._logger.info(
@@ -328,6 +328,7 @@ class COSIFExplorer(BaseExplorer):
             df = enrich_with_cadastro(df, cadastro, self._qe, self._resolver)
 
         df = self._filter_columns(df, columns)
+        df = self._to_datetime_index(df)
         if diag is not None:
             df.attrs["era"] = diag
         return df

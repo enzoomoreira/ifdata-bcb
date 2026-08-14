@@ -22,14 +22,16 @@ class TestCOSIFRead:
         df = cosif.read(instituicao=BANCO_A_CNPJ, start="2023-03")
 
         assert not df.empty
-        for col in ("data", "cnpj_8", "instituicao", "escopo", "conta", "valor"):
+        for col in ("cnpj_8", "instituicao", "escopo", "conta", "valor"):
             assert col in df.columns
 
-    def test_read_converts_data_to_datetime(
+    def test_read_devolve_datetimeindex_date(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
     ) -> None:
         df = explorers[0].read(instituicao=BANCO_A_CNPJ, start="2023-03")
-        assert pd.api.types.is_datetime64_any_dtype(df["data"])
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert df.index.name == "date"
+        assert "data" not in df.columns
 
     def test_read_filters_by_institution(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]
@@ -67,7 +69,9 @@ class TestCOSIFRead:
     ) -> None:
         df = explorers[0].read(instituicao="99999999", start="2023-03")
         assert df.empty
-        assert "data" in df.columns
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert df.index.name == "date"
+        assert "cnpj_8" in df.columns
 
     def test_read_applies_canonical_names(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]

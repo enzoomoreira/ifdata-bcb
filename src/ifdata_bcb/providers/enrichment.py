@@ -160,11 +160,13 @@ def enrich_with_cadastro(
     start_str = f"{start_y}-{start_m:02d}"
     end_str = max_date.strftime("%Y-%m")
 
+    # read() devolve a data como DatetimeIndex 'date'; o ASOF JOIN abaixo
+    # precisa dela de volta como coluna, alinhada ao df financeiro.
     df_cad = cadastro_explorer.read(
         start_str,
         end_str,
         instituicao=cnpjs,
-    )
+    ).reset_index(names="data")
 
     if df_cad.empty:
         # copy() antes de escrever: os demais caminhos retornam DataFrame novo,

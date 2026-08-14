@@ -97,7 +97,7 @@ class TestConglomerateChange:
         )
         assert not df.empty
         # Deve ter dados de ambos os periodos
-        datas = df["data"].dt.to_period("Q").unique()
+        datas = df.index.to_period("Q").unique()
         assert len(datas) == 2
 
 

@@ -166,7 +166,9 @@ class TestPassthroughColumns:
         df = qa_cosif.read(
             "2023-03", instituicao="60872504", columns=["cnpj_8", "data", "valor"]
         )
-        assert list(df.columns) == ["cnpj_8", "data", "valor"]
+        # data pedida em columns= vira o DatetimeIndex, nao uma coluna
+        assert list(df.columns) == ["cnpj_8", "valor"]
+        assert df.index.name == "date"
 
     def test_cosif_documento_accepted(self, qa_cosif: COSIFExplorer) -> None:
         df = qa_cosif.read(

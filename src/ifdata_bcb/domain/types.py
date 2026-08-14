@@ -34,7 +34,9 @@ class ExplorerInfo(TypedDict, total=False):
     Chaves:
         escopos: valores aceitos em escopo=. Vazio quando nao ha escopo.
         columns: colunas listaveis por list_values().
-        read_columns: colunas que read() devolve, na ordem.
+        read_columns: colunas que read() devolve, na ordem (sem a data,
+            que vira o index).
+        read_index: nome do DatetimeIndex devolvido por read().
         filtros: parametros de filtro aceitos por read().
         cadastro_columns: valores aceitos em cadastro=. Vazio se nao aceita.
     """
@@ -45,6 +47,7 @@ class ExplorerInfo(TypedDict, total=False):
     escopos: list[str]
     columns: list[str]
     read_columns: list[str]
+    read_index: str
     filtros: list[str]
     cadastro_columns: list[str]
 

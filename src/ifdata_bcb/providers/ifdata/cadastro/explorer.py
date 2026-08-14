@@ -211,7 +211,7 @@ class CadastroExplorer(BaseExplorer):
                 had_institution_filter=instituicao is not None,
                 outros_filtros="periodo, segmento, uf, situacao, etc",
             )
-        return self._finalize_read(df)
+        return self._to_datetime_index(self._finalize_read(df))
 
     def list_values(
         self,

@@ -92,12 +92,13 @@ class TestEnrichWithCadastroEdgeCases:
             }
         )
 
+        # Espelha o contrato de read(): data como DatetimeIndex 'date'
         cad_df = pd.DataFrame(
             {
-                "data": pd.to_datetime(["2023-03-31", "2023-03-31"]),
                 "cnpj_8": ["60872504", "90400888"],
                 "segmento": ["S1", "S2"],
-            }
+            },
+            index=pd.DatetimeIndex(["2023-03-31", "2023-03-31"], name="date"),
         )
 
         import ifdata_bcb.providers.ifdata.cadastro.explorer as cad_mod

@@ -397,6 +397,18 @@ class BaseExplorer(ABC):
 
         return df
 
+    def _to_datetime_index(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Move a coluna data para um DatetimeIndex chamado 'date'.
+
+        Ultimo passo de read(): enrichment e a analise de era precisam da
+        data ainda como coluna. Vale tambem para o DataFrame vazio, para o
+        formato nao depender de haver resultado.
+        """
+        if "data" not in df.columns:
+            return df
+        idx = pd.DatetimeIndex(df["data"], name="date")
+        return df.drop(columns=["data"]).set_index(idx)
+
     def _era_required_columns(self, periodos: list[int] | None) -> list[str]:
         """Colunas de dimensao a forcar na query para viabilizar a analise de era.
 
@@ -631,7 +643,9 @@ class BaseExplorer(ABC):
         return {
             "escopos": list(self._VALID_ESCOPOS),
             "columns": sorted(self._LIST_COLUMNS.keys()),
-            "read_columns": list(self._COLUMN_ORDER),
+            # data sai das colunas de read(): vira o DatetimeIndex 'date'
+            "read_columns": [c for c in self._COLUMN_ORDER if c != "data"],
+            "read_index": "date",
             "filtros": filtros,
             "cadastro_columns": cadastro_columns,
         }

@@ -19,7 +19,8 @@ class TestCadastroRead:
     ) -> None:
         df = explorers[2].read(instituicao=BANCO_A_CNPJ, start="2023-03")
         assert not df.empty
-        for col in ("data", "cnpj_8", "instituicao", "segmento", "situacao"):
+        assert df.index.name == "date"
+        for col in ("cnpj_8", "instituicao", "segmento", "situacao"):
             assert col in df.columns
 
     def test_read_filters_by_institution(

@@ -471,7 +471,7 @@ class IFDATAExplorer(BaseExplorer):
         )
         periodos = self._resolve_date_range(start, end, trimestral=True)
         if not periodos:
-            return pd.DataFrame(columns=self._COLUMN_ORDER)
+            return self._to_datetime_index(pd.DataFrame(columns=self._COLUMN_ORDER))
 
         frames = self._collect_frames(
             escopos, periodos, instituicao, conta, relatorio, grupo, columns
@@ -485,7 +485,7 @@ class IFDATAExplorer(BaseExplorer):
                 had_conta_filter=conta is not None,
                 had_institution_filter=instituicao is not None,
             )
-            return pd.DataFrame(columns=self._COLUMN_ORDER)
+            return self._to_datetime_index(pd.DataFrame(columns=self._COLUMN_ORDER))
 
         df = pd.concat(frames, ignore_index=True)
         self._logger.info(
@@ -514,6 +514,7 @@ class IFDATAExplorer(BaseExplorer):
                 )
 
         df = self._filter_columns(df, columns)
+        df = self._to_datetime_index(df)
         if diag is not None:
             df.attrs["era"] = diag
         return df
