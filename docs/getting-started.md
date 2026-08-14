@@ -137,6 +137,23 @@ df = bcb.cadastro.read("2024-12", segmento="Banco Multiplo")
 
 A biblioteca usa CNPJ de 8 digitos (base do CNPJ, sem filial e digito verificador) como identificador unico de instituicoes. Este formato evita ambiguidades entre filiais e garante consistencia entre as fontes.
 
+Voce nao precisa normalizar antes de consultar. Sao aceitos a base de 8 digitos
+e o CNPJ completo de 14, com ou sem formatacao -- os quatro valores abaixo
+consultam a mesma instituicao:
+
+```python
+bcb.cosif.read("2024-12", instituicao="60872504")
+bcb.cosif.read("2024-12", instituicao="60.872.504")
+bcb.cosif.read("2024-12", instituicao="60872504000123")
+bcb.cosif.read("2024-12", instituicao="60.872.504/0001-23")
+```
+
+No CNPJ completo os digitos verificadores sao conferidos antes do truncamento,
+entao um numero digitado errado levanta `InvalidIdentifierError` em vez de
+consultar uma instituicao que nao existe. Valores com menos de 8 digitos sao
+rejeitados: sem zero a esquerda, `"1234567"` viraria um CNPJ diferente e
+plausivel.
+
 ```python
 # Correto: start posicional, instituicao keyword-only
 bcb.cosif.read("2024-12", instituicao="60872504", escopo="prudencial")
@@ -433,8 +450,8 @@ cache = get_settings().cache_path
 A biblioteca usa excecoes especificas para diferentes situacoes:
 
 ```python
-from ifdata_bcb import BacenAnalysisError, DataUnavailableError
-from ifdata_bcb.domain.exceptions import (
+from ifdata_bcb import (
+    BacenAnalysisError,
     InvalidIdentifierError,
     MissingRequiredParameterError,
     InvalidScopeError,
@@ -452,14 +469,44 @@ except BacenAnalysisError as e:
     print(f"Erro: {e}")
 ```
 
+Tudo -- excecoes e warnings -- e importavel direto de `ifdata_bcb`; nao e
+preciso conhecer o layout interno do pacote.
+
 | Excecao | Quando ocorre |
 |---------|---------------|
-| `InvalidIdentifierError` | CNPJ invalido ou nome ao inves de CNPJ |
+| `InvalidIdentifierError` | CNPJ invalido (nem base de 8 nem completo de 14 com DV valido) |
 | `MissingRequiredParameterError` | Parametro obrigatorio nao fornecido (ex: `start`) |
-| `InvalidScopeError` | Escopo invalido (ex: 'xyz') |
+| `InvalidScopeError` | Valor invalido em `escopo`, `fonte`, `source` ou `documento` |
+| `InvalidColumnError` | Coluna invalida em `columns=`, `list()` ou `cadastro=` |
 | `InvalidDateRangeError` | start > end |
-| `DataUnavailableError` | Dados nao disponiveis para o CNPJ/escopo |
+| `InvalidDateFormatError` | Formato de data invalido |
+| `PeriodUnavailableError` | Periodo nao disponivel na fonte (404) |
+| `DataProcessingError` | Falha no processamento (parquet corrompido, erro de query) |
 | `BacenAnalysisError` | Classe base para todos os erros |
+
+Dados indisponiveis nao levantam excecao: `read()` devolve DataFrame vazio e
+emite um warning explicando o motivo, para que um resultado parcial nao seja
+perdido inteiro. Todos os warnings herdam de `BacenWarning`, entao um filtro
+so silencia a biblioteca:
+
+```python
+import warnings
+from ifdata_bcb import BacenWarning
+
+warnings.simplefilter("ignore", BacenWarning)
+```
+
+| Warning | Quando ocorre |
+|---------|---------------|
+| `PartialDataWarning` | Resultado vazio ou incompleto, com o diagnostico do motivo |
+| `IncompatibleEraWarning` | A query cruza uma renumeracao de plano contabil do BCB |
+| `ScopeUnavailableWarning` | Escopo indisponivel para a entidade em parte do periodo |
+| `ScopeMigrationWarning` | Relatorio mudou de escopo entre eras |
+| `DroppedReportWarning` | Relatorio descontinuado a partir de uma era |
+| `NullValuesWarning` | Entidade presente, mas com todos os valores NULL |
+| `EmptyFilterWarning` | Filtro vazio (ex: `columns=[]`) |
+| `TruncatedResultWarning` | Resultado cortado pelo `limit` |
+| `BacenWarning` | Classe base para todos os warnings |
 
 ## Proximos Passos
 

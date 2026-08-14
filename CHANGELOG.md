@@ -1,5 +1,107 @@
 # Changelog
 
+## [Nao lancado]
+
+Release de DX. Nada aqui muda o dado que a biblioteca devolve; muda o que ela
+aceita, o que ela diz quando algo da errado e o que ela consegue contar sobre
+si mesma. Alvo declarado: agentes que montam a chamada seguinte a partir do que
+a lib responde.
+
+### Adicionado
+
+**`describe()` descreve a superficie de chamada, nao so o cache.** Alem dos
+periodos coletados, passa a devolver `escopos` validos, `filtros` aceitos por
+`read()`, `read_columns` (as colunas que `read()` devolve) e `cadastro_columns`
+(as validas em `cadastro=`). E o suficiente para montar uma chamada sem
+consultar a documentacao. `filtros` e derivado de `inspect.signature(read)`, e
+nao de uma lista escrita a mao que envelheceria no primeiro parametro novo. O
+retorno passa a ser tipado (`ExplorerInfo`, `TypedDict`) em vez de `dict` cru.
+
+**`BacenWarning`, base de todos os warnings da lib.** Silenciar o que a
+biblioteca emite passa a ser um filtro so:
+
+```python
+warnings.simplefilter("ignore", BacenWarning)
+```
+
+Antes era preciso listar as oito classes, e filtrar por `UserWarning` pegava
+tambem o que vinha de outras bibliotecas. Todas continuam herdando de
+`UserWarning`, entao quem ja filtrava assim nao muda.
+
+**Excecoes e warnings no top-level.** As nove excecoes e os nove warnings ficam
+importaveis direto de `ifdata_bcb`. Tratar erro ou filtrar warning deixa de
+exigir conhecer `ifdata_bcb.domain.exceptions`. O import continua barato: o
+modulo de excecoes nao importa nada, entao o lazy loading dos explorers segue
+intacto (ha teste em subprocesso fixando isso).
+
+**`collect()` aceita `end=None`**, coletando so o periodo de `start`, como
+`read()` ja fazia. Nas fontes trimestrais isso corrige um caminho que falhava
+em silencio: `collect('2024-07', '2024-07')` -- o workaround obvio, e o que os
+docs sugeriam -- alinhava o inicio para 202409, que fica maior que o `end`, e
+coletava zero periodos sem erro nenhum.
+
+**CNPJ aceito como o usuario cola.** `instituicao=` passa a aceitar a base de 8
+digitos e o CNPJ completo de 14, com ou sem formatacao: `'60872504'`,
+`'60.872.504'`, `'60872504000123'` e `'60.872.504/0001-23'` consultam a mesma
+instituicao. Nos 14 digitos os verificadores sao conferidos antes do
+truncamento, entao um numero digitado errado levanta `InvalidIdentifierError`
+em vez de consultar uma instituicao que nao existe. Valores com menos de 8
+digitos continuam rejeitados: completar com zero a esquerda produziria um CNPJ
+diferente e plausivel.
+
+**Autocomplete no ponto de entrada.** `bcb.cosif`, `bcb.ifdata` e
+`bcb.cadastro` sao resolvidos por `__getattr__`, entao Pyright e mypy os viam
+como `Any` -- zero autocomplete de `read()`/`collect()`/`search()`. Declarados
+sob `TYPE_CHECKING`, sem mudar o runtime.
+
+**Datas tipadas como o runtime sempre aceitou.** As assinaturas diziam
+`start: str`, mas `int`, `date`, `datetime` e `pd.Timestamp` ja funcionavam.
+`bcb.cosif.read(202412)` deixa de ser erro no type checker do usuario.
+
+### Corrigido
+
+**Mensagem corrompida em `documento` invalido.** `cosif.read(documento='abc')`
+respondia `"Escopo 'abc' invalido. Validos: 'v', 'a', 'l', 'o', 'r', ..."` --
+uma `str` chegava onde se esperava `list[str]` e era iterada caractere a
+caractere. Agora explica o formato e aponta `cosif.list(['DOCUMENTO'])`, e
+nomeia o elemento culpado quando a entrada e uma lista.
+
+**`source` invalido levantava `KeyError` cru**, fora de `BacenAnalysisError`,
+em `list_periodos()` e `describe()`. Passa a levantar `InvalidScopeError`, e
+quando o valor passado e um escopo a mensagem diz isso -- `ifdata.list_periodos('individual')`
+agora responde que `individual` e escopo e sugere `escopo='individual'`.
+
+**`cadastro.read()` sem resultado nao dizia nada.** COSIF e IFDATA ja
+diagnosticavam (falta `collect()`? filtro nao casou?); o cadastro devolvia
+vazio em silencio. Aplicada a mesma cascata.
+
+**`dir(bcb)` vazava internos** -- `Any`, `logger`, `TYPE_CHECKING`, `_cosif`,
+`_ifdata`, `_cadastro` apareciam junto da API publica.
+
+**Mensagens de `InvalidScopeError` nomeiam o parametro.** A classe atende
+`escopo`, `fonte`, `source` e `documento`, mas o texto comecava com "Escopo"
+fixo -- errado em tres dos quatro casos.
+
+### Alterado
+
+**Coluna invalida levanta `InvalidColumnError`, nao `InvalidScopeError`.**
+Vale para `read(columns=...)` e para `cadastro=`; `list()` ja usava a excecao
+certa, entao a mesma falha levantava tipos diferentes conforme o metodo. Quem
+capturava `InvalidScopeError` nesses dois casos precisa trocar para
+`InvalidColumnError`. Ambas herdam de `BacenAnalysisError`, entao quem captura
+a base nao e afetado.
+
+### Removido
+
+**`DataUnavailableError` sai do contrato publico.** Estava exportada e
+documentada, mas nenhum caminho da biblioteca a levantava -- quem escreveu
+`except DataUnavailableError` tem um handler que nunca executou. Escopo
+indisponivel para uma entidade continua sinalizado com
+`ScopeUnavailableWarning` mais DataFrame vazio, para que um resultado parcial
+nao se perca inteiro. A classe ainda existe em `ifdata_bcb.domain.exceptions` e
+sera removida na v1.0.0. Ha teste garantindo que toda excecao exportada tem
+`raise` em algum lugar do `src/`.
+
 ## [0.5.0] - 2026-08-04
 
 A v0.4.2 nunca chegou ao PyPI. O conteudo dela esta aqui: o ultimo release

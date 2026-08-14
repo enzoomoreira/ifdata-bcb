@@ -74,11 +74,11 @@ Coleta dados COSIF do BCB.
 
 ```python
 bcb.cosif.collect(
-    start: str,                    # Data inicial (YYYY-MM)
-    end: str,                      # Data final (YYYY-MM)
-    escopo: str | None = None,     # 'individual', 'prudencial', ou None (ambos)
-    force: bool = False,           # Se True, recoleta dados existentes
-    verbose: bool = True           # Se True, exibe progresso
+    start: DateScalar,                 # Data inicial
+    end: DateScalar | None = None,     # Data final. None = apenas start
+    escopo: str | None = None,         # 'individual', 'prudencial', ou None (ambos)
+    force: bool = False,               # Se True, recoleta dados existentes
+    verbose: bool = True               # Se True, exibe progresso
 )
 ```
 
@@ -88,11 +88,14 @@ bcb.cosif.collect(
 # Coletar ambos os escopos (padrao)
 bcb.cosif.collect("2024-01", "2024-12")
 
+# Periodo unico: end e opcional, como em read()
+bcb.cosif.collect("2024-12")
+
 # Coletar apenas prudencial
 bcb.cosif.collect("2024-01", "2024-12", escopo="prudencial")
 
 # Forcar recoleta
-bcb.cosif.collect("2024-12", "2024-12", force=True)
+bcb.cosif.collect("2024-12", force=True)
 ```
 
 ### read()
@@ -101,8 +104,8 @@ Le dados COSIF com filtros.
 
 ```python
 bcb.cosif.read(
-    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
-    end: str | None = None,                 # Data final para range (posicional)
+    start: DateScalar,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: DateScalar | None = None,                 # Data final para range (posicional)
     *,                                      # --- keyword-only a partir daqui ---
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos. Se None, retorna todas (bulk)
     escopo: str | None = None,              # 'individual', 'prudencial', ou None (TODOS)
@@ -179,8 +182,8 @@ Lista contas disponiveis nos dados.
 bcb.cosif.list_contas(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
     escopo: str | None = None,     # 'individual', 'prudencial', ou None (ambos)
-    start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
-    end: str | None = None,        # Periodo final. Se None com start, filtra data unica
+    start: DateScalar | None = None,      # Periodo inicial (filtra contas que existem no periodo)
+    end: DateScalar | None = None,        # Periodo final. Se None com start, filtra data unica
     limit: int = 100               # Numero maximo de contas. Deve ser > 0
 ) -> pd.DataFrame
 ```
@@ -210,8 +213,8 @@ Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 bcb.cosif.list(
     columns: list[str],            # Colunas a listar: DATA, ESCOPO, DOCUMENTO
     *,
-    start: str | None = None,      # Periodo inicial
-    end: str | None = None,        # Periodo final
+    start: DateScalar | None = None,      # Periodo inicial
+    end: DateScalar | None = None,        # Periodo final
     escopo: str | None = None,     # Filtro por escopo
     documento: str | list[str] | None = None,  # Filtro por documento
     limit: int = 100               # Maximo de resultados
@@ -248,11 +251,21 @@ periodos = bcb.cosif.list_periodos()  # Retorna [202401, 202402, ...]
 
 ### describe()
 
-Retorna informacoes sobre os dados disponiveis (herdado de BaseExplorer).
+Retorna o que o explorer aceita e o que ha coletado (herdado de BaseExplorer).
+As chaves de capacidade descrevem a superficie de chamada, o suficiente para
+montar um `read()` sem consultar esta pagina.
 
 ```python
 info = bcb.cosif.describe()
 # {
+#     # o que o explorer aceita
+#     'escopos': ['individual', 'prudencial'],
+#     'filtros': ['conta', 'documento', 'escopo', 'instituicao'],
+#     'columns': ['DATA', 'DOCUMENTO', 'ESCOPO'],          # listaveis por list()
+#     'read_columns': ['DATA', 'CNPJ_8', 'INSTITUICAO', ...],  # devolvidas por read()
+#     'cadastro_columns': ['ATIVIDADE', 'CNPJ_LIDER_8', ...],  # validas em cadastro=
+#
+#     # o que ha em disco
 #     'sources': ['individual', 'prudencial'],
 #     'periods': [202401, 202402, ...],
 #     'period_count': 12,
@@ -265,6 +278,11 @@ info = bcb.cosif.describe()
 #     }
 # }
 ```
+
+`filtros` e derivado da assinatura real de `read()`, entao nao envelhece.
+`describe(source)` devolve as mesmas chaves de capacidade mais `source`,
+`subdir` e `prefix` da fonte pedida; `source` desconhecido levanta
+`InvalidScopeError`.
 
 ### check_era()
 
@@ -447,7 +465,7 @@ O warning nao bloqueia a query. O diagnostico completo fica em `df.attrs['era']`
 ## Tratamento de Erros
 
 ```python
-from ifdata_bcb.domain.exceptions import (
+from ifdata_bcb import (
     MissingRequiredParameterError,
     InvalidDateRangeError,
     InvalidScopeError,

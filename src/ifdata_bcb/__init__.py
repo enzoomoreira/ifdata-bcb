@@ -42,7 +42,6 @@ from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
     BacenWarning,
     DataProcessingError,
-    DataUnavailableError,
     DroppedReportWarning,
     EmptyFilterWarning,
     IncompatibleEraWarning,
@@ -138,7 +137,6 @@ __all__ = [
     # Excecoes (BacenAnalysisError = base de todas)
     "BacenAnalysisError",
     "DataProcessingError",
-    "DataUnavailableError",
     "InvalidColumnError",
     "InvalidDateFormatError",
     "InvalidDateRangeError",

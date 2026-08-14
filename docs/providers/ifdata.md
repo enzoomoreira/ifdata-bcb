@@ -46,10 +46,10 @@ Coleta dados IFDATA Valores do BCB.
 
 ```python
 bcb.ifdata.collect(
-    start: str,           # Data inicial (YYYY-MM)
-    end: str,             # Data final (YYYY-MM)
-    force: bool = False,  # Se True, recoleta dados existentes
-    verbose: bool = True  # Se True, exibe progresso
+    start: DateScalar,              # Data inicial
+    end: DateScalar | None = None,  # Data final. None = apenas o trimestre de start
+    force: bool = False,            # Se True, recoleta dados existentes
+    verbose: bool = True            # Se True, exibe progresso
 )
 ```
 
@@ -62,9 +62,16 @@ bcb.ifdata.collect(
 bcb.ifdata.collect("2024-01", "2024-12")
 # Coleta apenas: 202403, 202406, 202409, 202412
 
+# Trimestre unico: end e opcional, e start e alinhado para o fim do trimestre
+bcb.ifdata.collect("2024-07")  # coleta 202409
+
 # Forcar recoleta
-bcb.ifdata.collect("2024-12", "2024-12", force=True)
+bcb.ifdata.collect("2024-12", force=True)
 ```
+
+**Nao use `collect(x, x)` para um periodo unico.** Numa fonte trimestral o
+range alinha o inicio para o fim do trimestre, que fica maior que o `end`, e a
+chamada coleta zero periodos sem erro nenhum. Passe apenas `start`.
 
 ### read()
 
@@ -72,8 +79,8 @@ Le dados IFDATA Valores com filtros.
 
 ```python
 bcb.ifdata.read(
-    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
-    end: str | None = None,                 # Data final para range (posicional)
+    start: DateScalar,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: DateScalar | None = None,                 # Data final para range (posicional)
     *,                                      # --- keyword-only a partir daqui ---
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos. Se None, retorna todas (bulk)
     escopo: str | None = None,              # 'individual', 'prudencial', 'financeiro', ou None
@@ -133,8 +140,8 @@ bcb.ifdata.list_contas(
     termo: str | None = None,      # Filtro por nome (case-insensitive)
     escopo: str | None = None,     # 'individual', 'prudencial', 'financeiro'
     relatorio: str | None = None,  # Filtro por relatorio (case/accent-insensitive)
-    start: str | None = None,      # Periodo inicial (filtra contas que existem no periodo)
-    end: str | None = None,        # Periodo final. Se None com start, filtra data unica
+    start: DateScalar | None = None,      # Periodo inicial (filtra contas que existem no periodo)
+    end: DateScalar | None = None,        # Periodo final. Se None com start, filtra data unica
     limit: int = 100               # Numero maximo de contas. Deve ser > 0
 ) -> pd.DataFrame
 ```
@@ -167,8 +174,8 @@ Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 bcb.ifdata.list(
     columns: list[str],            # Colunas a listar: DATA, ESCOPO, RELATORIO, GRUPO
     *,
-    start: str | None = None,      # Periodo inicial
-    end: str | None = None,        # Periodo final
+    start: DateScalar | None = None,      # Periodo inicial
+    end: DateScalar | None = None,        # Periodo final
     escopo: str | None = None,     # Filtro por escopo
     relatorio: str | None = None,  # Filtro por relatorio (case/accent insensitive)
     grupo: str | None = None,      # Filtro por grupo (case/accent insensitive)
@@ -205,8 +212,8 @@ Tabela de mapeamento COD_INST <-> CNPJ_8 por escopo.
 
 ```python
 bcb.ifdata.mapeamento(
-    start: str | None = None,      # Data inicial ou unica
-    end: str | None = None         # Data final para range
+    start: DateScalar | None = None,      # Data inicial ou unica
+    end: DateScalar | None = None         # Data final para range
 ) -> pd.DataFrame
 ```
 
@@ -243,11 +250,19 @@ periodos = bcb.ifdata.list_periodos()  # Retorna [202403, 202406, ...]
 
 ### describe()
 
-Retorna informacoes sobre os dados disponiveis (herdado de BaseExplorer).
+Retorna o que o explorer aceita e o que ha coletado (herdado de BaseExplorer).
+Ver [cosif.md](cosif.md#describe) para o formato completo.
 
 ```python
 info = bcb.ifdata.describe()
+info["escopos"]  # ['individual', 'prudencial', 'financeiro']
+info["filtros"]  # ['conta', 'escopo', 'grupo', 'instituicao', 'relatorio']
 ```
+
+O IFDATA tem uma unica fonte de armazenamento (`'default'`); os escopos sao
+resolvidos por `TipoInstituicao` dentro dela, e nao por diretorio. Por isso
+`list_periodos('individual')` levanta `InvalidScopeError` -- `individual` e
+escopo, nao fonte.
 
 ### check_era()
 
@@ -479,7 +494,7 @@ Valores de `status`: `estavel` (contas praticamente iguais dos dois lados), `ren
 ## Tratamento de Erros
 
 ```python
-from ifdata_bcb.domain.exceptions import (
+from ifdata_bcb import (
     MissingRequiredParameterError,
     InvalidDateRangeError,
 )

@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -105,6 +106,26 @@ class TestTopLevelReexport:
     )
     def test_e_a_mesma_classe_do_modulo_interno(self, nome: str) -> None:
         assert getattr(bcb, nome) is getattr(exceptions, nome)
+
+    def test_toda_excecao_exportada_e_levantada_em_algum_lugar(self) -> None:
+        """3.9: DataUnavailableError ficou anos exportada sem nenhum `raise`.
+
+        Quem escrevia `except DataUnavailableError` tinha handler morto e nao
+        tinha como descobrir. Este teste faz o contrato falhar alto: se um
+        nome esta no __all__ como erro, algum caminho do src/ tem que levanta-lo.
+        """
+        src = Path(exceptions.__file__).parent.parent
+        codigo = "\n".join(p.read_text(encoding="utf-8") for p in src.rglob("*.py"))
+        exportadas = [
+            n
+            for n in bcb.__all__
+            if isinstance(getattr(bcb, n, None), type)
+            and issubclass(getattr(bcb, n), BacenAnalysisError)
+            and n != "BacenAnalysisError"  # base, capturada e nao levantada
+        ]
+        assert exportadas, "nenhuma excecao exportada -- o filtro quebrou"
+        sem_raise = [n for n in exportadas if f"raise {n}(" not in codigo]
+        assert sem_raise == []
 
     def test_reexport_nao_carrega_pandas(self) -> None:
         """As excecoes sao eager; o lazy loading dos explorers tem que sobreviver.

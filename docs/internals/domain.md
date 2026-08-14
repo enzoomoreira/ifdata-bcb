@@ -22,7 +22,7 @@ src/ifdata_bcb/domain/
 Exception
     +-- BacenAnalysisError (base)
     |       +-- InvalidScopeError
-    |       +-- DataUnavailableError
+    |       +-- DataUnavailableError      (nao levantada; sai na v1.0.0)
     |       +-- InvalidIdentifierError
     |       +-- MissingRequiredParameterError
     |       +-- InvalidDateRangeError
@@ -31,13 +31,15 @@ Exception
     |       +-- DataProcessingError
     |       +-- InvalidColumnError
     +-- UserWarning
-            +-- IncompatibleEraWarning
-            +-- PartialDataWarning
-            +-- ScopeUnavailableWarning
-            +-- NullValuesWarning
-            +-- ScopeMigrationWarning
-            +-- DroppedReportWarning
-            +-- EmptyFilterWarning
+            +-- BacenWarning (base dos warnings da lib)
+                    +-- IncompatibleEraWarning
+                    +-- PartialDataWarning
+                    +-- ScopeUnavailableWarning
+                    +-- NullValuesWarning
+                    +-- ScopeMigrationWarning
+                    +-- DroppedReportWarning
+                    +-- EmptyFilterWarning
+                    +-- TruncatedResultWarning
             +-- TruncatedResultWarning
 ```
 
@@ -63,14 +65,23 @@ class BacenAnalysisError(Exception):
 
 ### InvalidScopeError
 
-Escopo ou tipo invalido:
+Valor invalido para um parametro de dominio fechado. Usada para `escopo`,
+`fonte`, `source` e `documento` -- por isso a mensagem nomeia o parametro em
+vez de dizer sempre "Escopo".
 
 ```python
 class InvalidScopeError(BacenAnalysisError):
-    def __init__(self, scope: str, value: str, valid_values: list[str]):
+    def __init__(
+        self,
+        scope: str,
+        value: str,
+        valid_values: list[str],
+        hint: str = "",
+    ):
         self.scope = scope
         self.value = value
-        self.valid_values = valid_values
+        self.valid_values = list(valid_values)
+        self.hint = hint
 
 
 # Uso
@@ -79,29 +90,45 @@ raise InvalidScopeError(
     value="invalido",
     valid_values=["individual", "prudencial", "financeiro"],
 )
-# Mensagem: "Escopo 'invalido' invalido. Validos: 'individual', 'prudencial', 'financeiro'."
+# "Valor invalido para 'escopo': 'invalido'. Validos: 'individual', 'prudencial', 'financeiro'."
+```
+
+`valid_values` vazio omite a clausula "Validos:". Serve para parametros cujo
+dominio nao e enumeravel a priori, onde `hint` explica o formato:
+
+```python
+raise InvalidScopeError(
+    scope="documento",
+    value="abc",
+    valid_values=[],
+    hint="Esperado codigo numerico (ex: 4010, 4016).",
+)
+# "Valor invalido para 'documento': 'abc'. Esperado codigo numerico (ex: 4010, 4016)."
 ```
 
 ### DataUnavailableError
 
-Dados nao disponiveis para a consulta:
+Nao levantada por nenhum caminho da biblioteca. Escopo indisponivel para uma
+entidade e sinalizado com `ScopeUnavailableWarning` mais DataFrame vazio, e
+nao com excecao: o consumidor recebe os dados parciais junto do diagnostico em
+vez de perder o resultado inteiro.
+
+Saiu do contrato publico na v0.6.0 e a classe sera removida na v1.0.0.
+
+### BacenWarning
+
+Base dos warnings da biblioteca. Existe para que um unico filtro cubra tudo
+que a lib emite:
 
 ```python
-class DataUnavailableError(BacenAnalysisError):
-    def __init__(self, entity: str, scope_type: str, reason: str = ""):
-        self.entity = entity
-        self.scope_type = scope_type
-        self.reason = reason
+import warnings
+from ifdata_bcb import BacenWarning
 
-
-# Uso
-raise DataUnavailableError(
-    entity="60872504",
-    scope_type="financeiro",
-    reason="Instituicao nao possui dados de conglomerado financeiro",
-)
-# Mensagem: "Dados indisponiveis para '60872504' no escopo 'financeiro'. ..."
+warnings.simplefilter("ignore", BacenWarning)
 ```
+
+Continua herdando de `UserWarning`, entao quem ja filtrava por `UserWarning`
+nao e afetado. Warnings de providers novos devem derivar dela.
 
 ### InvalidIdentifierError
 
@@ -449,11 +476,11 @@ except BacenAnalysisError as e:
 ### Capturar Erros Especificos
 
 ```python
-from ifdata_bcb.domain.exceptions import (
+from ifdata_bcb import (
     InvalidIdentifierError,
     MissingRequiredParameterError,
     InvalidDateRangeError,
-    DataUnavailableError,
+    InvalidColumnError,
 )
 
 try:
@@ -464,8 +491,8 @@ except MissingRequiredParameterError as e:
     print(f"Faltou: {e.param_name}")
 except InvalidDateRangeError as e:
     print(f"Datas invertidas: {e.start} > {e.end}")
-except DataUnavailableError as e:
-    print(f"Sem dados para {e.entity} em {e.scope_type}")
+except InvalidColumnError as e:
+    print(f"Coluna invalida: {e.column}. Disponiveis: {e.valid_columns}")
 ```
 
 ### Padroes de Validacao em Explorers
@@ -509,20 +536,19 @@ from ifdata_bcb.domain.types import DateInput, AccountInput, InstitutionInput
 from ifdata_bcb.domain.validation import ValidatedCnpj8, NormalizedDates
 ```
 
-Re-export no `__init__.py` raiz (lazy, apenas as mais comuns):
+Re-export no `__init__.py` raiz. O conjunto publico inteiro -- as nove
+excecoes levantadas e os nove warnings -- fica disponivel em `ifdata_bcb`,
+para que tratar erro ou filtrar warning nao exija conhecer o layout interno:
 
 ```python
 # ifdata_bcb/__init__.py
 from ifdata_bcb.domain.exceptions import (
     BacenAnalysisError,
-    DataUnavailableError,
+    BacenWarning,
+    # ... o restante do conjunto publico
 )
-
-__all__ = [
-    "cosif",
-    "ifdata",
-    "cadastro",
-    "BacenAnalysisError",
-    "DataUnavailableError",
-]
 ```
+
+Os imports sao eager, e nao lazy como os explorers: `domain/exceptions.py` nao
+importa nada, entao expo-los nao carrega pandas nem duckdb. Ha teste em
+subprocesso fixando isso -- e a condicao que sustenta o lazy loading.

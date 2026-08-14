@@ -562,17 +562,16 @@ collector = COSIFCollector("individual", data_manager=dm)
 
 ```
 BacenAnalysisError (base)
-  InvalidScopeError              # Escopo invalido
-  DataUnavailableError           # Dados nao disponiveis
-  InvalidIdentifierError         # CNPJ invalido (nao tem 8 digitos)
+  InvalidScopeError              # Valor invalido em escopo/fonte/source/documento
+  InvalidIdentifierError         # CNPJ invalido (base de 8 ou completo de 14 com DV)
   MissingRequiredParameterError  # Param obrigatorio faltando
   InvalidDateRangeError          # start > end
   InvalidDateFormatError         # Formato de data invalido
   PeriodUnavailableError         # Periodo nao disponivel na fonte (404)
   DataProcessingError            # Falha no processamento de dados
-  InvalidColumnError             # Coluna invalida para list()
+  InvalidColumnError             # Coluna invalida em read(), list() ou cadastro=
 
-UserWarning
+BacenWarning (base, herda de UserWarning)
   IncompatibleEraWarning         # Query cruza fronteira de era
   PartialDataWarning             # Resultado incompleto
   ScopeUnavailableWarning        # Escopo indisponivel para entidade
@@ -583,10 +582,13 @@ UserWarning
   TruncatedResultWarning         # Resultado truncado pelo limit
 ```
 
+Um provider novo deve derivar seus warnings de `BacenWarning`: e o que faz
+`warnings.simplefilter("ignore", BacenWarning)` cobrir a biblioteca inteira.
+
 ### Uso
 
 ```python
-from ifdata_bcb.domain.exceptions import (
+from ifdata_bcb import (
     BacenAnalysisError,
     InvalidIdentifierError,
     PeriodUnavailableError,

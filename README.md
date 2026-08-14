@@ -144,9 +144,9 @@ bcb.cosif  # COSIFExplorer
 bcb.ifdata  # IFDATAExplorer
 bcb.cadastro  # CadastroExplorer
 
-# Exceptions
-bcb.BacenAnalysisError  # Classe base para todos os erros
-bcb.DataUnavailableError  # Dados nao disponiveis
+# Excecoes e warnings (todos importaveis do top-level)
+bcb.BacenAnalysisError  # Classe base de todos os erros
+bcb.BacenWarning  # Classe base de todos os warnings
 ```
 
 ### Metodos dos Explorers
@@ -155,11 +155,11 @@ Todos os explorers possuem:
 
 | Metodo | Descricao |
 |--------|-----------|
-| `collect(start, end, ...)` | Coleta dados do BCB |
+| `collect(start, end=None, ...)` | Coleta dados do BCB. `end=None` coleta so o periodo de `start` |
 | `read(start, end, *, instituicao, ...)` | Le dados com filtros (`start` posicional, demais keyword-only) |
 | `list(columns, *, ...)` | Lista valores distintos para colunas (SELECT DISTINCT) |
 | `list_periodos()` | Periodos disponiveis |
-| `describe()` | Metadados do provider (inclui `columns` aceitas por `list()`) |
+| `describe()` | Escopos, filtros e colunas aceitas, mais os periodos coletados |
 | `has_data()` | Verifica se tem dados |
 
 Metodos especificos:

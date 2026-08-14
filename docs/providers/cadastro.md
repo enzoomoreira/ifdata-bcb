@@ -34,10 +34,10 @@ Coleta dados cadastrais do BCB.
 
 ```python
 bcb.cadastro.collect(
-    start: str,           # Data inicial (YYYY-MM)
-    end: str,             # Data final (YYYY-MM)
-    force: bool = False,  # Se True, recoleta dados existentes
-    verbose: bool = True  # Se True, exibe progresso
+    start: DateScalar,              # Data inicial
+    end: DateScalar | None = None,  # Data final. None = apenas o trimestre de start
+    force: bool = False,            # Se True, recoleta dados existentes
+    verbose: bool = True            # Se True, exibe progresso
 )
 ```
 
@@ -46,6 +46,9 @@ bcb.cadastro.collect(
 ```python
 # Coletar cadastro de 2024
 bcb.cadastro.collect("2024-01", "2024-12")
+
+# Trimestre unico
+bcb.cadastro.collect("2024-12")
 ```
 
 ### read()
@@ -54,8 +57,8 @@ Le dados cadastrais com filtros.
 
 ```python
 bcb.cadastro.read(
-    start: str,                             # Data inicial ou unica. OBRIGATORIO (posicional)
-    end: str | None = None,                 # Data final para range (posicional)
+    start: DateScalar,                             # Data inicial ou unica. OBRIGATORIO (posicional)
+    end: DateScalar | None = None,                 # Data final para range (posicional)
     *,                                      # --- keyword-only a partir daqui ---
     instituicao: str | list[str] | None = None,  # CNPJ(s) de 8 digitos (opcional)
     segmento: str | None = None,            # Segmento para filtrar (accent-insensitive)
@@ -116,8 +119,8 @@ Lista valores distintos para colunas solicitadas (SELECT DISTINCT via DuckDB).
 bcb.cadastro.list(
     columns: list[str],            # Colunas a listar (ver tabela abaixo)
     *,
-    start: str | None = None,      # Periodo inicial
-    end: str | None = None,        # Periodo final
+    start: DateScalar | None = None,      # Periodo inicial
+    end: DateScalar | None = None,        # Periodo final
     segmento: str | None = None,   # Filtro por segmento (case/accent insensitive)
     uf: str | None = None,         # Filtro por UF
     situacao: str | None = None,   # Filtro por situacao
@@ -164,8 +167,8 @@ bcb.cadastro.search(
     *,
     fonte: str | None = None,       # "ifdata", "cosif", ou None (todas)
     escopo: str | None = None,      # Filtra por escopo disponivel na fonte
-    start: str | None = None,       # Periodo inicial
-    end: str | None = None,         # Periodo final
+    start: DateScalar | None = None,       # Periodo inicial
+    end: DateScalar | None = None,         # Periodo final
     limit: int = 100                # Maximo de resultados
 ) -> pd.DataFrame
 ```
@@ -414,7 +417,7 @@ df = bcb.cadastro.search("XYZNONEXISTENT")
 assert df.empty
 
 # Coluna invalida em list()
-from ifdata_bcb.domain.exceptions import InvalidColumnError
+from ifdata_bcb import InvalidColumnError
 
 try:
     bcb.cadastro.list(["FOO"])
@@ -423,7 +426,7 @@ except InvalidColumnError as e:
     # Coluna 'FOO' invalida. Disponiveis: ATIVIDADE, DATA, MUNICIPIO, ...
 
 # Fonte/escopo invalido em search()
-from ifdata_bcb.domain.exceptions import InvalidScopeError
+from ifdata_bcb import InvalidScopeError
 
 try:
     bcb.cadastro.search(fonte="cosif", escopo="financeiro")  # COSIF nao tem financeiro
