@@ -22,9 +22,9 @@ from ifdata_bcb.domain.types import (
     AccountInput,
     DateInput,
     DateScalar,
+    EscopoInfo,
     ExplorerInfo,
     InstitutionInput,
-    SourceInfo,
 )
 from ifdata_bcb.domain.validation import (
     normalize_accounts,
@@ -61,7 +61,8 @@ class BaseExplorer(ABC):
     Multi-source (mesmo schema, multiplas fontes):
     - Override _get_sources() para retornar dict de fontes
     - Exemplo: COSIF com escopos 'individual' e 'prudencial'
-    - Metodos list_periodos(), has_data(), describe() suportam parametro source
+    - list_periodos(), has_data() e describe() aceitam escopo; explorers com
+      escopos implementam _periodos_por_escopo() para responder por ele
 
     Metodos read() e collect() tem assinaturas especificas por provider,
     portanto nao sao declarados na base.
@@ -543,11 +544,6 @@ class BaseExplorer(ABC):
 
         return df
 
-    def _get_latest_periodo(self, source: str | None = None) -> int | None:
-        """Retorna o periodo mais recente disponivel, ou None."""
-        periods = self.list_periodos(source)
-        return periods[-1] if periods else None
-
     def _list_periodos_for_source(self, subdir: str, prefix: str) -> list[int]:
         """Lista periodos de uma fonte especifica."""
         files = list_parquet_files(subdir, base_path=self._qe.cache_path)
@@ -561,52 +557,50 @@ class BaseExplorer(ABC):
                     continue
         return periods
 
-    def _resolve_source(self, source: str) -> dict[str, str]:
-        """Resolve nome de fonte para sua config. Levanta erro em vez de KeyError.
+    def _require_escopo(self, escopo: str) -> str:
+        """Valida escopo em list_periodos()/has_data()/describe().
 
-        `source` e a fonte de armazenamento, que no COSIF coincide com os
-        escopos e nos demais explorers e sempre "default". O palpite natural
-        (ifdata.list_periodos('individual')) precisa de uma dica, nao de um
-        KeyError cru.
+        _validate_escopo aceita qualquer valor quando _VALID_ESCOPOS e vazio;
+        aqui isso e erro: um explorer sem escopos nao tem o que filtrar.
         """
-        sources = self._get_sources()
-        if source in sources:
-            return sources[source]
-
-        hint = ""
-        if source.lower() in self._VALID_ESCOPOS:
-            hint = (
-                f"'{source}' e um escopo, nao uma fonte de armazenamento deste "
-                f"explorer. Use escopo='{source.lower()}' em read()/list_values()."
+        if not self._VALID_ESCOPOS:
+            raise InvalidScopeError(
+                "escopo",
+                escopo,
+                [],
+                hint=f"{type(self).__name__} nao tem escopos; chame sem escopo.",
             )
-        raise InvalidScopeError("source", source, sorted(sources), hint=hint)
+        return self._validate_escopo(escopo)
 
-    def list_periodos(self, source: str | None = None) -> list[int]:
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        """Mapa escopo -> periodos disponiveis. Override onde ha escopos."""
+        return {}
+
+    def list_periodos(self, escopo: str | None = None) -> list[int]:
         """
         Lista periodos disponiveis.
 
         Args:
-            source: Nome da fonte (para multi-source). Se None, retorna uniao de todas.
+            escopo: Filtra pelos periodos com dados desse escopo. Se None,
+                retorna a uniao de todos.
 
         Raises:
-            InvalidScopeError: Se source nao for uma fonte conhecida.
+            InvalidScopeError: Se escopo nao for valido para o explorer.
         """
-        sources = self._get_sources()
-
-        if source:
-            cfg = self._resolve_source(source)
-            return sorted(self._list_periodos_for_source(cfg["subdir"], cfg["prefix"]))
+        if escopo is not None:
+            validado = self._require_escopo(escopo)
+            return sorted(self._periodos_por_escopo().get(validado, []))
 
         all_periods: set[int] = set()
-        for cfg in sources.values():
+        for cfg in self._get_sources().values():
             all_periods.update(
                 self._list_periodos_for_source(cfg["subdir"], cfg["prefix"])
             )
         return sorted(all_periods)
 
-    def has_data(self, source: str | None = None) -> bool:
+    def has_data(self, escopo: str | None = None) -> bool:
         """Verifica se ha dados disponiveis."""
-        return len(self.list_periodos(source)) > 0
+        return len(self.list_periodos(escopo)) > 0
 
     def _read_signature_info(self) -> tuple[list[str], list[str]]:
         """Filtros aceitos por read() e colunas validas em cadastro=.
@@ -645,7 +639,7 @@ class BaseExplorer(ABC):
             "cadastro_columns": cadastro_columns,
         }
 
-    def describe(self, source: str | None = None) -> ExplorerInfo:
+    def describe(self, escopo: str | None = None) -> ExplorerInfo:
         """
         Retorna o que o explorer aceita e o que ha coletado.
 
@@ -655,33 +649,30 @@ class BaseExplorer(ABC):
         montar uma chamada a read() sem ler a documentacao.
 
         Args:
-            source: Nome da fonte (para multi-source). Se None, descreve todas.
+            escopo: Restringe os periodos a um escopo. Se None, descreve todos
+                (com resumo por escopo em by_escopo, quando o explorer tem escopos).
 
         Raises:
-            InvalidScopeError: Se source nao for uma fonte conhecida.
+            InvalidScopeError: Se escopo nao for valido para o explorer.
         """
-        sources = self._get_sources()
         result: ExplorerInfo = self._describe_capabilities()
 
-        if source:
-            cfg = self._resolve_source(source)
-            periods = self.list_periodos(source)
-            result["source"] = source
-            result["subdir"] = cfg["subdir"]
-            result["prefix"] = cfg["prefix"]
+        if escopo is not None:
+            validado = self._require_escopo(escopo)
+            periods = sorted(self._periodos_por_escopo().get(validado, []))
+            result["escopo"] = validado
         else:
             periods = self.list_periodos()
-            by_source: dict[str, SourceInfo] = {}
-            for name, cfg in sources.items():
-                source_periods = self.list_periodos(name)
-                by_source[name] = {
-                    "subdir": cfg["subdir"],
-                    "prefix": cfg["prefix"],
-                    "period_count": len(source_periods),
-                    "has_data": len(source_periods) > 0,
-                }
-            result["sources"] = list(sources.keys())
-            result["by_source"] = by_source
+            if self._VALID_ESCOPOS:
+                por_escopo = self._periodos_por_escopo()
+                by_escopo: dict[str, EscopoInfo] = {}
+                for esc in self._VALID_ESCOPOS:
+                    esc_periods = por_escopo.get(esc, [])
+                    by_escopo[esc] = {
+                        "period_count": len(esc_periods),
+                        "has_data": len(esc_periods) > 0,
+                    }
+                result["by_escopo"] = by_escopo
 
         result["periods"] = periods
         result["period_count"] = len(periods)

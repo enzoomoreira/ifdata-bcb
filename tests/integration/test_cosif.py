@@ -121,7 +121,8 @@ class TestCOSIFListMethods:
         info = explorers[0].describe()
         assert info["has_data"] is True
         assert info["period_count"] >= 1
-        assert "by_source" in info
+        assert set(info["by_escopo"]) == {"individual", "prudencial"}
+        assert info["by_escopo"]["individual"]["has_data"] is True
 
     def test_list_contas(
         self, explorers: tuple[COSIFExplorer, IFDATAExplorer, CadastroExplorer]

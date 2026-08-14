@@ -1,7 +1,9 @@
 """QA: inputs invalidos -- simula usuario real passando dados errados."""
 
 import contextlib
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from ifdata_bcb.core.entity import EntitySearch
@@ -13,6 +15,7 @@ from ifdata_bcb.domain.exceptions import (
     InvalidScopeError,
 )
 from ifdata_bcb.providers.cosif.explorer import COSIFExplorer
+from ifdata_bcb.providers.ifdata.cadastro.explorer import CadastroExplorer
 from ifdata_bcb.providers.ifdata.valores.explorer import IFDATAExplorer
 
 
@@ -112,24 +115,48 @@ class TestInvalidScope:
             qa_cosif.read("2023-03", instituicao="60872504", columns=["INVENTADA"])
 
 
-class TestSourceInvalido:
-    """source invalido dava KeyError cru, fora da hierarquia da lib."""
+class TestEscopoEmIntrospeccao:
+    """4.5: o parametro source foi unificado em escopo."""
 
-    def test_source_inexistente_no_cosif(self, qa_cosif: COSIFExplorer) -> None:
+    def test_escopo_inexistente_no_cosif(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(InvalidScopeError, match="individual"):
             qa_cosif.list_periodos("inexistente")
 
-    def test_describe_com_source_inexistente(self, qa_cosif: COSIFExplorer) -> None:
+    def test_describe_com_escopo_inexistente(self, qa_cosif: COSIFExplorer) -> None:
         with pytest.raises(InvalidScopeError):
             qa_cosif.describe("inexistente")
 
-    def test_escopo_passado_como_source_ganha_dica(
+    def test_ifdata_aceita_escopo_e_responde_pelos_dados(
         self, qa_ifdata: IFDATAExplorer
     ) -> None:
-        """No IFDATA a unica fonte e 'default'; 'individual' e o palpite natural."""
-        with pytest.raises(InvalidScopeError) as exc_info:
-            qa_ifdata.list_periodos("individual")
-        assert "escopo='individual'" in str(exc_info.value)
+        """Antes o palpite natural list_periodos('individual') dava erro."""
+        assert qa_ifdata.list_periodos("individual") == [202303]
+        assert qa_ifdata.list_periodos("financeiro") == [202303]
+
+    def test_ifdata_periodo_sem_o_escopo_fica_fora(
+        self, qa_ifdata: IFDATAExplorer, qa_cache: Path
+    ) -> None:
+        pd.DataFrame(
+            {
+                "AnoMes": pd.array([202306] * 2, dtype="Int64"),
+                "CodInst": ["60872504"] * 2,
+                "TipoInstituicao": pd.array([3, 3], dtype="Int64"),
+                "Conta": ["10100", "20200"],
+                "NomeColuna": ["ATIVO TOTAL", "PASSIVO TOTAL"],
+                "Saldo": [1e6, 8e5],
+                "NomeRelatorio": ["Resumo"] * 2,
+                "Grupo": ["Balanco"] * 2,
+            }
+        ).to_parquet(qa_cache / "ifdata/valores/ifdata_val_202306.parquet", index=False)
+        assert qa_ifdata.list_periodos("individual") == [202303, 202306]
+        assert qa_ifdata.list_periodos("financeiro") == [202303]
+        assert qa_ifdata.list_periodos() == [202303, 202306]
+
+    def test_explorer_sem_escopos_rejeita_escopo(
+        self, qa_cadastro: CadastroExplorer
+    ) -> None:
+        with pytest.raises(InvalidScopeError, match="nao tem escopos"):
+            qa_cadastro.list_periodos("individual")
 
 
 class TestPassthroughColumns:

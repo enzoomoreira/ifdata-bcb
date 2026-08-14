@@ -127,6 +127,26 @@ class IFDATAExplorer(BaseExplorer):
             self._collector = IFDATAValoresCollector()
         return self._collector
 
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        """No IFDATA escopo e coluna dos dados (TipoInstituicao), nao fonte.
+
+        Responde pela via dos dados: um periodo so aparece para o escopo se
+        ha linhas dele no parquet -- 'financeiro', por exemplo, nao existe em
+        todos os periodos.
+        """
+        if not self._ensure_data_exists():
+            return {}
+        path = self._qe.cache_path / self._get_subdir() / self._get_pattern()
+        df = self._qe.sql(
+            f"SELECT DISTINCT AnoMes AS ano_mes, "
+            f"{self._LIST_COLUMNS['ESCOPO']} AS escopo "
+            f"FROM read_parquet('{path}', union_by_name=true)"
+        )
+        return {
+            str(escopo): sorted(grupo["ano_mes"].astype(int).tolist())
+            for escopo, grupo in df.groupby("escopo")
+        }
+
     def _warn_escopo_unavailable(
         self,
         cnpjs: list[str],

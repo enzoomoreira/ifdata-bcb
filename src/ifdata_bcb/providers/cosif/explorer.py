@@ -118,6 +118,13 @@ class COSIFExplorer(BaseExplorer):
     def _get_escopo_config(self, escopo: EscopoCOSIF) -> dict[str, str]:
         return self._ESCOPOS[escopo]
 
+    def _periodos_por_escopo(self) -> dict[str, list[int]]:
+        """No COSIF os escopos coincidem com as fontes de armazenamento."""
+        return {
+            esc: self._list_periodos_for_source(cfg["subdir"], cfg["prefix"])
+            for esc, cfg in self._ESCOPOS.items()
+        }
+
     def _get_pattern_for_escopo(self, escopo: EscopoCOSIF) -> str:
         return f"{self._get_escopo_config(escopo)['prefix']}_*.parquet"
 

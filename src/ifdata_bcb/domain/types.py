@@ -17,11 +17,9 @@ AccountInput = str | list[str]
 InstitutionInput = str | list[str]
 
 
-class SourceInfo(TypedDict):
-    """Uma fonte de armazenamento dentro de describe()['by_source']."""
+class EscopoInfo(TypedDict):
+    """Um escopo dentro de describe()['by_escopo']."""
 
-    subdir: str
-    prefix: str
     period_count: int
     has_data: bool
 
@@ -29,9 +27,9 @@ class SourceInfo(TypedDict):
 class ExplorerInfo(TypedDict, total=False):
     """Retorno de Explorer.describe().
 
-    `total=False` porque o retorno tem duas formas: com `source=` vem
-    source/subdir/prefix da fonte pedida; sem, vem sources/by_source com todas.
-    O restante das chaves esta sempre presente.
+    `total=False` porque o retorno tem duas formas: com `escopo=` vem a chave
+    escopo e os periodos restritos a ele; sem, vem by_escopo com o resumo de
+    todos (apenas em explorers com escopos). O restante esta sempre presente.
 
     Chaves:
         escopos: valores aceitos em escopo=. Vazio quando nao ha escopo.
@@ -41,11 +39,8 @@ class ExplorerInfo(TypedDict, total=False):
         cadastro_columns: valores aceitos em cadastro=. Vazio se nao aceita.
     """
 
-    source: str
-    subdir: str
-    prefix: str
-    sources: list[str]
-    by_source: dict[str, SourceInfo]
+    escopo: str
+    by_escopo: dict[str, EscopoInfo]
 
     escopos: list[str]
     columns: list[str]
@@ -66,5 +61,5 @@ __all__ = [
     "AccountInput",
     "InstitutionInput",
     "ExplorerInfo",
-    "SourceInfo",
+    "EscopoInfo",
 ]

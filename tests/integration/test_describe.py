@@ -39,7 +39,7 @@ class TestChavesDeCapacidade:
             assert chave in explorer.describe(), type(explorer).__name__
 
     @pytest.mark.parametrize("chave", CAPACIDADES)
-    def test_presente_tambem_no_modo_source(
+    def test_presente_tambem_no_modo_escopo(
         self, todos: tuple[BaseExplorer, ...], chave: str
     ) -> None:
         """describe('individual') nao pode devolver menos que describe()."""
