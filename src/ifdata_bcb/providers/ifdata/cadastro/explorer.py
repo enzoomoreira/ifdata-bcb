@@ -200,6 +200,16 @@ class CadastroExplorer(BaseExplorer):
         self._logger.info(
             f"Cadastro read: instituicao={instituicao}, segmento={segmento} -> {len(df):,} rows"
         )
+        if df.empty:
+            # COSIF e IFDATA ja diagnosticavam; o cadastro devolvia vazio sem
+            # dizer se faltava collect() ou se o filtro e que nao casou.
+            self._diagnose_empty_result(
+                source_name="Cadastro",
+                has_files=self._ensure_data_exists(),
+                had_conta_filter=False,
+                had_institution_filter=instituicao is not None,
+                outros_filtros="periodo, segmento, uf, situacao, etc",
+            )
         return self._finalize_read(df)
 
     def list(

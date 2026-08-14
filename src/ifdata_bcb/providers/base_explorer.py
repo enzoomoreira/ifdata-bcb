@@ -1,5 +1,6 @@
 """Classe base abstrata para Explorers de dados do BCB."""
 
+import inspect
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
@@ -21,7 +22,9 @@ from ifdata_bcb.domain.types import (
     AccountInput,
     DateInput,
     DateScalar,
+    ExplorerInfo,
     InstitutionInput,
+    SourceInfo,
 )
 from ifdata_bcb.domain.validation import (
     AccountList,
@@ -221,7 +224,9 @@ class BaseExplorer(ABC):
             return [start_normalized]
         end_normalized = self._normalize_datas(end)[0]
         if start_normalized > end_normalized:
-            raise InvalidDateRangeError(start, end)
+            # str() aqui e nao no tipo de InvalidDateRangeError: domain.exceptions
+            # nao importa nada, e e isso que mantem o lazy loading dos explorers.
+            raise InvalidDateRangeError(str(start), str(end))
         from ifdata_bcb.utils.date import (
             generate_month_range,
             generate_quarter_range,
@@ -274,7 +279,10 @@ class BaseExplorer(ABC):
         if columns is None:
             return None
         non_derived = [c for c in columns if c not in self._DERIVED_COLUMNS]
-        storage = self._translate_columns(non_derived) if non_derived else []
+        storage: list[str] = []
+        if non_derived:
+            # _translate_columns so devolve None quando recebe None
+            storage = self._translate_columns(non_derived) or []
         if required:
             for col in required:
                 if col not in storage:
@@ -600,9 +608,51 @@ class BaseExplorer(ABC):
         """Verifica se ha dados disponiveis."""
         return len(self.list_periodos(source)) > 0
 
-    def describe(self, source: str | None = None) -> dict:
+    def _read_signature_info(self) -> tuple[list[str], list[str]]:
+        """Filtros aceitos por read() e colunas validas em cadastro=.
+
+        Lido da assinatura em vez de declarado a mao: uma lista paralela
+        envelheceria em silencio no primeiro parametro novo, e describe() e
+        justamente onde um agente vai confiar para montar a chamada seguinte.
         """
-        Retorna info do explorer.
+        read = getattr(type(self), "read", None)
+        if read is None:
+            return [], []
+
+        keyword_only = [
+            name
+            for name, p in inspect.signature(read).parameters.items()
+            if p.kind is inspect.Parameter.KEYWORD_ONLY
+        ]
+        # columns e cadastro nao filtram linha; saem em chaves proprias.
+        filtros = sorted(n for n in keyword_only if n not in ("columns", "cadastro"))
+
+        cadastro_columns: list[str] = []
+        if "cadastro" in keyword_only:
+            from ifdata_bcb.providers.enrichment import VALID_CADASTRO_COLUMNS
+
+            cadastro_columns = sorted(VALID_CADASTRO_COLUMNS)
+        return filtros, cadastro_columns
+
+    def _describe_capabilities(self) -> ExplorerInfo:
+        """Parte de describe() que nao depende de quais periodos ha em disco."""
+        filtros, cadastro_columns = self._read_signature_info()
+        return {
+            "escopos": list(self._VALID_ESCOPOS),
+            "columns": sorted(self._LIST_COLUMNS.keys()),
+            "read_columns": list(self._COLUMN_ORDER),
+            "filtros": filtros,
+            "cadastro_columns": cadastro_columns,
+        }
+
+    def describe(self, source: str | None = None) -> ExplorerInfo:
+        """
+        Retorna o que o explorer aceita e o que ha coletado.
+
+        Alem dos periodos em disco, descreve a superficie de chamada: escopos
+        validos, colunas listaveis por list(), colunas devolvidas por read(),
+        filtros aceitos e colunas validas em cadastro=. E o suficiente para
+        montar uma chamada a read() sem ler a documentacao.
 
         Args:
             source: Nome da fonte (para multi-source). Se None, descreve todas.
@@ -611,44 +661,33 @@ class BaseExplorer(ABC):
             InvalidScopeError: Se source nao for uma fonte conhecida.
         """
         sources = self._get_sources()
+        result: ExplorerInfo = self._describe_capabilities()
 
         if source:
             cfg = self._resolve_source(source)
             periods = self.list_periodos(source)
-            return {
-                "source": source,
-                "subdir": cfg["subdir"],
-                "prefix": cfg["prefix"],
-                "columns": sorted(self._LIST_COLUMNS.keys()),
-                "periods": periods,
-                "period_count": len(periods),
-                "has_data": len(periods) > 0,
-                "first_period": periods[0] if periods else None,
-                "last_period": periods[-1] if periods else None,
-            }
+            result["source"] = source
+            result["subdir"] = cfg["subdir"]
+            result["prefix"] = cfg["prefix"]
+        else:
+            periods = self.list_periodos()
+            by_source: dict[str, SourceInfo] = {}
+            for name, cfg in sources.items():
+                source_periods = self.list_periodos(name)
+                by_source[name] = {
+                    "subdir": cfg["subdir"],
+                    "prefix": cfg["prefix"],
+                    "period_count": len(source_periods),
+                    "has_data": len(source_periods) > 0,
+                }
+            result["sources"] = list(sources.keys())
+            result["by_source"] = by_source
 
-        all_periods = self.list_periodos()
-        by_source: dict[str, dict] = {}
-        result: dict = {
-            "sources": list(sources.keys()),
-            "columns": sorted(self._LIST_COLUMNS.keys()),
-            "periods": all_periods,
-            "period_count": len(all_periods),
-            "has_data": len(all_periods) > 0,
-            "first_period": all_periods[0] if all_periods else None,
-            "last_period": all_periods[-1] if all_periods else None,
-            "by_source": by_source,
-        }
-
-        for name, cfg in sources.items():
-            periods = self.list_periodos(name)
-            by_source[name] = {
-                "subdir": cfg["subdir"],
-                "prefix": cfg["prefix"],
-                "period_count": len(periods),
-                "has_data": len(periods) > 0,
-            }
-
+        result["periods"] = periods
+        result["period_count"] = len(periods)
+        result["has_data"] = len(periods) > 0
+        result["first_period"] = periods[0] if periods else None
+        result["last_period"] = periods[-1] if periods else None
         return result
 
     # ------------------------------------------------------------------
@@ -797,6 +836,7 @@ class BaseExplorer(ABC):
         has_files: bool,
         had_conta_filter: bool,
         had_institution_filter: bool = True,
+        outros_filtros: str = "periodo, escopo, conta, etc",
     ) -> None:
         """Cascata de diagnostico quando read() retorna vazio."""
         if not has_files:
@@ -831,7 +871,7 @@ class BaseExplorer(ABC):
         else:
             msg = (
                 f"Nenhum dado {source_name} encontrado para os filtros "
-                f"solicitados (periodo, escopo, conta, etc)."
+                f"solicitados ({outros_filtros})."
             )
 
         emit_user_warning(

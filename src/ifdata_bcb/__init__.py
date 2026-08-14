@@ -125,7 +125,9 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    return list(__all__) + list(globals().keys())
+    """dir(bcb) mostrava Any, logger, _cosif e o resto do modulo."""
+    dunders = {n for n in globals() if n.startswith("__") and n.endswith("__")}
+    return sorted(set(__all__) | dunders)
 
 
 __all__ = [
