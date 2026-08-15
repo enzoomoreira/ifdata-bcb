@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.0] - Nao lancado
+## [1.0.0] - 2026-08-14
 
 Primeiro major. Todas as quebras de contrato planejadas saem juntas, sem
 camada de transicao: a API antiga deixa de existir e este guia e a referencia
